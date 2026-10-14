@@ -1,0 +1,426 @@
+* Common Object Types
+** =timespec=
+   Represents a point in time or a span of time. When representing a point in
+   time, *always UTC (e.g. GMT timezone)*. See =timespec(3type)= for rationale.
+   #+begin_src json-ts
+     {
+         // (integer) second part
+         "sec": 10,
+         // (integer) nanosecond part (in range [0,999'999'999])
+         "nsec": 10
+     }
+   #+end_src
+
+* Potential Database Schema
+  The internals of the database are likely to change over the course this
+  project. Also, as long as the "backend" is following this API properly, we
+  should be able to change the schema without issue. With that said, as people
+  kept asking about the schema, I have come up with an example of one
+  here. Please read the rest of the document (or just ask Alexander) if you want
+  to know why I recommend this.
+
+  The schema has two tables, one for snapshots, and one for files.
+  #+begin_src sql
+    -- Allow multiple concurrent reads during a write
+    PRAGMA journal_mode=WAL;
+
+    CREATE TABLE snapshots (
+    -- can also use integer primary key, but the limited to signed 8byte integer
+    -- limit on number of row
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    start_time REAL NOT NULL,
+    end_time REAL NOT NULL,
+    ) WITHOUT ROWID;
+
+    CREATE TABLE files (
+    -- same comments as above about integer primary keys
+    id TEXT PRIMARY KEY,
+    snapshot_id TEXT,
+    -- not strictly nessessary depending on how we choose to organize files on
+    -- disk, but might be helpful for future storage changes
+    on_disk_path TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    port INTEGER NOT NULL,
+    host TEXT NOT NULL,
+    -- path of file on (above) remote host
+    remote_path TEXT NOT NULL,
+    request_sent_time REAL NOT NULL,
+    request_method TEXT NOT NULL,
+    -- jsonb object mapping request headers to their values
+    -- (see `/files/{FILE_ID}` for format)
+    request_headers BLOB NOT NULL,
+    -- jsonb object mapping request parameters to their values
+    -- (see `/files/{FILE_ID}` for format)
+    request_parameters BLOB NOT NULL,
+    response_recieved_time REAL NOT NULL,
+    response_code INTEGER NOT NULL,
+    -- jsonb object mapping request parameters to their values
+    -- (see `/files/{FILE_ID}` for format)
+    response_headers BLOB NOT NULL,
+
+    FOREIGN KEY (snapshot_id) REFERENCES snapshots (id)
+        ON UPDATE SET NULL,
+        ON DELETE SET NULL,
+    ) WITHOUT ROWID;
+
+    -- Speed up searches in the form of
+    -- `SELECT * FROM files WHERE snapshot_id = '...';`
+    CREATE INDEX idx_files_snapshot ON files(snapshot_id);
+  #+end_src
+
+* Common Error Responses
+  Note that all API routes described below have the following additional error
+  responses.
+  - Code: 500 (Internal Server Error) \\
+    Content-Type: application/json
+
+    Sent when something unexpected happened that prevented the operation from
+    being completed (network error, DNS resolution error, file permission error,
+    file quota reached, read only FS, etc.).
+
+    #+begin_src json-ts
+      {
+          // (string) Message as to why the request failed
+          "message": "..."
+      }
+    #+end_src
+  - Code: 400 (Bad Request) \\
+    Content-Type: application/json
+
+    Sent when one of the request parameters is of the wrong type or malformed
+    (e.g. bad URL or request type).
+
+    #+begin_src json-ts
+      {
+          // (string) Message as to why the request failed
+          "message": "..."
+      }
+    #+end_src
+
+* Routes
+** POST =/snapshots/create=
+   Create a snapshot of a webpage. Note that this should succeed even if the
+   page returned an error code (e.g. 404) because that is still the real content
+   of the page.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) URL to archive (fully qualified)
+          "url": "https://www.example.com/path/to/file?param1=val&param2=val",
+          // (object) Some extra options
+          // TODO To start, the UI can probably just have a basic list form
+          // for testing, but in the future we might want a cleaner UI for
+          // common headers like basic auth or cookies.
+          "request_options": {
+              // (string) HTTP request method (e.g. get, post, etc.)
+              "method": "GET",
+              // (object of arrays) HTTP request headers
+              "headers": {
+                  // NOTE because headers can be repeated, these must be arrays
+                  "Authorization": ["Basic ..."], // example, for basic auth
+                  "Set-Cookie": ["...", "..."]
+              }
+          }
+          // Example of something that might be added in a future sprint
+          // TODO (object) Crawing options
+          // "crawl": {
+          //     // (boolean) do crawing
+          //     "enable": true,
+          //     // NOTE that one of the following (`depth` or `limit_hosts`) is
+          //     // required.
+          //     // (integer, optional) maximum depth
+          //     // default: infinity
+          //     "depth": 3,
+          //     // (array of strings, optional) hosts to scan (supports globs)
+          //     // default: ["*"]
+          //     "limit_hosts": ["www.example.com", "example.com", "*.abc.com"]
+          // }
+      }
+    #+end_src
+*** Success Response
+    Code: 201 (Created) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) *unique* ID representing this snapshot, format is an
+          // implementation detail, but it should be not require encoding to
+          // convert to a URL
+          "id": "..."
+      }
+    #+end_src
+*** Error Responses
+    Only the global error responses defined above apply.
+
+** DELETE =/snapshots/{SNAPSHOT_ID}=
+   Delete the snapshot =SNAPSHOT_ID=.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {}
+    #+end_src
+*** Success Response
+    Code: 202 \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {}
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =SNAPSHOT_ID= refers to a non-existent snapshot.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** GET =/snapshots/{SNAPSHOT_ID}=
+   Get information about the snapshot =SNAPSHOT_ID=.
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: 200 \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) echo back SNAPSHOT_ID
+          "id": "...",
+          // (string) URL that triggered the snapshot
+          "url": "https://www.example.com/path/to/file?param1=val&param2=val",
+          // (timespec) time the snapshot creation was requested
+          "start_time": { ... },
+          // (timespec) time the snapshot creation was finished
+          "end_time": { ... },
+          // (array of strings) IDs of files in this snapshot
+          // NOTE just like snapshot IDS, these are opaque, implementation
+          // dependent falues that should be all valid URL characters. These
+          // should also be globally unique among all snapshots.
+          "files": [
+              "...",
+              "...",
+          ]
+      }
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =SNAPSHOT_ID= refers to a non-existent snapshot.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** GET =/files/{FILE_ID}=
+   Get information about the file =FILE_ID=.
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      // This example is for the file:
+      // https://www.example.com:443/path/to/file?param1=val&param2=val
+      {
+          // (string) echo back FILE_ID
+          "id": "...",
+          // (string) snapshot to which this file belongs
+          "snapshot": "...",
+          // (string) pretty URL to request this file (note the SNAPSHOT_ID
+          // needs to be replaced by the ID). The port, protocol, and host are
+          // all one path component. The path follows as usual. The parameters
+          // are the actual request parameters (not double encoded).
+          "url": "/data/SNAPSHOT_ID/https://www.example.com/path/to/file?param1=val&param2=val",
+          // (string) protocol used to request the file
+          "protocol": "https",
+          // (integer) port used to request the file
+          "port": 443,
+          // (string) (remote) host of the file
+          "host": "www.example.com",
+          // (string) relative path to file on (remote) host
+          "path": "path/to/file",
+          // (object) information about the request
+          "request": {
+              // (timespec) time the file request was made
+              "sent_time": { ... },
+              // (string) HTTP request method (e.g. get, post, etc.)
+              "method": "GET",
+              // (object of arrays) HTTP request headers
+              "headers": {
+                  // NOTE because headers can be repeated, these must be arrays
+                  "Authorization": ["Basic ..."], // example, for basic auth
+                  "Set-Cookie": ["...", "..."]
+              },
+              // (object of arrays) request parameters (the ones in the URL)
+              "parameters": {
+                  // NOTE because parameters can be repeated, these must be
+                  // arrays
+                  "param1": ["val"],
+                  "param2": ["val"]
+              }
+          },
+          // (object) information about the response
+          "response": {
+              // (timespec) time the response was recieved
+              "recieved_time": { ... },
+              // (integer) code the server responded with when serving this file
+              "code": 200,
+              // (object of arrays) response headers
+              "headers": {
+                  // NOTE because headers can be repeated, these must be arrays
+                  "Content-Type": ["text/html"],
+                  "X-Coolness-Level": ["10000"]
+              }
+          }
+      }
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =FILE_ID= refers to a non-existent file.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** GET =/files/{FILE_ID}/data=
+   Return contents of file FILE_ID (lookup files by ID). Note that there is no
+   way to distinguish a failure in the archive server and a failure during the
+   original request in this case. That is, this route directly returns the
+   response originally received by the server, error status and all.
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: (depends on original response)
+    Content-Type: (depends on original file)
+    The response body is the content of the file, as the system originally
+    returned it.
+*** Error Response
+    Note that these error responses are mostly meaningless for the reasons
+    stated above.
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =FILE_ID= refers to a non-existent file.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** (VARIES) =/data/{SNAPSHOT_ID}/{PATH ...}=
+   Query files by original URL. The PATH is the URL (including the port, domain
+   name, etc.) of the original file to query. The SNAPSHOT_ID is the snapshot to
+   query this path from. The PATH is in this form:
+     /data/SNAPSHOT_ID/{HOST}/{COMPONENTS...}?{PARAMS...}
+   The HOST field contains the protocol, port, and hostname. All of these are
+   combined (e.g. https://www.example.com:443, then URL encoded). The COMPONENTS
+   are the file path components. The PARAMS are the actual parameters of the
+   original request (that is, the parameters to this request are the same as
+   those to the original request.
+
+   Note that the same error response ambiguity mentioned above applies here too.
+*** Request
+    Probably empty (we probably don't need this right now)
+*** Success Response
+    Code: (depends on original response)
+    Content-Type: (depends on original file)
+    The response body is the content of the file, as the system originally
+    returned it.
+*** Error Response
+    Note that these error responses are mostly meaningless for the reasons
+    stated above.
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =FILE_ID= refers to a non-existent file.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** QUERY =/search/snapshots=
+   Make a general query for a list of snapshots.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (timespec, optional) don't return snapshots created before this
+          // default: -infinity seconds UTC
+          "start_time": { ... },
+          // (timespec, optional) don't return snapshots created after this
+          // default: +infinity seconds UTC
+          "end_time": { ... },
+          // (string, optional) regexp to match against original snapshot URL
+          // default: any URL
+          "url": "^https?//:abc*.(?:com|org)/(?:.+/)(?:.*[^/])?$"
+      }
+    #+end_src
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      // (array of strings) list of snapshot IDs that matched the above search
+      [
+          "...",
+          "...",
+      ]
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.
+
+** QUERY =/search/files=
+   Make a general query for a list of files (and their snapshots).
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string, optional) only search within this snapshot
+          // default: any snapshot
+          "snapshot_id": "...",
+          // (timespec, optional) don't return files requested before this
+          // default: -infinity seconds UTC
+          "start_time": { ... },
+          // (timespec, optional) don't return files requested after this
+          // default: infinity seconds UTC
+          "end_time": { ... },
+          // (string, optional) regexp to match against file (original) URLs
+          // (e.g. on the original site the file came from)
+          // default: any URL
+          "url": "...",
+          // (string, optional) regex to match against the file's original host
+          // default: any host
+          "host": "...",
+          // (string, optional) regex to match against the file's protocol
+          // default: any protocol
+          "protocol": "https",
+          // (integer, optional) the file's port
+          // default: any port
+          "port": 443,
+          // (string, optional) regexp to match against the file's path
+          // default: any path
+          "path": "...",
+          // (array of integers, optional) the list of acceptable status codes
+          // default: any status codes
+          "status_codes": [200, 201, 404]
+      }
+    #+end_src
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      // (array of objects of strings) list of snapshot IDs (and their files)
+      // that matched the search
+      [
+          {
+              // (string) snapshot id
+              "snapshot_id": "...",
+              // (string) file id
+              "file_id": "...",
+          }
+      ]
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.

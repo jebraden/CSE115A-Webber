@@ -1,0 +1,9 @@
+# Python files
+*.pyc
+__pycache__/
+venv/
+
+# Database files (please only commit migrations!)
+*.db
+*.db-wal
+*.dm-shm
