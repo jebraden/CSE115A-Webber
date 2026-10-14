@@ -13,7 +13,7 @@ fi
 echo "Modules: ${*}"
 
 for module; do
-    if ! [ -f "${module}" ]; then
+    if ! [ -d "${module}" ]; then
         echo "No such module: ${module}"
         exit 1
     fi
