@@ -1,4 +1,119 @@
-from src.urlreplace import relativize_html_url
+from src.urlreplace import relativize_html_url, join_paths
+
+
+class TestJoinPaths:
+    def test_absolute_path(self):
+        """If path starts with /, return it unchanged."""
+        assert join_paths("/a/b", "/c/d") == "/c/d"
+        assert join_paths("/a/b", "/") == "/"
+        assert join_paths("", "/c/d") == "/c/d"
+
+    def test_basic_join_with_trailing_slash(self):
+        """Join paths when base ends with /."""
+        assert join_paths("/a/b/", "c/d") == "/a/b/c/d"
+        assert join_paths("/a/b/", "c") == "/a/b/c"
+        assert join_paths("/", "a") == "/a"
+
+    def test_basic_join_without_trailing_slash(self):
+        """When base doesn't end with /, remove last component before joining."""
+        assert join_paths("/a/b", "c/d") == "/a/c/d"
+        assert join_paths("/a/b", "c") == "/a/c"
+        assert join_paths("/a", "b") == "/b"
+
+    def test_consecutive_slashes_preserved(self):
+        """Consecutive slashes should be preserved."""
+        assert join_paths("/a//b/", "c") == "/a//b/c"
+        assert join_paths("/a/b", "//c") == "//c"
+        assert join_paths("/a/", "b//c") == "/a/b//c"
+        assert join_paths("/a//", "b") == "/a//b"
+
+    def test_dot_components(self):
+        """'.' components should be removed."""
+        assert join_paths("/a/", "./b") == "/a/b"
+        assert join_paths("/a/", ".") == "/a/"
+        assert join_paths("/a/", "b/./c") == "/a/b/c"
+        assert join_paths("/a/", "./b/./c") == "/a/b/c"
+
+    def test_dotdot_components(self):
+        """'..' components should remove previous component."""
+        assert join_paths("/a/b/", "../c") == "/a/c"
+        assert join_paths("/a/b/", "../../c") == "/c"
+        assert join_paths("/a/b/c/", "../../d") == "/a/d"
+        assert join_paths("/a/b/", "../b/../../c") == "/c"
+
+    def test_dotdot_at_root_preserves_leading_slash(self):
+        """'..' at root should preserve leading slash."""
+        assert join_paths("/a/", "../b") == "/b"
+        assert join_paths("/", "../b") == "/b"
+        assert join_paths("/a/", "../../b") == "/b"
+        assert join_paths("//a", "../b/b") == "//b/b"
+        assert join_paths("/a", "../b") == "/b"
+
+    def test_multiple_dotdot_at_root(self):
+        """Multiple '..' at root should still preserve leading slash."""
+        assert join_paths("/a/", "../../../b") == "/b"
+        assert join_paths("/", "../../b") == "/b"
+        assert join_paths("//a", "../../b") == "//b"
+
+    def test_mixed_dots_and_slashes(self):
+        """Complex paths with dots and consecutive slashes."""
+        assert join_paths("/a//b/", "../c//d") == "/a//c//d"
+        assert join_paths("/a/b/", "./../c") == "/a/c"
+        assert join_paths("/a/b/", ".././c") == "/a/c"
+
+    def test_empty_path(self):
+        """Empty path should return base directory with trailing slash."""
+        assert join_paths("/a/", "") == "/a/"
+        assert join_paths("/a", "") == "/"
+
+    def test_empty_base(self):
+        """Empty base should be treated as root."""
+        assert join_paths("", "a") == "/a"
+        assert join_paths("", "/a") == "/a"
+        assert join_paths("", "") == "/"
+
+    def test_root_path(self):
+        """Root path handling."""
+        assert join_paths("/", "a") == "/a"
+        assert join_paths("/", "/a") == "/a"
+        assert join_paths("/", "") == "/"
+
+    def test_multiple_dots(self):
+        """Multiple dots in filename should be preserved."""
+        assert join_paths("/a/", "...") == "/a/..."
+        assert join_paths("/a/", "file...txt") == "/a/file...txt"
+        assert join_paths("/a/", "b.../c") == "/a/b.../c"
+
+    def test_complex_real_world(self):
+        """Complex real-world path scenarios."""
+        # Directory navigation
+        assert (
+            join_paths("/home/user/docs/", "../images/photo.jpg")
+            == "/home/user/images/photo.jpg"
+        )
+
+        # Deep nesting
+        assert join_paths("/a/b/c/d/", "../../../e/f") == "/a/e/f"
+
+        # Mixed with consecutive slashes
+        assert join_paths("/a//b/c/", "../d//e") == "/a//b/d//e"
+
+        # Trailing dots
+        assert join_paths("/a/b/", "c/.") == "/a/b/c/"
+
+    def test_single_component(self):
+        """Single component paths."""
+        assert join_paths("/a/", "b") == "/a/b"
+        assert join_paths("/a", "b") == "/b"
+        assert join_paths("/", "a") == "/a"
+
+    def test_multiple_consecutive_dots(self):
+        """Multiple consecutive .. components."""
+        assert join_paths("/a/b/c/", "../../d") == "/a/d"
+        assert join_paths("/a/b/c/", "../../../d") == "/d"
+        assert (
+            join_paths("/a/b/c/", "../../../../d") == "/d"
+        )  # Can't go above root
 
 
 class TestRelativizeHTMLUrl:
@@ -40,7 +155,7 @@ class TestRelativizeHTMLUrl:
                 ),
                 (
                     "//user:pass@example.com/file",
-                    "http%3A%2F%2Fuser%3Apass@example.com/file",
+                    "http%3A%2F%2Fuser%3Apass%40example.com/file",
                 ),
             ],
         )
@@ -130,7 +245,7 @@ class TestRelativizeHTMLUrl:
                 ),
                 (
                     "blob:https://example.com/uuid-5678",
-                    "https%3A%2F%2Fexample.com/uuid-5679",
+                    "https%3A%2F%2Fexample.com/uuid-5678",
                 ),
                 (
                     "blob:http://localhost/8f34f9d6-385e-483b-9eff-fea4b9e9b9b6",
@@ -202,7 +317,7 @@ class TestRelativizeHTMLUrl:
                 ),
                 (
                     "https://example.com:443/path",
-                    "https%3A%2F%2Fexample.com%3A443/path",
+                    "https%3A%2F%2Fexample.com/path",
                 ),
                 (
                     "https://example.com:444/path",
@@ -260,12 +375,20 @@ class TestRelativizeHTMLUrl:
     def test_empty_and_whitespace(self):
         """Whitespace should be removed."""
         self.assert_urls(
-            "http://www.example.com/",
+            "http://www.example.com/a/",
             [
-                ("", ""),
-                ("   ", ""),
-                ("\t\n", ""),
+                ("", "http%3A%2F%2Fwww.example.com/a/"),
+                ("   ", "http%3A%2F%2Fwww.example.com/a/"),
+                ("\t\n", "http%3A%2F%2Fwww.example.com/a/"),
                 ("  http://example.com  ", "http%3A%2F%2Fexample.com"),
+            ],
+        )
+        self.assert_urls(
+            "http://www.example.com/a",
+            [
+                ("", "http%3A%2F%2Fwww.example.com/"),
+                ("   ", "http%3A%2F%2Fwww.example.com/"),
+                ("\t\n", "http%3A%2F%2Fwww.example.com/"),
             ],
         )
 
@@ -276,11 +399,11 @@ class TestRelativizeHTMLUrl:
             [
                 (
                     "https://user:pass@example.com:8080/path?query=1#frag",
-                    "https%3A%2F%2Fuser%3Apass@example.com%3A8080/path?query=1#frag",
+                    "https%3A%2F%2Fuser%3Apass%40example.com%3A8080/path?query=1#frag",
                 ),
                 (
                     "//user:pass@example.com:8080/path",
-                    "http%3A%2F%2Fuser%3Apass@example.com%3A8080/path",
+                    "http%3A%2F%2Fuser%3Apass%40example.com%3A8080/path",
                 ),
                 (
                     "https://example.com/path/to/file?param1=val&param2=val#section",
@@ -300,13 +423,22 @@ class TestRelativizeHTMLUrl:
                 ("./d/e.png", "http%3A%2F%2Fwww.example.com/a/b/d/e.png"),
             ],
         )
+        self.assert_urls(
+            "http://www.example.com/a/b/c/",
+            [
+                ("d/e.png", "http%3A%2F%2Fwww.example.com/a/b/c/d/e.png"),
+                ("../d/e.png", "http%3A%2F%2Fwww.example.com/a/b/d/e.png"),
+                ("../../d/e.png", "http%3A%2F%2Fwww.example.com/a/d/e.png"),
+                ("./d/e.png", "http%3A%2F%2Fwww.example.com/a/b/c/d/e.png"),
+            ],
+        )
 
     def test_mixed_case(self):
-        """URLs should preserve case."""
+        """URLs should preserve case (except the scheme)."""
         self.assert_urls(
             "http://www.example.com/",
             [
-                ("HTTP://EXAMPLE.COM/PATH", "HTTP%3A%2F%2FEXAMPLE.COM/PATH"),
+                ("HTTP://EXAMPLE.COM/PATH", "http%3A%2F%2FEXAMPLE.COM/PATH"),
                 ("https://Example.Com/Path", "https%3A%2F%2FExample.Com/Path"),
             ],
         )
