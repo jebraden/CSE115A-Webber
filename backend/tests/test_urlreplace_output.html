@@ -6,79 +6,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Webber URL Relativization Test Suite</title>
 
-    <!-- TEST: Existing <base> tag (should be removed/replaced) -->
+    <!-- TEST: Existing <base> tag should be removed -->
 
     <!-- TEST: <link> rel types with URLs -->
-    <link rel="canonical" href="https%3A%2F%2Fexample.com/canonical/version" />
-    <link rel="icon" href="https%3A%2F%2Fcdn.example.com/favicon.ico" />
     <link
-      rel="apple-touch-icon"
-      href="http%2F%2Fcdn.example.com/apple-icon.png"
+      rel="canonical"
+      href="../https%3A%2F%2Fexample.com/canonical/version"
     />
-    <link rel="manifest" href="http%3A%2F%2Fexample.com/manifest.json" />
+    <link rel="icon" href="https://cdn.example.com/favicon.ico" />
+    <link rel="apple-touch-icon" href="//cdn.example.com/apple-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
     <link
       rel="preload"
-      href="https%3A%2F%2Ffonts.example.com/font.woff2"
+      href="https://fonts.example.com/font.woff2"
       as="font"
       type="font/woff2"
       crossorigin
     />
     <link
       rel="alternate"
-      href="https%3A%2F%2Fexample.com/rss.xml"
+      href="https://example.com/rss.xml"
       type="application/rss+xml"
     />
 
     <!-- TEST: <link> rel types to remove -->
+    <link rel="prefetch" href="/next-page.html" />
+    <link rel="dns-prefetch" href="//api.example.com" />
+    <link rel="preconnect" href="https://api.example.com/v1" />
 
     <!-- TEST: External stylesheet link (relative) -->
-    <link
-      rel="stylesheet"
-      href="https%3A%2F%2Fexample.com/styles/external.css"
-    />
-    <link rel="stylesheet" href="http%3A%2F%2Fexample.com/css/root.css" />
-    <link
-      rel="stylesheet"
-      href="http%3A%2F%2Fexample.com/css/protocol-relative.css"
-    />
-    <link
-      rel="stylesheet"
-      href="http%3A%2F%2Fexample.com/folder/relative.css"
-    />
-    <link
-      rel="stylesheet"
-      href="http%3A%2F%2Fexample.com/parent/relative.css"
-    />
+    <link rel="stylesheet" href="https://example.com/styles/external.css" />
+    <link rel="stylesheet" href="/css/root.css" />
+    <link rel="stylesheet" href="//example.com/css/protocol-relative.css" />
+    <link rel="stylesheet" href="./relative.css" />
+    <link rel="stylesheet" href="../parent/relative.css" />
 
     <style>
       /* TEST: @import in CSS */
-      @import url("https%3A%2F%2Fexample.com/css/imported.css");
-      @import "https%3A%2F%2Fexample.com/css/imported-relative.css";
+      @import url("https://example.com/css/imported.css");
+      @import "https://example.com/css/imported-relative.css";
 
       /* TEST: @font-face with src */
       @font-face {
         font-family: "TestFont";
         src:
-          url("https%3A%2F%2Ffonts.example.com/font.woff2") format("woff2"),
-          url("https%3A%2F%2Ffonts.example.com/font.woff") format("woff"),
-          url("http%3A%2F%2Fexample.com/fonts/local.ttf") format("truetype");
+          url("https://fonts.example.com/font.woff2") format("woff2"),
+          url("https://fonts.example.com/font.woff") format("woff"),
+          url("/fonts/local.ttf") format("truetype");
         font-weight: normal;
         font-style: normal;
       }
 
       /* TEST: background properties */
       .test-background {
-        background: url("https%3A%2F%2Fexample.com/images/bg.jpg") center center;
-        background-image: url("http%3A%2F%2Fexample.com/images/relative-bg.png");
-        background: url(http%3A%2F%2Fexample.com/images/protocol-relative-bg.gif);
+        background: url("https://example.com/images/bg.jpg") center center;
+        background-image: url("/images/relative-bg.png");
+        background: url(//example.com/images/protocol-relative-bg.gif);
         background-image: url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7);
       }
 
       /* TEST: border-image */
       .test-border-image {
-        border-image-source: url("https%3A%2F%2Fexample.com/images/border.png");
-        border-image: url("https%3A%2F%2Fexample.com/images/border.9.png") 30
-          round;
+        border-image-source: url("https://example.com/images/border.png");
+        border-image: url("https://example.com/images/border.9.png") 30 round;
         border-image-slice: 30;
         border-image-width: 10;
         border-image-outset: 2;
@@ -87,67 +77,67 @@
       /* TEST: cursor with multiple URLs */
       .test-cursor {
         cursor:
-          url("https%3A%2F%2Fexample.com/cursor.png") 4 4,
-          url("http%3A%2F%2Fexample.com/cursor.svg") 5 5,
-          url(http%3A%2F%2Fexample.com/cursor.gif) 1 1,
+          url("https://example.com/cursor.png") 4 4,
+          url("/cursor.svg") 5 5,
+          url(//example.com/cursor.gif) 1 1,
           auto;
       }
 
       /* TEST: mask properties */
       .test-mask {
-        mask: url("https%3A%2F%2Fexample.com/mask.png") center / cover no-repeat;
-        mask-image: url("http%3A%2F%2Fexample.com/mask.svg");
-        mask: url(http%3A%2F%2Fexample.com/mask.gif) top left;
+        mask: url("https://example.com/mask.png") center / cover no-repeat;
+        mask-image: url("/mask.svg");
+        mask: url(//example.com/mask.gif) top left;
       }
 
       /* TEST: list-style-image */
       ul.test-list-style {
-        list-style-image: url("https%3A%2F%2Fexample.com/bullet.png");
-        list-style-image: url("http%3A%2F%2Fexample.com/bullet.svg");
+        list-style-image: url("https://example.com/bullet.png");
+        list-style-image: url("/bullet.svg");
       }
 
       /* TEST: filter with SVG reference */
       .test-filter {
         filter: url("#svg-filter-id");
-        filter: url("https%3A%2F%2Fexample.com/filters/blur.svg#blur");
+        filter: url("https://example.com/filters/blur.svg#blur");
       }
 
       /* TEST: image-set function */
       .test-image-set {
         background-image: image-set(
-          url("https%3A%2F%2Fexample.com/images/image-1x.png") 1x,
-          url("http%3A%2F%2Fexample.com/images/image-2x.png") 2x,
-          url(http%3A%2F%2Fexample.com/images/image-3x.png) 3x
-        );
+                url('https://example.com/images/image-1x.png') 1x,
+                url('/images/image-2x.png') 2x,
+                url(//example.com/images/image-3x.png) 3x
+            );
       }
 
       /* TEST: Pseudo-elements with content: url() */
       .test-pseudo::before {
-        content: url("https%3A%2F%2Fexample.com/icons/icon.png");
-        content: url("http%3A%2F%2Fexample.com/icons/local.png");
+        content: url("https://example.com/icons/icon.png");
+        content: url("/icons/local.png");
       }
 
       .test-pseudo::after {
-        content: url("http%3A%2F%2Fexample.com/icons/protocol-relative.png");
+        content: url("//example.com/icons/protocol-relative.png");
       }
 
       /* TEST: @media with URLs inside */
       @media screen and (min-width: 768px) {
         .responsive-bg {
-          background: url("https%3A%2F%2Fexample.com/images/desktop-bg.jpg");
+          background: url("https://example.com/images/desktop-bg.jpg");
         }
       }
 
       @media print {
         .print-bg {
-          background: url("http%3A%2F%2Fexample.com/images/print-bg.png");
+          background: url("/images/print-bg.png");
         }
       }
 
       /* TEST: CSS custom properties with URLs */
       :root {
-        --bg-image-url: url("https%3A%2F%2Fexample.com/images/var-bg.jpg");
-        --icon-path: url("http%3A%2F%2Fexample.com/icons/svg-icon.svg");
+        --bg-image-url: url("https://example.com/images/var-bg.jpg");
+        --icon-path: url("/icons/svg-icon.svg");
       }
 
       .test-custom-prop {
@@ -160,7 +150,7 @@
     <style>
       /* SVG-specific styles */
       .svg-bg {
-        fill: url("https%3A%2F%2Fexample.com/svg/gradient.svg");
+        fill: url("https://example.com/svg/gradient.svg");
       }
     </style>
   </head>
@@ -168,7 +158,7 @@
     <!-- TEST: Meta refresh -->
     <meta
       http-equiv="refresh"
-      content="0; url=https%3A%2F%2Fexample.com/redirect-target"
+      content="0; url=https://example.com/redirect-target"
     />
 
     <!-- TEST: Document title (should not have URLs) -->
@@ -181,24 +171,12 @@
 
       <!-- src attribute -->
       <h3>1.1 img[src]</h3>
+      <img src="https://example.com/images/absolute.jpg" alt="Absolute URL" />
+      <img src="/images/root-relative.png" alt="Root relative" />
+      <img src="./relative-path.jpg" alt="Dot relative" />
+      <img src="../parent-folder.png" alt="Parent folder" />
       <img
-        src="https%3A%2F%2Fexample.com/images/absolute.jpg"
-        alt="Absolute URL"
-      />
-      <img
-        src="http%3A%2F%2Fexample.com/images/root-relative.png"
-        alt="Root relative"
-      />
-      <img
-        src="http%3A%2F%2Fexample.com/folder/relative-path.jpg"
-        alt="Dot relative"
-      />
-      <img
-        src="http%3A%2F%2Fexample.com/parent-folder.png"
-        alt="Parent folder"
-      />
-      <img
-        src="http%3A%2F%2Fexample.com/images/protocol-relative.gif"
+        src="//example.com/images/protocol-relative.gif"
         alt="Protocol relative"
       />
 
@@ -206,23 +184,19 @@
       <h3>1.2 img[srcset]</h3>
       <img
         srcset="
-          https%3A%2F%2Fexample.com/images/small.jpg   480w,
-          https%3A%2F%2Fexample.com/images/medium.jpg  800w,
-          https%3A%2F%2Fexample.com/images/large.jpg  1600w,
-          https%3A%2F%2Fexample.com/images/xl.jpg     2400w
+          https://example.com/images/small.jpg   480w,
+          https://example.com/images/medium.jpg  800w,
+          https://example.com/images/large.jpg  1600w,
+          https://example.com/images/xl.jpg     2400w
         "
         sizes="(max-width: 600px) 480px, (max-width: 1200px) 800px, 1600px"
-        src="https%3A%2F%2Fexample.com/images/fallback.jpg"
+        src="https://example.com/images/fallback.jpg"
         alt="SrcSet example"
       />
 
       <!-- srcset with different descriptors -->
       <img
-        srcset="
-          http%3A%2F%2Fexample.com/images/1x.png 1x,
-          http%3A%2F%2Fexample.com/images/2x.png 2x,
-          http%3A%2F%2Fexample.com/images/3x.png 3x
-        "
+        srcset="/images/1x.png 1x, /images/2x.png 2x, /images/3x.png 3x"
         alt="Pixel density srcset"
       />
 
@@ -240,7 +214,7 @@
       <!-- Usemap (image maps) -->
       <h3>1.4 Image Maps</h3>
       <img
-        src="https%3A%2F%2Fexample.com/images/map.png"
+        src="https://example.com/images/map.png"
         usemap="#product-map"
         alt="Map image"
       />
@@ -248,36 +222,27 @@
         <area
           shape="rect"
           coords="0,0,100,100"
-          href="https%3A%2F%2Fexample.com/area1"
+          href="https://example.com/area1"
           alt="Area 1"
         />
-        <area
-          shape="circle"
-          coords="200,200,50"
-          href="http%3A%2F%2Fexample.com/area2"
-          alt="Area 2"
-        />
+        <area shape="circle" coords="200,200,50" href="/area2" alt="Area 2" />
         <area
           shape="poly"
           coords="300,300,400,300,400,400,300,400"
-          href="http%3A%2F%2Fexample.com/area3"
+          href="//example.com/area3"
           alt="Area 3"
         />
       </map>
 
       <!-- Input type=image -->
       <h3>1.5 Input Image</h3>
-      <form action="https%3A%2F%2Fexample.com/submit">
-        <input
-          type="image"
-          src="http%3A%2F%2Fexample.com/images/submit-button.png"
-          alt="Submit"
-        />
+      <form action="https://example.com/submit">
+        <input type="image" src="/images/submit-button.png" alt="Submit" />
         <input
           type="image"
           srcset="
-            http%3A%2F%2Fexample.com/images/submit-1x.png 1x,
-            http%3A%2F%2Fexample.com/images/submit-2x.png 2x
+            /images/submit-1x.png 1x,
+            /images/submit-2x.png 2x
           "
           alt="SrcSet submit"
         />
@@ -292,72 +257,46 @@
       <video
         controls
         width="400"
-        poster="https%3A%2F%2Fexample.com/images/video-poster.jpg"
+        poster="https://example.com/images/video-poster.jpg"
       >
         <source
-          src="https%3A%2F%2Fexample.com/videos/absolute.mp4"
+          src="https://example.com/videos/absolute.mp4"
           type="video/mp4"
         />
+        <source src="/videos/root-relative.ogv" type="video/ogg" />
         <source
-          src="http%3A%2F%2Fexample.com/videos/root-relative.ogv"
-          type="video/ogg"
-        />
-        <source
-          src="http%3A%2F%2Fexample.com/videos/protocol-relative.webm"
+          src="//example.com/videos/protocol-relative.webm"
           type="video/webm"
         />
-        <source
-          src="http%3A%2F%2Fexample.com/folder/relative/video.mp4"
-          type="video/mp4"
-        />
+        <source src="./relative/video.mp4" type="video/mp4" />
       </video>
 
-      <video
-        controls
-        width="400"
-        poster="http%3A%2F%2Fexample.com/images/poster.png"
-      >
+      <video controls width="400" poster="/images/poster.png">
         <source
-          src="https%3A%2F%2Fexample.com/videos/absolute.mp4"
+          src="https://example.com/videos/absolute.mp4"
           type="video/mp4"
         />
       </video>
 
       <!-- Video srcset -->
-      <video
-        srcset="
-            https%3A%2F%2Fexample.com/videos/480p.mp4 480p,
-            https%3A%2F%2Fexample.com/videos/720p.mp4 720p,
-            https%3A%2F%2Fexample.com/videos/1080p.mp4 1080p
-        "
-        src="https%3A%2F%2Fexample.com/videos/fallback.mp4"
-        controls
-      >
-        <source
-          srcset="
-            http%3A%2F%2Fexample.com/videos/low.mp4  1x,
-            http%3A%2F%2Fexample.com/videos/high.mp4 2x
-          "
-        />
+      <video src="https://example.com/videos/fallback.mp4" controls>
+        <source srcset="/videos/low.mp4 1x, /videos/high.mp4 2x" />
       </video>
 
       <!-- Audio -->
-      <audio
-        src="https%3A%2F%2Fexample.com/audio/absolute.mp3"
-        controls
-      ></audio>
-      <audio src="http%3A%2F%2Fexample.com/audio/root.mp3" controls></audio>
+      <audio src="https://example.com/audio/absolute.mp3" controls></audio>
+      <audio src="/audio/root.mp3" controls></audio>
 
       <!-- Track (subtitles) -->
       <video controls>
         <track
-          src="https%3A%2F%2Fexample.com/subtitles/en.vtt"
+          src="https://example.com/subtitles/en.vtt"
           kind="subtitles"
           srclang="en"
           label="English"
         />
         <track
-          src="http%3A%2F%2Fexample.com/subtitles/fr.vtt"
+          src="/subtitles/fr.vtt"
           kind="subtitles"
           srclang="fr"
           label="French"
@@ -367,17 +306,11 @@
       <!-- Source element (picture) -->
       <picture>
         <source
-          srcset="https%3A%2F%2Fexample.com/images/wide.avif"
+          srcset="https://example.com/images/wide.avif"
           type="image/avif"
         />
-        <source
-          srcset="http%3A%2F%2Fexample.com/images/wide.webp"
-          type="image/webp"
-        />
-        <img
-          src="https%3A%2F%2Fexample.com/images/fallback.jpg"
-          alt="Picture"
-        />
+        <source srcset="/images/wide.webp" type="image/webp" />
+        <img src="https://example.com/images/fallback.jpg" alt="Picture" />
       </picture>
     </section>
 
@@ -386,16 +319,16 @@
       <h2>3. Links and Navigation</h2>
 
       <!-- Basic href -->
-      <a href="https%3A%2F%2Fexample.com/absolute">Absolute URL</a>
-      <a href="http%3A%2F%2Fexample.com/root/relative">Root Relative</a>
-      <a href="http%3A%2F%2Fexample.com/folder/relative/link">Dot Relative</a>
-      <a href="http%3A%2F%2Fexample.com/parent/link">Parent Folder</a>
-      <a href="http%3A%2F%2Fexample.com/protocol-relative">Protocol Relative</a>
+      <a href="https://example.com/absolute">Absolute URL</a>
+      <a href="/root/relative">Root Relative</a>
+      <a href="./relative/link">Dot Relative</a>
+      <a href="../parent/link">Parent Folder</a>
+      <a href="//example.com/protocol-relative">Protocol Relative</a>
 
       <!-- Fragments -->
       <a href="#section-anchor">Fragment Only</a>
-      <a href="https%3A%2F%2Fexample.com/page#section">URL with Fragment</a>
-      <a href="http%3A%2F%2Fexample.com/page#fragment">Root with Fragment</a>
+      <a href="https://example.com/page#section">URL with Fragment</a>
+      <a href="/page#fragment">Root with Fragment</a>
 
       <!-- Special schemes -->
       <a href="mailto:user@example.com">mailto</a>
@@ -405,14 +338,14 @@
 
       <!-- Ping attribute -->
       <a
-        href="https%3A%2F%2Fexample.com/page"
-        ping="https%3A%2F%2Fexample.com/ping https%3A%2F%2Fexample.com/ping2"
+        href="https://example.com/page"
+        ping="https://example.com/ping1 /ping2"
       >
         Ping test
       </a>
 
       <!-- Canonical (already in head, but also test inline) -->
-      <link rel="canonical" href="https%3A%2F%2Fexample.com/canonical" />
+      <link rel="canonical" href="https://example.com/canonical" />
     </section>
 
     <!-- ==================== SECTION 4: Scripts ==================== -->
@@ -420,17 +353,14 @@
       <h2>4. Scripts</h2>
 
       <!-- External scripts -->
-      <script src="https%3A%2F%2Fexample.com/js/absolute.js"></script>
-      <script src="http%3A%2F%2Fexample.com/js/root-relative.js"></script>
-      <script src="http%3A%2F%2Fexample.com/js/protocol-relative.js"></script>
-      <script src="http%3A%2F%2Fexample.com/folder/relative/script.js"></script>
-      <script src="http%3A%2F%2Fexample.com/parent/parent.js"></script>
+      <script src="https://example.com/js/absolute.js"></script>
+      <script src="/js/root-relative.js"></script>
+      <script src="//example.com/js/protocol-relative.js"></script>
+      <script src="./relative/script.js"></script>
+      <script src="../parent/parent.js"></script>
 
       <!-- Module type -->
-      <script
-        src="https%3A%2F%2Fexample.com/js/module.js"
-        type="module"
-      ></script>
+      <script src="https://example.com/js/module.js" type="module"></script>
 
       <!-- Inline script with URLs in strings (Playwright should handle DOM, not strings) -->
       <script>
@@ -447,27 +377,23 @@
     <section id="forms">
       <h2>5. Forms</h2>
 
-      <form action="https%3A%2F%2Fexample.com/absolute-action" method="POST">
+      <form action="https://example.com/absolute-action" method="POST">
         <input type="submit" value="Submit to absolute" />
-        <button formaction="https%3A%2F%2Fexample.com/button-absolute">
+        <button formaction="https://example.com/button-absolute">
           Button absolute
         </button>
-        <button formaction="http%3A%2F%2Fexample.com/button-root">
-          Button root
-        </button>
-        <button formaction="http%3A%2F%2Fexample.com/button-protocol">
+        <button formaction="/button-root">Button root</button>
+        <button formaction="//example.com/button-protocol">
           Button protocol
         </button>
-        <button formaction="http%3A%2F%2Fexmple.com/folder/button-relative">
-          Button relative
-        </button>
+        <button formaction="./button-relative">Button relative</button>
       </form>
 
-      <form action="http%3A%2F%2Fexample.com/relative/action">
+      <form action="/relative/action">
         <input type="submit" value="Submit to relative" />
         <input
           type="submit"
-          formaction="https%3A%2F%2Fexample.com/submit-override"
+          formaction="https://example.com/submit-override"
           value="Override"
         />
       </form>
@@ -478,26 +404,26 @@
       <h2>6. Embed/Object</h2>
 
       <embed
-        src="https%3A%2F%2Fexample.com/plugins/plugin.swf"
+        src="https://example.com/plugins/plugin.swf"
         type="application/x-shockwave-flash"
       />
       <embed
-        src="http%3A%2F%2Fexample.com/plugins/flash.swf"
-        codebase="https%3A%2F%2Fexample.com/codebase/"
+        src="/plugins/flash.swf"
+        codebase="https://example.com/codebase/"
       />
       <embed
-        src="http%3A%2F%2Fexample.com/protocol-relative.plugin"
-        archive="https%3A%2F%2Fexample.com/archive.jar"
+        src="//example.com/protocol-relative.plugin"
+        archive="https://example.com/archive.jar"
       />
 
       <object
-        data="https%3A%2F%2Fexample.com/objects/external.data"
+        data="https://example.com/objects/external.data"
         type="application/x-data"
       ></object>
-      <object data="http%3A%2F%2Fexample.com/objects/local.data"></object>
-      <object data="http%3A%2F%2Fexample.com/objects/protocol.data"></object>
-      <object codebase="https%3A%2F%2Fexample.com/codebase/"></object>
-      <object archive="https%3A%2F%2Fexample.com/archive.zip"></object>
+      <object data="/objects/local.data"></object>
+      <object data="//example.com/objects/protocol.data"></object>
+      <object codebase="https://example.com/codebase/"></object>
+      <object archive="https://example.com/archive.zip"></object>
     </section>
 
     <!-- ==================== SECTION 7: Iframes ==================== -->
@@ -506,31 +432,27 @@
 
       <!-- src attribute -->
       <iframe
-        src="https%3A%2F%2Fexample.com/frames/external"
+        src="https://example.com/frames/external"
         width="400"
         height="300"
       ></iframe>
+      <iframe src="/frames/local" width="400" height="300"></iframe>
       <iframe
-        src="http%3A%2F%2Fexample.com/frames/local"
-        width="400"
-        height="300"
-      ></iframe>
-      <iframe
-        src="http%3A%2F%2Fexample.com/frames/protocol"
+        src="//example.com/frames/protocol"
         width="400"
         height="300"
       ></iframe>
 
       <!-- srcdoc (inline HTML with URLs!) -->
       <iframe
-        srcdoc='<img src="https%3A%2F%2Fexample.com/srcdoc-image.jpg"> <a href="https%3A%2F%2Fexample.com/srcdoc-link">link</a>'
+        srcdoc='<img src="https://example.com/srcdoc-image.jpg"> <a href="https://example.com/srcdoc-link">link</a>'
         width="400"
         height="100"
       ></iframe>
 
       <!-- Complex srcdoc with CSS -->
       <iframe
-        srcdoc='<style> .test { background: url("https%3A%2F%2Fexample.com/srcdoc-bg.png"); } </style> <div class="test">Styled</div>'
+        srcdoc='<style> .test { background: url("https://example.com/srcdoc-bg.png"); } </style> <div class="test">Styled</div>'
         width="400"
         height="100"
       ></iframe>
@@ -544,25 +466,25 @@
       <svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
         <!-- image element -->
         <image
-          href="https%3A%2F%2Fexample.com/svg/image.svg"
+          href="https://example.com/svg/image.svg"
           x="0"
           y="0"
           width="100"
           height="100"
         ></image>
-        <image xlink:href="http%3A%2F%2Fexample.com/svg/local.svg"></image>
-        <image xlink:href="http%3A%2F%2Fexample.com/svg/protocol.svg"></image>
+        <image xlink:href="/svg/local.svg"></image>
+        <image xlink:href="//example.com/svg/protocol.svg"></image>
 
         <!-- use element -->
-        <use href="https%3A%2F%2Fexample.com/svg/symbol.svg#symbol-id"></use>
-        <use xlink:href="http%3A%2F%2Fexample.com/svg/symbol.svg#id"></use>
+        <use href="https://example.com/svg/symbol.svg#symbol-id"></use>
+        <use xlink:href="/svg/symbol.svg#id"></use>
         <use xlink:href="#local-symbol"></use>
 
         <!-- Pattern with fill -->
         <defs>
           <pattern
             id="bg-pattern"
-            href="https%3A%2F%2Fexample.com/svg/pattern.svg"
+            href="https://example.com/svg/pattern.svg"
           ></pattern>
         </defs>
       </svg>
@@ -570,7 +492,7 @@
       <!-- External SVG (link) -->
       <link
         rel="preload"
-        href="https%3A%2F%2Fexample.com/svg/external.svg"
+        href="https://example.com/svg/external.svg"
         as="image"
       />
     </section>
@@ -614,7 +536,7 @@
       <!-- Blob URLs (generated by JS, but test the attribute) -->
       <img
         id="blob-img"
-        src="https%3A%2F%2Fexample.com/uuid-1234"
+        src="blob:https://example.com/uuid-1234"
         alt="Blob placeholder"
       />
 
@@ -637,22 +559,20 @@
       <a href="#">Hash only</a>
 
       <!-- URL with query and fragment -->
-      <a href="https%3A%2F%2Fexample.com/page?param=value#section"
+      <a href="https://example.com/page?param=value#section"
         >Query and fragment</a
       >
-      <a href="http%3A%2F%2Fexample.com/page?x=1&y=2#frag"
-        >Root with query and fragment</a
-      >
+      <a href="/page?x=1&y=2#frag">Root with query and fragment</a>
 
       <!-- URL with encoded characters -->
-      <a href="https%3A%2F%2Fexample.com/path%20with%20spaces/file%20name.jpg"
+      <a href="https://example.com/path%20with%20spaces/file%20name.jpg"
         >Encoded spaces</a
       >
-      <a href="http%3A%2F%2Fexample.com/path%3Acolon/file">Encoded colon</a>
+      <a href="/path%3Acolon/file">Encoded colon</a>
 
       <!-- Image map with coordinates -->
       <img
-        src="https%3A%2F%2Fexample.com/maps/diagram.png"
+        src="https://example.com/maps/diagram.png"
         usemap="#complex-map"
         alt="Diagram"
       />
@@ -660,19 +580,19 @@
         <area
           shape="rect"
           coords="10,20,100,200"
-          href="https%3A%2F%2Fexample.com/rect-area"
+          href="https://example.com/rect-area"
           alt="Rect"
         />
         <area
           shape="circle"
           coords="300,300,50"
-          href="http%3A%2F%2Fexample.com/circle-area"
+          href="/circle-area"
           alt="Circle"
         />
         <area
           shape="poly"
           coords="400,400,500,400,500,500,400,500"
-          href="http%3A%2F%2Fexample.com/poly-area"
+          href="//example.com/poly-area"
           alt="Poly"
         />
       </map>
@@ -687,25 +607,22 @@
     <!-- ==================== SECTION 12: Manifest and PWA ==================== -->
     <section id="pwa">
       <h2>13. PWA/Manifest URLs</h2>
-      <link rel="manifest" href="https%3A%2F%2Fexample.com/manifest.json" />
-      <link rel="manifest" href="http%3A%2F%2Fexample.com/manifest.json" />
-      <link rel="manifest" href="http%3A%2F%2Fexample.com/manifest.json" />
+      <link rel="manifest" href="https://example.com/manifest.json" />
+      <link rel="manifest" href="/manifest.json" />
+      <link rel="manifest" href="//example.com/manifest.json" />
     </section>
 
     <!-- ==================== SECTION 13: Protocol Variations ==================== -->
     <section id="protocols">
       <h2>14. Protocol Variations</h2>
-      <img src="http%3A%2F%2Fexample.com/http-image.jpg" alt="HTTP" />
-      <img src="https%3A%2F%2Fexample.com/https-image.jpg" alt="HTTPS" />
-      <img
-        src="http%3A%2F%2Fexample.com/protocol-image.jpg"
-        alt="Protocol-relative"
-      />
+      <img src="http://example.com/http-image.jpg" alt="HTTP" />
+      <img src="https://example.com/https-image.jpg" alt="HTTPS" />
+      <img src="//example.com/protocol-image.jpg" alt="Protocol-relative" />
       <img
         src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
         alt="Data"
       />
-      <img src="http%3A%2F%2Fexample.com/uuid-123" alt="Blob" />
+      <img src="blob:http://example.com/uuid-123" alt="Blob" />
     </section>
   </body>
 </html>
