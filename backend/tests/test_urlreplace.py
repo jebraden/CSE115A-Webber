@@ -8,6 +8,7 @@ from src.urlreplace import (
 import pytest
 import base64
 from bs4 import BeautifulSoup
+import os
 
 
 class TestJoinPaths:
@@ -571,7 +572,7 @@ class TestPathTraversalSafety:
 
         # The path should be normalized (no ..)
         path_part = result.split("other.com")[-1]
-        assert ".." not in path_part or path_part.startswith("/../")
+        assert ".." not in path_part
 
     def test_hostless_absolute_cannot_escape(self):
         """Absolute hostless URLs should use at most depth levels of '../'.
@@ -601,7 +602,6 @@ class TestPathTraversalSafety:
         result = rewriter.rewrite("../" * 50 + "file.txt")
 
         # Should use at most 1 level of ../ (document depth)
-        # because min(document_depth, count_leading_upwards) is used
         assert result.startswith("../")
         assert not result.startswith("../../")
 
@@ -631,132 +631,39 @@ class TestPathTraversalSafety:
         assert result.startswith("../../../")
         assert not result.startswith("../../../../")
 
-    def test_resolve_output_stays_within_snapshot(self):
-        """Integration test: verify resolved paths stay within snapshot.
-
-        Simulates the actual filesystem resolution to ensure no escape.
-        """
-        from urllib.parse import urlsplit, unquote
-        import os
+    def test_very_deep_document_cannot_escape(self):
+        """Test some very deep bad URLs."""
 
         # Document at various depths
         test_cases = [
             ("http://www.example.com/index.html", 0),
             ("http://www.example.com/page/index.html", 1),
             ("http://www.example.com/a/b/index.html", 2),
+            ("http://www.example.com/a/b/", 2),
         ]
 
         for doc_url, depth in test_cases:
             rewriter = URLRelativizer(doc_url)
 
-            # Simulate the storage path
-            # snapshots/SNAPSHOT_ID/www.example.com/{path}/index.html
-            snapshot_root = "snapshots/SNAPSHOT_ID"
-            host_dir = "www.example.com"
-            doc_path = os.path.join(
-                snapshot_root,
-                host_dir,
-                "/".join(
-                    doc_url.split("/")[3:]  # get path parts after host
-                ).rsplit("/", 1)[0]
-                or ".",
-            )
-
-            if doc_url.split("/")[3:-1]:  # has intermediate dirs
-                doc_path = os.path.join(
-                    snapshot_root, host_dir, "/".join(doc_url.split("/")[3:-1])
-                )
-            else:
-                doc_path = os.path.join(snapshot_root, host_dir)
-
-            # Test malicious URLs
+            # Test malicious URLs (second value is hostfulness)
             malicious_urls = [
-                "http://evil.com/" + "../" * 100 + "secret.txt",
-                "/" + "../" * 100 + "secret.txt",
-                "../" * 100 + "secret.txt",
-                "/" + ".." * 100 + "/secret.txt",
+                ("http://evil.com/" + "../" * 100 + "secret.txt", True),
+                ("/" + "../" * 100 + "secret.txt", False),
+                ("../" * 100 + "secret.txt", False),
+                ("/" + "../" * 100 + "/secret.txt", False),
             ]
 
-            for url in malicious_urls:
+            for url, hostful in malicious_urls:
                 result = rewriter.rewrite(url)
-
-                # Resolve the relative path
-                # result is like ../../../http%3A%2F%2F... or ../path/to/file
-                # We need to unquote and resolve
-
-                # Split off any query/fragment
-                path_only = result.split("?")[0].split("#")[0]
 
                 # Count the ../ levels
                 levels_up = 0
-                while path_only.startswith("../"):
-                    levels_up += 1
-                    path_only = path_only[3:]
-
-                # Resolve from document path
-                resolved = os.path.normpath(
-                    os.path.join(doc_path, *([".."] * levels_up), path_only)
-                )
-
-                # Verify it's within the snapshot
-                # (allowing for the fact that it might be in a different host dir)
-                snapshot_prefix = os.path.normpath(snapshot_root)
-
-                # The path should either be within snapshot or in a sibling
-                # directory (different host) that's under the same snapshot
-                assert resolved.startswith(snapshot_prefix) or (
-                    os.path.dirname(os.path.dirname(resolved))
-                    == snapshot_prefix
-                ), (
-                    f"Path escape detected!\n"
-                    f"Document: {doc_url} (depth {depth})\n"
-                    f"Input URL: {url}\n"
-                    f"Output: {result}\n"
-                    f"Resolved: {resolved}\n"
-                    f"Snapshot root: {snapshot_prefix}"
-                )
-
-    def test_webkit_view_simulation(self):
-        """Simulate WebKit view's network access restriction.
-
-        WebKit will be configured with limited network access to only the
-        snapshot directory. This test simulates that constraint.
-        """
-        rewriter = URLRelativizer("http://www.example.com/page/index.html")
-
-        # Generate many adversarial URLs
-        adversarial_urls = [
-            "http://evil.com/" + "/../" * 50 + "etc/passwd",
-            "file:///etc/passwd",
-            "http://www.example.com/../../../../../etc/passwd",
-            "/../../../../../etc/passwd",
-            "../../../etc/passwd",
-        ]
-
-        for url in adversarial_urls:
-            try:
-                result = rewriter.rewrite(url)
-
-                # If it's a fragment or special scheme, skip
-                if result.startswith("") or result.startswith("#"):
-                    continue
-
-                # Count ../ depth
-                depth = 0
                 temp = result
                 while temp.startswith("../"):
-                    depth += 1
+                    levels_up += 1
                     temp = temp[3:]
 
-                # Document is at depth 1, so max safe depth is 2 (depth+1 for hostful)
-                # But for this specific test, we check that it's bounded
-                assert depth <= 2, (
-                    f"URL {url} resulted in {depth} levels of ../, "
-                    f"which exceeds safe limit: {result}"
-                )
-            except Exception as e:
-                # Should not raise exceptions for malformed URLs
-                pytest.fail(f"Rewriter raised exception on {url}: {e}")
+                assert levels_up == depth + hostful
 
 
 class TestRelativizeHTML:
