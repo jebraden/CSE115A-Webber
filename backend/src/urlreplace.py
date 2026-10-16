@@ -275,30 +275,47 @@ class URLRelativizer(URLRewriter):
         )
 
     def _relativize_b64_data(
-        self, url: str, content_type: str, data: str
+        self,
+        url: str,
+        content_type: str,
+        data: str,
+        pre_attrs: str,
+        post_attrs: str,
     ) -> str:
         try:
             bin_data = base64.b64decode(data)
             data = bin_data.decode(errors="ignore")
         except binascii.Error:
             return url
-        rel_data = relativize_html(data, self.document_url)
+        if content_type == "text/css":
+            rel_data = relativize_stylesheet(data, self.document_url)
+        else:
+            rel_data = relativize_html(data, self.document_url)
         rel_bin_data = rel_data.encode(errors="ignore")
         enc_data = base64.b64encode(rel_bin_data).decode(errors="ignore")
-        return f"data:{content_type};base64,{enc_data}"
+        return f"data:{content_type};{pre_attrs}base64{post_attrs},{enc_data}"
 
     def _relativize_data_url(self, url: str) -> str:
         """Relativize a \"data:\" URL."""
-        match = re.match("^data:([^;]+)(;base64)?,(.*)$", url, re.DOTALL)
+        match = re.match(
+            "^data:([^;]+)((?:;[^;,]*)*?)(;base64)?((?:;[^;,]*)*),(.*)$",
+            url,
+            re.DOTALL,
+        )
         if not match:
             return url
         content_type = match[1]
-        if content_type not in ["text/html", "image/svg+xml"]:
+        if content_type not in ["text/html", "image/svg+xml", "text/css"]:
             return url
-        if match[2] is not None:
-            return self._relativize_b64_data(url, content_type, match[3])
-        rel_data = relativize_html(match[3], self.document_url)
-        return f"data:{content_type},{rel_data}"
+        if match[3] is not None:
+            return self._relativize_b64_data(
+                url, content_type, match[5], match[2], match[4]
+            )
+        if content_type == "text/css":
+            rel_data = relativize_stylesheet(match[5], self.document_url)
+        else:
+            rel_data = relativize_html(match[5], self.document_url)
+        return f"data:{content_type}{match[2]}{match[4]},{rel_data}"
 
     @override
     def parse_document_url(

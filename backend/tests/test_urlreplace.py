@@ -1292,7 +1292,6 @@ class TestDataUriSVGAndHTML:
         result = relativize_html(html, "http://www.example.com/")
         assert "data:image/svg+xml" in result
         bs = BeautifulSoup(result, "html.parser")
-        image = bs.find("img")
         b64_data = (
             bs.find("img")["src"]
             .removeprefix("data:image/svg+xml;base64,")
@@ -1325,6 +1324,40 @@ class TestDataUriSVGAndHTML:
         )
         data = base64.b64decode(b64_data).decode()
         assert "../http%3A%2F%2Fexample.com/page" in data
+
+    def test_svg_data_uri_with_params(self):
+        """Test plain SVG data URI with extra parameters."""
+        svg = '<svg><image href="http://example.com/image.png"/></svg>'
+        html = f"<img src='data:image/svg+xml;charset=UTF-8;my-cool-param=1,{svg}'>"
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:image/svg+xml" in result
+        assert "../http%3A%2F%2Fexample.com/image.png" in result
+        assert "charset=UTF-8" in result
+        assert "my-cool-param=1" in result
+
+    def test_css_data_uri_plain(self):
+        """Test a plain CSS data URI containing URL references."""
+        css_content = """.test { content: url(http://example.com/bg.png); }"""
+        html = f'<link rel="stylesheet" href="data:text/css,{css_content}">'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:text/css" in result
+        assert "../http%3A%2F%2Fexample.com/bg.png" in result
+
+    def test_css_data_uri_base64(self):
+        """Test a base64n CSS data URI containing URL references."""
+        css_content = """.test { content: url(http://example.com/bg.png); }"""
+        encoded = base64.b64encode(css_content.encode()).decode()
+        html = f'<link rel="stylesheet" href="data:text/css;base64,{encoded}">'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:text/css" in result
+        bs = BeautifulSoup(result, "html.parser")
+        b64_data = (
+            bs.find("link")["href"]
+            .removeprefix("data:text/css;base64,")
+            .encode()
+        )
+        svg_data = base64.b64decode(b64_data).decode()
+        assert "../http%3A%2F%2Fexample.com/bg.png" in svg_data
 
     def test_data_html_plain(self):
         """Test that data URIs with internal links are handled."""
