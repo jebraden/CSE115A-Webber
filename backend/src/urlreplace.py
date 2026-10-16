@@ -1,8 +1,11 @@
 """
 URL Rewriting Code
 
-This file contains code that parses HTML/CSS documents and normalizes all URLs
-so the document
+This file contains code that parses HTML/CSS documents and normalizes all URLs.
+
+The primary public functions are:
+ - relativize_html -- Relativize an HTML file
+ - relativize_stylesheet -- Relativize a standalone CSS file
 """
 
 import tinycss2
@@ -12,6 +15,8 @@ from typing import NamedTuple, Optional, Protocol, override, Iterator
 from abc import ABC, abstractmethod
 from itertools import islice, takewhile
 import re
+import base64
+import binascii
 
 
 class URLRewriter(ABC):
@@ -269,6 +274,32 @@ class URLRelativizer(URLRewriter):
             ("", "", path, parsed.query, parsed.fragment)
         )
 
+    def _relativize_b64_data(
+        self, url: str, content_type: str, data: str
+    ) -> str:
+        try:
+            bin_data = base64.b64decode(data)
+            data = bin_data.decode(errors="ignore")
+        except binascii.Error:
+            return url
+        rel_data = relativize_html(data, self.document_url)
+        rel_bin_data = rel_data.encode(errors="ignore")
+        enc_data = base64.b64encode(rel_bin_data).decode(errors="ignore")
+        return f"data:{content_type};base64,{enc_data}"
+
+    def _relativize_data_url(self, url: str) -> str:
+        """Relativize a \"data:\" URL."""
+        match = re.match("^data:([^;]+)(;base64)?,(.*)$", url, re.DOTALL)
+        if not match:
+            return url
+        content_type = match[1]
+        if content_type not in ["text/html", "image/svg+xml"]:
+            return url
+        if match[2] is not None:
+            return self._relativize_b64_data(url, content_type, match[3])
+        rel_data = relativize_html(match[3], self.document_url)
+        return f"data:{content_type},{rel_data}"
+
     @override
     def parse_document_url(
         self, document_url: str
@@ -292,8 +323,11 @@ class URLRelativizer(URLRewriter):
             parsed = urllib.parse.urlsplit(url.strip())
         except ValueError:  # we failed to parse the URL, return a safe value
             return ""
-        if parsed.scheme.lower() in ["http", "https"]:
+        scheme = parsed.scheme.lower()
+        if scheme in ["http", "https"]:
             return self._relativize_html_hostful_url(url, parsed)
+        elif scheme == "data":
+            return self._relativize_data_url(url)
         elif not parsed.scheme:
             return self._relativize_html_hostless_url(url, parsed)
         else:
@@ -357,6 +391,16 @@ def srcset_attribute_rewriter(
         else:
             sizes.append("")
     return ", ".join(map(" ".join, zip(map(rewriter.rewrite, urls), sizes)))
+
+
+def srcdoc_attribute_rewriter(
+    attr: str,
+    value: str,
+    rewriter: URLRewriter,
+) -> str:
+    """HTMLAttributeRewriter for srcdoc attributes."""
+    print(value)
+    return relativize_html(value, rewriter.document_url)
 
 
 class HTMLTagMatcher(ABC):
@@ -561,7 +605,13 @@ REWRITER = HTMLRewriter.compile(
         },
     ),
     # Iframe
-    HTMLRewriteRule("iframe", rewriters={"src": identity_attribute_rewriter}),
+    HTMLRewriteRule(
+        "iframe",
+        rewriters={
+            "src": identity_attribute_rewriter,
+            "srcdoc": srcdoc_attribute_rewriter,
+        },
+    ),
     # Svg
     HTMLRewriteRule(
         "image",
@@ -580,6 +630,9 @@ REWRITER = HTMLRewriter.compile(
     HTMLRewriteRule(
         "pattern", rewriters={"href": identity_attribute_rewriter}
     ),
+    HTMLRewriteRule(
+        "radialgradient", rewriters={"href": identity_attribute_rewriter}
+    ),
     # svg link handled above
 )
 
@@ -592,11 +645,17 @@ def relativize_html(text: str, url: str) -> str:
     Arguments:
     text -- the HTML document to process
     url -- the orignal URL the document was recieved from
+
+    Return: the relativized text
     """
     soup = BeautifulSoup(text, "html.parser", multi_valued_attributes=False)
     rewriter = URLRelativizer(url)
     for tag in soup.find_all():
         REWRITER.rewrite(tag, rewriter)
+        if not tag.decomposed and "style" in tag.attrs:
+            tag["style"] = relativize_css_rule_list(tag["style"], url)
+    for tag in soup.find_all("style"):
+        tag.string.replace_with(relativize_stylesheet(tag.string, url))
     return str(soup)
 
 
@@ -678,8 +737,7 @@ def _relativize_css_ast(ast: list[tinycss2.ast.Node], url: str) -> str:
         _rewrite_css_token_url(token, rewriter)
     try:
         return tinycss2.serializer.serialize(ast)
-    except TypeError as e:
-        print(e)
+    except TypeError:
         return ""  # Safe value
 
 

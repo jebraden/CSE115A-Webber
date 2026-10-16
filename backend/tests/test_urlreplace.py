@@ -6,6 +6,8 @@ from src.urlreplace import (
     relativize_css_rule_list,
 )
 import pytest
+import base64
+from bs4 import BeautifulSoup
 
 
 class TestJoinPaths:
@@ -236,7 +238,10 @@ class TestURLRelativizer:
         )
 
     def test_data_uri_urls(self):
-        """Data URIs are self-contained and should be preserved."""
+        """Data URIs are self-contained and should be preserved.
+
+        Embedded SVG and HTML URLs are handled below.
+        """
         self.assert_urls(
             "http://www.example.com/",
             [
@@ -247,10 +252,6 @@ class TestURLRelativizer:
                 (
                     "data:text/plain;charset=UTF-8,Hello%20World",
                     "data:text/plain;charset=UTF-8,Hello%20World",
-                ),
-                (
-                    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'>",
-                    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'>",
                 ),
             ],
         )
@@ -873,44 +874,6 @@ class TestRelativizeHTML:
         # Root-relative rewritten
         assert "../style.css" in result or "style.css" in result
 
-    # def test_urlreplace_integration(self):
-    #     """Test that relativize_html produces expected output from test files."""
-    #     input_file = Path("tests", "test_urlreplace.html")
-    #     expected_file = Path("tests", "test_urlreplace_output.html")
-    #
-    #     # Verify files exist
-    #     assert (
-    #         input_file.exists()
-    #     ), f"Input file not found: {input_file.absolute()}"
-    #     assert (
-    #         expected_file.exists()
-    #     ), f"Expected file not found: {expected_file.absolute()}"
-    #
-    #     # Read files
-    #     html = input_file.read_text(encoding="utf-8")
-    #     expected = expected_file.read_text(encoding="utf-8")
-    #
-    #     # Process
-    #     result = relativize_html(html, "http://example.com")
-    #
-    #     # Normalize whitespace for comparison
-    #     normalized_result = BeautifulSoup(result, "html.parser").prettify()
-    #     normalized_expected = BeautifulSoup(expected, "html.parser").prettify()
-    #
-    #     if normalized_result != normalized_expected:
-    #         # Generate unified diff
-    #         diff_lines = list(
-    #             difflib.unified_diff(
-    #                 normalized_expected.splitlines(True),
-    #                 normalized_result.splitlines(True),
-    #                 fromfile="expected",
-    #                 tofile="actual",
-    #             )
-    #         )
-    #
-    #         diff_text = "\n".join(diff_lines)
-    #         pytest.fail(f"HTML output differs from expected:\n\n{diff_text}")
-
 
 class TestRelativizeCSS:
     """Tests for CSS URL relativization."""
@@ -1286,3 +1249,472 @@ class TestRelativizeCSS:
         assert "http%3A%2F%2Ffonts.example.com/font.woff" in result
         assert "http%3A%2F%2Fimages.example.com/bg.jpg" in result
         assert "http%3A%2F%2Fborders.example.com/border.png" in result
+
+
+class TestIframeSrcdoc:
+    """Tests for URL relativization in iframe srcdoc attributes.
+
+    The srcdoc attribute contains HTML that needs its own URL relativization.
+    """
+
+    def test_srcdoc_absolute_urls(self):
+        """Test that URLs in iframe srcdoc are relativized."""
+        html = """
+        <iframe srcdoc='<a href="http://example.com/page">Link</a>'></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        # The srcdoc content should have relativized URLs
+        assert "http%3A%2F%2Fexample.com/page" in result
+
+    def test_srcdoc_relative_urls(self):
+        """Test that relative URLs in srcdoc are resolved correctly."""
+        html = """
+        <iframe srcdoc='<a href="/root/relative">Link</a>'></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/page/")
+        # Should become relative to the srcdoc's context
+        assert "root/relative" in result or "../root/relative" in result
+
+    def test_srcdoc_with_images(self):
+        """Test images in srcdoc."""
+        html = """
+        <iframe srcdoc='<img src="http://example.com/image.png">'
+        ></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/image.png" in result
+
+    def test_srcdoc_with_scripts(self):
+        """Test script sources in srcdoc."""
+        html = """
+        <iframe srcdoc='<script src="http://example.com/script.js"><'/script>'
+        ></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/script.js" in result
+
+    def test_srcdoc_with_styles(self):
+        """Test style tags in srcdoc."""
+        html = """
+        <iframe srcdoc='<style>.test { background: url(http://example.com/bg.png); }</style>'
+        ></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/bg.png" in result
+
+    def test_nested_iframes(self):
+        """Test iframes inside iframes."""
+        outer = BeautifulSoup("<iframe></iframe>", "html.parser")
+        inner = BeautifulSoup(
+            """
+        <iframe srcdoc=\"<a href='http://example.com/deep'>Link</a>\"></iframe>
+        """,
+            "html.parser",
+        )
+        outer.insert(0, inner)
+        html = str(outer)
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/deep" in result
+
+    def test_srcdoc_special_schemes(self):
+        """Test special schemes in srcdoc are preserved."""
+        html = """
+        <iframe srcdoc='<a href="mailto:user@example.com">Mail</a>'></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "mailto:user@example.com" in result
+
+    def test_srcdoc_preserves_content(self):
+        """Test that srcdoc content structure is preserved."""
+        html = """
+        <iframe srcdoc='<div class="test"><p>Content</p></div>'></iframe>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert 'class="test"' in result
+        assert "&lt;div" in result
+        assert "Content" in result
+
+
+class TestSVG:
+    """Extended SVG tests."""
+
+    def test_svg_use_href(self):
+        """Test SVG <use> element with href."""
+        html = """
+        <svg>
+            <use href="http://example.com/symbols.svg#icon"/>
+            <use xlink:href="http://example.com/symbols2.svg#icon2"/>
+        </svg>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/symbols.svg" in result
+        assert "http%3A%2F%2Fexample.com/symbols2.svg" in result
+
+    def test_svg_pattern_href(self):
+        """Test SVG <pattern> with href."""
+        html = """
+        <svg>
+            <pattern id="p" href="http://example.com/pattern.svg"/>
+        </svg>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/pattern.svg" in result
+
+    def test_svg_gradient_links(self):
+        """Test SVG gradient elements (rare but possible)."""
+        html = """
+        <svg>
+            <radialGradient href="http://example.com/gradient.svg"/>
+        </svg>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/gradient.svg" in result
+
+
+class TestDataUriSVGAndHTML:
+    """Tests for SVG and HTML data in URIs."""
+
+    def test_svg_data_uri_with_urls(self):
+        """Test SVG data URI containing URL references."""
+        # SVG with external image reference
+        svg_content = """<svg xmlns="http://www.w3.org/2000/svg">
+            <image href="http://example.com/bg.png"/>
+        </svg>"""
+        encoded = base64.b64encode(svg_content.encode()).decode()
+        html = f'<img src="data:image/svg+xml;base64,{encoded}">'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:image/svg+xml" in result
+        bs = BeautifulSoup(result, "html.parser")
+        image = bs.find("img")
+        b64_data = (
+            bs.find("img")["src"]
+            .removeprefix("data:image/svg+xml;base64,")
+            .encode()
+        )
+        svg_data = base64.b64decode(b64_data).decode()
+        assert "../http%3A%2F%2Fexample.com/bg.png" in svg_data
+
+    def test_svg_data_uri_plain(self):
+        """Test plain SVG data URI without encoding."""
+        svg = '<svg><image href="http://example.com/image.png"/></svg>'
+        html = f"<img src='data:image/svg+xml,{svg}'>"
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:image/svg+xml" in result
+        assert "../http%3A%2F%2Fexample.com/image.png" in result
+
+    def test_data_html_base64(self):
+        """Test base64 encoded HTML data URI."""
+        html_content = '<a href="http://example.com/page">Link</a>'
+        encoded = base64.b64encode(html_content.encode()).decode()
+        data_uri = f"data:text/html;base64,{encoded}"
+        html = f'<iframe src="{data_uri}"></iframe>'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:text/html;base64" in result
+        bs = BeautifulSoup(result, "html.parser")
+        b64_data = (
+            bs.find("iframe")["src"]
+            .removeprefix("data:text/html;base64,")
+            .encode()
+        )
+        data = base64.b64decode(b64_data).decode()
+        assert "../http%3A%2F%2Fexample.com/page" in data
+
+    def test_data_html_plain(self):
+        """Test that data URIs with internal links are handled."""
+        html = """
+        <img src="data:text/html,<a href='https://example.com/page'></a>" />
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "data:text/html" in result
+        assert "../https%3A%2F%2Fexample.com/page" in result
+
+    def test_data_uri_not_modified(self):
+        """Test that data URIs are not modified by URL relativization."""
+        data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA"
+        html = f'<img src="{data_uri}">'
+        result = relativize_html(html, "http://www.example.com/")
+        assert data_uri in result
+
+
+class TestInlineStyles:
+    """Tests for URLs in inline <style> tags.
+
+    These require CSS relativization within HTML context.
+    """
+
+    def test_style_tag_urls(self):
+        """Test URLs in <style> tags are relativized."""
+        html = """
+        <style>
+            .test { background: url(http://example.com/bg.png); }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/bg.png" in result
+
+    def test_style_import(self):
+        """Test @import in style tags."""
+        html = """
+        <style>
+            @import url(http://example.com/import.css);
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/import.css" in result
+
+    def test_style_font_face(self):
+        """Test @font-face in style tags."""
+        html = """
+        <style>
+            @font-face {
+                font-family: 'Test';
+                src: url(http://example.com/font.woff2);
+            }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/font.woff2" in result
+
+    def test_style_media_queries(self):
+        """Test URLs in media queries inside style tags."""
+        html = """
+        <style>
+            @media (min-width: 1000px) {
+                .test { background: url(http://example.com/large.png); }
+            }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/large.png" in result
+
+    def test_style_keyframes(self):
+        """Test URLs in keyframes inside style tags."""
+        html = """
+        <style>
+            @keyframes fadeIn {
+                from { background: url(http://example.com/start.png); }
+                to { background: url(http://example.com/end.png); }
+            }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/start.png" in result
+        assert "http%3A%2F%2Fexample.com/end.png" in result
+
+    def test_style_multiple_urls(self):
+        """Test multiple URLs in style tags."""
+        html = """
+        <style>
+            .grid {
+                background-image:
+                    url(http://example.com/a.png),
+                    url(http://example.com/b.png);
+            }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/a.png" in result
+        assert "http%3A%2F%2Fexample.com/b.png" in result
+
+    def test_style_preserves_other(self):
+        """Test that non-URL CSS in style tags is preserved."""
+        html = """
+        <style>
+            .test {
+                color: red;
+                font-size: 16px;
+                background: url(http://example.com/bg.png);
+            }
+        </style>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "color: red" in result
+        assert "font-size: 16px" in result
+
+
+class TestObjectEmbed:
+    """Tests for <object> and <embed> with document data.
+
+    These can reference external documents that need relativization.
+    """
+
+    def test_object_data_url(self):
+        """Test object data attribute."""
+        html = '<object data="http://example.com/document.pdf"></object>'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/document.pdf" in result
+
+    def test_embed_src_url(self):
+        """Test embed src attribute."""
+        html = '<embed src="http://example.com/plugin.swf" type="application/x-shockwave-flash">'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/plugin.swf" in result
+
+    def test_object_codebase(self):
+        """Test object codebase attribute."""
+        html = '<object codebase="http://example.com/base/"></object>'
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/base/" in result
+
+
+class TestShadowDOM:
+    """Tests for Shadow DOM URL handling.
+
+    Note: Shadow DOM content in HTML files is typically represented as
+    <template shadowroot> elements in parsed HTML.
+    """
+
+    def test_shadowroot_urls(self):
+        """Test URLs in shadowroot templates."""
+        html = """
+        <template shadowroot="open">
+            <a href="http://example.com/link">Link</a>
+            <img src="http://example.com/image.png">
+        </template>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        # Shadow root content should be relativized too
+        assert "http%3A%2F%2Fexample.com/link" in result
+        assert "http%3A%2F%2Fexample.com/image.png" in result
+
+    def test_shadowroot_styles(self):
+        """Test styles in shadowroot."""
+        html = """
+        <template shadowroot="open">
+            <style>
+                .test { background: url(http://example.com/bg.png); }
+            </style>
+        </template>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/bg.png" in result
+
+
+class TestNestedDocuments:
+    """Tests for nested document scenarios."""
+
+    def test_picture_sources(self):
+        """Test <picture> element with multiple sources."""
+        html = """
+        <picture>
+            <source srcset="http://example.com/large.webp" type="image/webp">
+            <source srcset="http://example.com/large.jpg" type="image/jpeg">
+            <img src="http://example.com/fallback.jpg">
+        </picture>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/large.webp" in result
+        assert "http%3A%2F%2Fexample.com/large.jpg" in result
+        assert "http%3A%2F%2Fexample.com/fallback.jpg" in result
+
+    def test_video_sources(self):
+        """Test <video> with multiple source elements."""
+        html = """
+        <video poster="http://example.com/poster.jpg">
+            <source src="http://example.com/video.mp4" type="video/mp4">
+            <source src="http://example.com/video.webm" type="video/webm">
+            <track src="http://example.com/captions.vtt" kind="subtitles">
+        </video>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/poster.jpg" in result
+        assert "http%3A%2F%2Fexample.com/video.mp4" in result
+        assert "http%3A%2F%2Fexample.com/video.webm" in result
+        assert "http%3A%2F%2Fexample.com/captions.vtt" in result
+
+    def test_audio_sources(self):
+        """Test <audio> with multiple sources."""
+        html = """
+        <audio>
+            <source src="http://example.com/audio.mp3" type="audio/mpeg">
+            <source src="http://example.com/audio.ogg" type="audio/ogg">
+        </audio>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/audio.mp3" in result
+        assert "http%3A%2F%2Fexample.com/audio.ogg" in result
+
+    def test_map_areas(self):
+        """Test image map areas."""
+        html = """
+        <map name="map">
+            <area href="http://example.com/region1" shape="rect">
+            <area href="http://example.com/region2" shape="circle">
+            <area href="http://example.com/region3" shape="poly">
+        </map>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+        assert "http%3A%2F%2Fexample.com/region1" in result
+        assert "http%3A%2F%2Fexample.com/region2" in result
+        assert "http%3A%2F%2Fexample.com/region3" in result
+
+
+class TestComplexIntegration:
+    """Integration tests combining multiple recursive cases."""
+
+    def test_full_document_with_all_recursions(self):
+        """Test a document with all types of recursive content."""
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                @import url(http://fonts.example.com/font.css);
+                .test { background: url(http://cdn.example.com/bg.png); }
+                @font-face { src: url(http://fonts.example.com/font.woff2); }
+            </style>
+        </head>
+        <body>
+            <div>
+                <img src="http://images.example.com/image.png">
+                <svg>
+                    <image href="http://svg.example.com/svg-image.png"/>
+                    <use href="http://svg.example.com/use.svg#icon"/>
+                </svg>
+                <iframe srcdoc='<a href="http://iframe.example.com/link">Link</a>'></iframe>
+                <object data="http://object.example.com/data.pdf"></object>
+                <picture>
+                    <source srcset="http://pic.example.com/large.webp">
+                    <img src="http://pic.example.com/fallback.jpg">
+                </picture>
+            </div>
+        </body>
+        </html>
+        """
+        result = relativize_html(html, "http://www.example.com/")
+
+        # All URLs should be relativized
+        assert "http%3A%2F%2Ffonts.example.com/font.css" in result
+        assert "http%3A%2F%2Fcdn.example.com/bg.png" in result
+        assert "http%3A%2F%2Ffonts.example.com/font.woff2" in result
+        assert "http%3A%2F%2Fimages.example.com/image.png" in result
+        assert "http%3A%2F%2Fsvg.example.com/svg-image.png" in result
+        assert "http%3A%2F%2Fsvg.example.com/use.svg" in result
+        assert "http%3A%2F%2Fiframe.example.com/link" in result
+        assert "http%3A%2F%2Fobject.example.com/data.pdf" in result
+        assert "http%3A%2F%2Fpic.example.com/large.webp" in result
+        assert "http%3A%2F%2Fpic.example.com/fallback.jpg" in result
+
+        # Original URLs should not appear
+        assert "http://fonts.example.com" not in result
+        assert "http://cdn.example.com" not in result
+        assert "http://images.example.com" not in result
+        assert "http://svg.example.com" not in result
+        assert "http://iframe.example.com" not in result
+        assert "http://object.example.com" not in result
+        assert "http://pic.example.com" not in result
+
+    def test_depth_handling_in_nested(self):
+        """Test that depth is correctly handled in nested content."""
+        html = """
+        <div>
+            <style>
+                .test { background: url(http://example.com/bg.png); }
+            </style>
+            <iframe srcdoc='<style>.inner { background: url(http://example.com/inner.png); }</style>'></iframe>
+        </div>
+        """
+        result = relativize_html(html, "http://www.example.com/page/")
+
+        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "http%3A%2F%2Fexample.com/inner.png" in result
