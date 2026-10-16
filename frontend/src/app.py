@@ -5,16 +5,17 @@ from . import __version__
 from PySide6.QtCore import Signal, qInfo
 from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QAbstractSocket
+from ui_search import Window
 
 
 # Credit: https://stackoverflow.com/a/37229299
 class SignalHandler(QAbstractSocket):
-    """Cause the Python interpreter to run every time the process receives a
-    signal. Because some signals (e.g. SIGINT) just cause the Python
-    interpreter to set a flag and then continue until the next bytecode
-    instruction is executed, signals are never handled if we are just stuck in
-    the Qt event loop. This causes a python function to run on every singal.
-    """
+    ##Cause the Python interpreter to run every time the process receives a
+    #signal. Because some signals (e.g. SIGINT) just cause the Python
+    #interpreter to set a flag and then continue until the next bytecode
+    #instruction is executed, signals are never handled if we are just stuck in
+    #the Qt event loop. This causes a python function to run on every singal.
+    #
 
     signal_recieved = Signal(int)
 
@@ -66,8 +67,11 @@ def main():
     )
 
     app.setApplicationName("Webber")
-    app.setApplicationVersion(__version__)
+    app.setApplicationVersion("1.0.0")
 
-    qInfo(f"Webber {__version__} frontend starting")
+    qInfo(f"Webber {"1.0.0"} frontend starting")
+
+    window = Window()
+    window.show()
 
     return app.exec()
