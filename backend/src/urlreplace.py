@@ -399,7 +399,6 @@ def srcdoc_attribute_rewriter(
     rewriter: URLRewriter,
 ) -> str:
     """HTMLAttributeRewriter for srcdoc attributes."""
-    print(value)
     return relativize_html(value, rewriter.document_url)
 
 
