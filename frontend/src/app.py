@@ -5,7 +5,7 @@ from . import __version__
 from PySide6.QtCore import Signal, qInfo
 from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QAbstractSocket
-from ui_search import Window
+from ui_search import MainWindow
 
 
 # Credit: https://stackoverflow.com/a/37229299
@@ -25,7 +25,7 @@ class SignalHandler(QAbstractSocket):
         self._old_fd = None
 
         self._write_sock, self._read_sock = socket.socketpair(
-            type=socket.SOCK_DGRAM
+            type=socket.SOCK_STREAM
         )
         self._write_sock.setblocking(False)
 
@@ -71,7 +71,6 @@ def main():
 
     qInfo(f"Webber {"1.0.0"} frontend starting")
 
-    window = Window()
-    window.show()
+    window = MainWindow()
 
     return app.exec()

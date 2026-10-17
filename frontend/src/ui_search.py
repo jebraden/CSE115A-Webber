@@ -1,13 +1,15 @@
 import re
 import requests
 
+from PySide6.QtWidgets import QMainWindow
+from PySide6.QtCore import QFile 
+from PySide6.QtUiTools import QUiLoader 
+
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QListWidget, QMessageBox,
     QMainWindow, QWidget, QTextEdit
 )
-
-from PyQt6.QtGui import QAction
 
 # Import SERVER (backend server host) here
 
@@ -38,7 +40,7 @@ class SearchWindow(QWidget):
         search_layout = QVBoxLayout()
         searchbar_layout = QHBoxLayout()
         self.search_inp = QLineEdit()
-        self.search_inp.setPlaceholderText("Enter key...")
+        self.search_inp.setPlaceholderText("Enter URL...")
         self.inp_button = QPushButton("Search")
 
         searchbar_layout.addWidget(self.search_inp)
@@ -59,7 +61,7 @@ class SearchWindow(QWidget):
         # Get key ready for searching and clear previous results
         key = self.search_inp.text().strip()
         if not key:
-            QMessageBox.warning(self, "Warning!", "Please enter a search term")
+            QMessageBox.warning(self, "Warning!", "Please enter a URL")
             return
         self.results.clear()
 
@@ -95,29 +97,21 @@ class SearchWindow(QWidget):
         self.twin.show()
 
 
-class Window(QMainWindow):
+class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Webber")
-        self.resize(800, 600)
+        super(MainWindow, self).__init__()
 
-        # Temporary layout
-        # main_layout = QVBoxLayout()
+        # Qt .ui file loading and handling
+        ui_file = QFile("mainwindow.ui")
+        ui_file.open(QFile.ReadOnly)
 
-        # Create window menu bar and add two: File menu, Search menu
-        menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("File")
-        search_menu = menu_bar.addMenu("Search")
+        loader = QUiLoader()
+        self.mwin = loader.load(ui_file)
+        self.mwin.show()
 
-        # For now, the only option under file is to quit
-        exit_window = QAction("Exit", self)
-        exit_window.triggered.connect(self.close) # Ideally, this should close the window entirely
-        file_menu.addAction(exit_window)
-
-        # Under search is where the magic happens
-        search = QAction("Search database...", self)
-        search.triggered.connect(self.open_search)
-        search_menu.addAction(search)
+        # Button actions
+        self.mwin.actionExit.triggered.connect(self.mwin.close)
+        self.mwin.actionSearch_Database.triggered.connect(self.open_search)
 
     def open_search(self):
         # Currently recreates window if button is pressed again
