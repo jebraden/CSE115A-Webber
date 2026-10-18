@@ -46,3 +46,53 @@ local UI asset, not an API field. Icon sources are documented in
 `frontend/src/archive_list/assets/SOURCES.md`.
 
 The archive-list implementation and tests were generated with Codex assistance.
+
+## Task 1.3.2 — Archive Webpage Viewer (Demo w/o UI integration)
+
+The archive viewer is implemented in `frontend/src/archive_viewer.py`. `ArchiveViewer` uses Qt's `QWebEngineView` to display saved HTML files.
+
+Its `open_archive(file_path)` method resolves the supplied path, checks that the file exists, converts it to a local-file URL, and loads it into the viewer. If the file does not exist, it raises `FileNotFoundError`.
+
+The standalone demo can be launched from the repository root using an environment with the frontend dependencies installed:
+
+```bash
+python -m demo.viewer_demo
+```
+
+The demo provides two sample HTML pages to test loading and switching between pages independently of the archive search interface.
+
+## Integration of Tasks 1.3.1 and 1.3.2
+
+The searchable archive list is connected to the webpage viewer through `frontend/src/app.py`.
+
+When a user selects a snapshot, `ArchiveWindow` emits its `snapshot_requested` signal with the selected `Snapshot`. The `open_selected_snapshot()` handler passes the snapshot's `local_path` to the viewer and opens the page in a separate window. The same viewer window is reused for later selections.
+
+If the snapshot has no local path, or its file cannot be opened, the handler hides the previous page and displays a message in the archive list. Successful selections update the status with the snapshot ID. The viewer is also connected to the application's shutdown signal.
+
+### Sample Data
+
+`frontend/src/archive_list/service.py` locates the repository's `demo` folder relative to the source file. The `demo-004` mock snapshot uses `demo/test2.html` to demonstrate the complete selection-to-viewer flow.
+
+This HTML is sample content, not an actual capture of the example.org URL shown in the list. Other mock snapshots without local paths demonstrate the unavailable-file message.
+
+### Running and Validation
+
+With the frontend dependencies installed and the Python environment active, launch the integrated application from the repository root:
+
+```bash
+python -m frontend.src
+```
+
+Select the example.org entry to open the sample HTML. Select an entry without a local path to check that the viewer hides and a message appears.
+
+Run the existing archive-list tests with:
+
+```bash
+python -m pytest frontend/tests
+```
+
+All eight existing tests passed during integration. Manual testing also confirmed sample-page loading and handling of snapshots without local paths. The existing automated tests cover the archive list; they do not yet cover the new viewer connection.
+
+### Remaining Work
+
+The application currently uses `MockSnapshotService`. A future backend adapter must provide real snapshot metadata and the corresponding local HTML paths.
