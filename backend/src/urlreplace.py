@@ -529,7 +529,7 @@ class HTMLRewriter(NamedTuple):
         return False
 
     @classmethod
-    def compile(cls, *rules: list[HTMLRewriteRule]) -> HTMLRewriter:
+    def compile(cls, *rules: list[HTMLRewriteRule]) -> "HTMLRewriter":
         """Compile a list of rewrite rules.
 
         The order of rules in this list matters.
