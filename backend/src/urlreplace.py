@@ -200,7 +200,13 @@ class URLRelativizer(URLRewriter):
         except ValueError:
             return None
 
-    def _construct_netloc(self, username, password, hostname, port):
+    def _construct_netloc(
+        self,
+        username: Optional[str],
+        password: Optional[str],
+        hostname: str,
+        port: Optional[int | str],
+    ) -> str:
         """Construct a URL netloc from parts.
 
         Any of the parts can be None.
