@@ -38,10 +38,20 @@ literal search input; regex case handling still needs coordination. Slow I/O
 must run outside the GUI thread, with debounce and stale-response handling
 for live search.
 
-For task 1.3.2, `snapshot_requested` emits the selected Snapshot. Its optional
-`local_path` can be passed to `ArchiveViewer.open_archive()` once paths are
-provided. Mock entries have no HTML paths; this change does not implement a
-viewer or task 1.2.1's HTML retrieval interface. `favicon_path` is an optional
+## Integrated archive viewer (tasks 1.3.1 and 1.3.2)
+
+Click a result or activate it with the keyboard to open its local HTML in a
+resizable viewer below the search list. The latest UCSC entry and the example.org
+entry point to `demo/test.html` and `demo/test2.html` respectively. These are
+sample HTML pages, not actual captures of the displayed URLs. Older UCSC and
+Python entries intentionally have no file and show a friendly status message.
+Missing or deleted files also show an error and hide the previous page.
+
+The selected Snapshot's `local_path` is passed to `ArchiveViewer.open_archive()`.
+A real service adapter must supply this path; backend retrieval remains separate.
+The standalone viewer demo remains available with `python -m demo.viewer_demo`.
+
+`favicon_path` is an optional
 local UI asset, not an API field. Icon sources are documented in
 `frontend/src/archive_list/assets/SOURCES.md`.
 

@@ -4,10 +4,10 @@ import logging
 from datetime import timezone
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Signal
+from PySide6.QtCore import QSize, Signal, Qt
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QHeaderView, QLabel, QLineEdit, QMainWindow,
+    QAbstractItemView, QDockWidget, QHeaderView, QLabel, QLineEdit, QMainWindow,
     QPushButton, QHBoxLayout, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -17,11 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class ArchiveWindow(QMainWindow):
-    # Story 1.3.2 can connect a viewer to this signal; no file is opened here.
+    # Emit the complete snapshot so integrations retain its local archive path.
     snapshot_requested = Signal(object)
 
     def __init__(self, service: SnapshotService, *, demo: bool = False):
         super().__init__()
+        self.viewer = None
+        self.viewer_dock = None
+        self.snapshot_requested.connect(self.open_snapshot)
         self._service = service
         self._snapshots = []
         self._default_icon = QIcon(str(Path(__file__).parent / "assets" / "webpage.svg"))
@@ -39,7 +42,7 @@ class ArchiveWindow(QMainWindow):
         heading.setFont(font)
         layout.addWidget(heading)
         if demo:
-            layout.addWidget(QLabel("Demo • Mock data only"))
+            layout.addWidget(QLabel("Demo • Mock data and sample HTML pages"))
         label = QLabel("Search by &URL")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Enter all or part of an archived URL…")
@@ -128,3 +131,32 @@ class ArchiveWindow(QMainWindow):
     def _request_snapshot(self, row: int, column: int):
         if 0 <= row < len(self._snapshots):
             self.snapshot_requested.emit(self._snapshots[row])
+
+    def open_snapshot(self, snapshot):
+        """Show the selected local archive while keeping search available."""
+        if snapshot.local_path is None:
+            self.status.setText("This snapshot has no local HTML file available.")
+            if self.viewer_dock is not None:
+                self.viewer_dock.hide()
+            return
+        try:
+            path = Path(snapshot.local_path).resolve()
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            if self.viewer is None:
+                from ..archive_viewer import ArchiveViewer
+
+                self.viewer_dock = QDockWidget("Archived webpage", self)
+                self.viewer = ArchiveViewer(self.viewer_dock)
+                self.viewer_dock.setWidget(self.viewer)
+                self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.viewer_dock)
+            self.viewer.open_archive(str(path))
+        except (OSError, ValueError):
+            logger.exception("Could not open local archive")
+            self.status.setText("Could not open this snapshot. Its local HTML file may be missing or unavailable.")
+            if self.viewer_dock is not None:
+                self.viewer_dock.hide()
+            return
+        self.viewer_dock.setWindowTitle(f"Archived webpage — {snapshot.url}")
+        self.viewer_dock.show()
+        self.status.setText(f"Viewing snapshot {snapshot.id} • {snapshot.url}")
