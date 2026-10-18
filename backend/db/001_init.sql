@@ -2,16 +2,16 @@
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
-CREATE TABLE snapshots (
+CREATE TABLE IF NOT EXISTS snapshots (
 -- can also use integer primary key, but the limited to signed 8byte integer
 -- limit on number of row
 id TEXT PRIMARY KEY,
 url TEXT NOT NULL,
 start_time REAL NOT NULL,
-end_time REAL NOT NULL,
-) WITHOUT ROWID IF NOT EXISTS;
+end_time REAL NOT NULL
+) WITHOUT ROWID;
 
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
 -- same comments as above about integer primary keys
 id TEXT PRIMARY KEY,
 snapshot_id TEXT,
@@ -38,10 +38,10 @@ response_code INTEGER NOT NULL,
 response_headers BLOB NOT NULL,
 
 FOREIGN KEY (snapshot_id) REFERENCES snapshots (id)
-    ON UPDATE SET NULL,
-    ON DELETE SET NULL,
-) WITHOUT ROWID IF NOT EXISTS;
+    ON UPDATE SET NULL
+    ON DELETE SET NULL
+) WITHOUT ROWID;
 
 -- Speed up searches in the form of
 -- `SELECT * FROM files WHERE snapshot_id = '...';`
-CREATE INDEX idx_files_snapshot ON files(snapshot_id) IF NOT EXISTS;
+CREATE INDEX IF NOT EXISTS idx_files_snapshot ON files(snapshot_id);
