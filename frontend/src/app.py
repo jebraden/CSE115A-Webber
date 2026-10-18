@@ -19,12 +19,12 @@ class SignalHandler(QAbstractSocket):
     signal_recieved = Signal(int)
 
     def __init__(self, parent=None):
-        super().__init__(QAbstractSocket.SocketType.UdpSocket, parent)
+        super().__init__(QAbstractSocket.SocketType.TcpSocket, parent)
 
         self._old_fd = None
 
         self._write_sock, self._read_sock = socket.socketpair(
-            type=socket.SOCK_DGRAM
+            type=socket.SOCK_STREAM
         )
         self._write_sock.setblocking(False)
 
