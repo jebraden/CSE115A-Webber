@@ -64,7 +64,7 @@ class URLRewriter(ABC):
         """
         pass
 
-    def copy(self, document_url: Optional[str] = None) -> URLRewriter:
+    def copy(self, document_url: Optional[str] = None) -> "URLRewriter":
         """Copy this instance, optionally replacing the document_url.
 
         Arguments:
