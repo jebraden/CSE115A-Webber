@@ -36,6 +36,7 @@ class PageScraper():
 
     async def archive_page(self, url: str):
         self.db = sqlite3.connect(db_path)
+
         self.db.execute("PRAGMA foreign_keys = ON")
         self.req_metadata = dict()
 
@@ -44,29 +45,48 @@ class PageScraper():
         finally:
             self.db.close()
             self.db = None
+            self.working = False
+
+
+    async def collect_req_metadata(self, request):
+        parsed = urlparse(request.url)
+
+        headers = dict()
+        for header in await request.headers_array():
+            name = header["name"].lower()
+            value = header["value"]
+            headers.setdefault(name, []).append(value)
+        return {
+            "request_sent_time": time.time(),
+            "request_method": request.method,
+            "request_headers": headers,
+            "request_parameters": 
+                parse_qs(parsed.query, keep_blank_values=True),
+        }
 
 
 
     async def handle_requests(self, request):
         parsed = urlparse(request.url)
 
-        self.req_metadata[id(request)] = {
-            "request_sent_time": time.time(),
-            "request_method": request.method,
-            "request_headers": await request.all_headers(),
-            "request_parameters": {
-                "query": parse_qs(parsed.query),
-                "post_data": request.post_data,
-            },
-        }
+        self.req_metadata[id(request)] = asyncio.create_task(
+                self.collect_req_metadata(request)
+        )
+        print(f"made request with {id(request)}")
 
     async def handle_response(self, response):
         request = response.request
-        req_data = self.req_metadata.pop(id(request), None)
+        print(f"got response from request {id(request)}")
+        task = self.req_metadata.pop(id(request), None)
 
-        if req_data is None:
+        if task is None:
+            print("No task, Skipping")
             return
-
+        try:
+            req_data = await task
+        except Exception as e:
+            print(f"Failed to get req metadata {e}")
+            return
         url = response.url
         parsed = urlparse(url)
 
@@ -77,17 +97,22 @@ class PageScraper():
         try:
             body = await response.body()
             local_path = self.write_resource_file(url, body, self.time)
-            self.saved_urls.add(url)
         except Exception as e:
             print(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
         if local_path is None: return
+        self.saved_urls.add(url)
+        headers = dict()
+        for header in await response.headers_array():
+            name = header["name"].lower()
+            value = header["value"]
+            headers.setdefault(name, []).append(value)
 
         resp_data = {
             "response_recieved_time": time.time(),
             "response_code": response.status,
-            "response_headers": await response.all_headers(),
+            "response_headers": headers,
         }
         default_port = 443 if parsed.scheme == "https" else 80
 
@@ -101,11 +126,11 @@ class PageScraper():
                 parsed.path or "/",
                 req_data["request_sent_time"],
                 req_data["request_method"],
-                json.dumps(req_data["request_headers"]).encode("utf-8"),
-                json.dumps(req_data["request_parameters"]).encode("utf-8"),
+                json.dumps(req_data["request_headers"]),
+                json.dumps(req_data["request_parameters"]),
                 resp_data["response_recieved_time"],
                 resp_data["response_code"],
-                json.dumps(resp_data["response_headers"]).encode("utf-8"),
+                json.dumps(resp_data["response_headers"]),
 
         )
         self.db.execute(
@@ -115,10 +140,10 @@ class PageScraper():
                 protocol, port, host, remote_path,
                 request_sent_time, request_method,
                 request_headers, request_parameters,
-                response_recieved, response_code,
+                response_recieved_time, response_code,
                 response_headers
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
             """,
             values,
         )
@@ -140,6 +165,15 @@ class PageScraper():
             self.origin = parsed.netloc
             self.origin_host = parsed.hostname
             self.base_dir = self.get_base_dir(url)
+
+            self.db.execute(
+                """
+                INSERT INTO snapshots (id, url, start_time, end_time)
+                VALUES (?, ?, ?, ?)
+                """,
+                (self.snap_id, url, self.time, self.time),
+            )
+            self.db.commit()
 
             page.on("request", self.handle_requests)
             page.on("response", self.handle_response)
@@ -165,15 +199,9 @@ class PageScraper():
             await browser.close()
         self.db.execute(
             """
-            INSERT INTO snapshots (id, url, start_time, end_time) 
-            VALUES (?, ?, ?, ?)
+            UPDATE snapshots SET end_time = ? WHERE id = ?
             """,
-            (
-             self.snap_id,
-             self.url,
-             self.time,
-             end_time,
-            ),
+            (end_time, self.snap_id),
         )
         self.db.commit()
         self.working = False
@@ -240,13 +268,17 @@ class PageScraper():
             print(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
 
-        url_hash = hashlib.sha256(url.encode()).hexdigest()[:10]
-
-        flatten_name = f"{name}_{url_hash}{extension.lower()}"
-
         return os.path.join(self.base_dir, stripped)
     
+print("SQLite:", sqlite3.sqlite_version)
+with open("./../../db/001_init.sql") as f:
+    sql_script = f.read()
 
+with sqlite3.connect(db_path) as conn:
+    cursor = conn.cursor()
+    cursor.executescript(sql_script)
+    conn.commit()
+    print("Created db")
 url = "https://oxylabs.io/blog/playwright-web-scraping"
 s = PageScraper()
 asyncio.run(s.archive_page(url))
