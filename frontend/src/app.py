@@ -2,6 +2,8 @@ import sys
 import socket
 import signal
 from . import __version__
+from .archive_list.service import MockSnapshotService
+from .archive_list.window import ArchiveWindow
 from PySide6.QtCore import Signal, qInfo
 from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QAbstractSocket
@@ -69,5 +71,8 @@ def main():
     app.setApplicationVersion(__version__)
 
     qInfo(f"Webber {__version__} frontend starting")
+
+    window = ArchiveWindow(MockSnapshotService(), demo=True)
+    window.show()
 
     return app.exec()
