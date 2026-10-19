@@ -262,9 +262,27 @@ class PageScraper():
 
     def resource_type(self, content_type: str) -> str | None:
         content = content_type.split(";", 1)[0].strip().lower()
-
-        if content == "text/html": return "html"
-        if content == "text/css": return "css"
+        match content:
+            case "text/html": return "html"
+            case "text/css": return "css"
+            case "application/javascript": return "js"
+            case "text/javascript": return "js"
+            case "image/png": return "png"
+            case "image/jpeg": return "jpg"
+            case "image/gif": return "gif"
+            case "image/svg+xml": return "svg"
+            case "image/webp": return "webp"
+            case "image/avif": return "avif"
+            case "image/x-icon": return "ico"
+            case "image/vnd.microsoft.icon": return "ico"
+            case "font/woff": return "woff"
+            case "font/woff2": return "woff2"
+            case "font/ttf": return "ttf",
+            case "font/otf": return "otf"
+            case "application/font-woff": return "woff"
+            case "application/vnd.ms-fontobject": return "eot"
+            case _: return None
+        # Redundant
         return None
 
     def write_resource_file(self, url, data, resource_type: str =None):
