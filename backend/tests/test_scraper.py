@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 import pytest
+import sqlite3
 import asyncio
 import json
 import os
@@ -60,7 +61,7 @@ class TestDataPath:
     def test_query_str_distinct_paths(self):
         self.setup()
         dark_magician = self.scraper.data_path(
-            "https://exaple.com/card?q=dark_magician"
+            "https://example.com/card?q=dark_magician"
         )
 
         kuriboh = self.scraper.data_path(
@@ -140,7 +141,7 @@ class FakeRequest:
     url = "https://example.com/search?q=kuriboh&q=mitsurugi&e="
     method = "POST"
     array = [
-            {"name": "Content-Type", "value": "applications/json"},
+            {"name": "Content-Type", "value": "application/json"},
             {"name": "Cookie", "value": "kuriboh=3"},
             {"name": "Cookie", "value": "dark_magician=5"},
         ]
@@ -149,7 +150,7 @@ class FakeRequest:
         return self.array
 
 class FakeResponse:
-    def __init__(self, request, url=None, body="b<html>The ultimate engine of destruction: Blue Eyes White Dragon</html>"):
+    def __init__(self, request, url=None, body=b"<html>The ultimate engine of destruction: Blue Eyes White Dragon</html>"):
         self.request = request
         self.url = url or request.url
         self.status = 200
@@ -176,7 +177,7 @@ class TestRequestMetadata:
 
         assert metadata["request_method"] == "POST"
         assert metadata["request_headers"] == {
-            "content-type": ["applications/json"],
+            "content-type": ["application/json"],
             "cookie": ["kuriboh=3", "dark_magician=5"]
         }
     @pytest.mark.asyncio
@@ -206,6 +207,21 @@ class TestRequestMetadata:
         meta = await scraper.collect_req_metadata(req)
         assert meta["request_parameters"] == {}
 
+    def test_resource_type(self):
+        content = [
+            "text/html", "text/html; charset=utf-8", 
+            "text/css; charset=utf-8", "TEXT/CSS",
+            "application/javascript", "font/woff2", "some/junk"
+        ]
+        expected = [
+            "html", "html", "css", "css", "js", "woff2", None
+        ]
+
+        scraper = PageScraper()
+
+        for i in range(0, len(content)):
+            assert scraper.resource_type(content[i]) == expected[i]
+
 
 class TestHandleResponse:
     def setup(self):
@@ -216,6 +232,30 @@ class TestHandleResponse:
         self.scraper.saved_urls = set()
         self.scraper.req_metadata = {}
         self.scraper.db = MagicMock()
+
+    def create_test_db(self, tmp_path):
+        db = sqlite3.connect(os.path.join(tmp_path, "test.db"))
+        schema = os.path.join(os.path.dirname(__file__), 
+            "./../db/001_init.sql")
+        with open(schema, "r") as sql_script:
+            db.executescript(sql_script.read())
+        self.scraper.db = db
+        return db
+
+    def add_snapshot_record(self, db, snapshot):
+        db.execute(
+            """
+            INSERT INTO snapshots (id, url, start_time, end_time)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                 snapshot,
+                 "https://example.com",
+                 time.time(),
+                 time.time(),
+            ),
+        )
+        db.commit()
 
     def set_req_vals(self, req):
         req.url = "https://example.com/page.html"
@@ -280,11 +320,168 @@ class TestHandleResponse:
         resp = FakeResponse(req)
 
         async def fail():
-            raise RunTimeError("meta fail")
+            raise RuntimeError("meta fail")
 
         self.scraper.req_metadata[id(req)] = asyncio.create_task(fail())
 
         await self.scraper.handle_response(resp)
         self.scraper.db.execute.assert_not_called()
         assert resp.url not in self.scraper.saved_urls
+
+    @pytest.mark.asyncio
+    async def test_successful_resp_saved(self):
+        self.setup()
+        req = FakeRequest()
+        self.set_req_vals(req)
+        resp = FakeResponse(req)
+        self.scraper.req_metadata[id(req)] = asyncio.create_task(
+            asyncio.sleep(0, result={
+                "request_sent_time": 1.0,
+                "request_method": "GET",
+                "request_headers": {},
+                "request_parameters": {},
+            })
+        )
+
+        with patch.object(
+            self.scraper,
+            "write_resource_file",
+            return_value="/tmp/page.html",
+        ) as write_file:
+            await self.scraper.handle_response(resp)
+        
+        write_file.assert_called_once()
+        assert resp.url in self.scraper.saved_urls
+        self.scraper.db.execute.assert_called_once()
+        self.scraper.db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_htpp_err_resp_captured(self, tmp_path):
+        self.setup()
+        db = self.create_test_db(tmp_path)
+
+        self.add_snapshot_record(db, self.scraper.snap_id)
+
+        req = FakeRequest()
+        self.set_req_vals(req)
+        req.url = "https://example.com/missing.html"
+        resp = FakeResponse(req, body=b"<html>Not Found</html>")
+        resp.status = 404
+        
+        self.scraper.req_metadata[id(req)] = asyncio.create_task(
+            asyncio.sleep(0, result={
+                "request_sent_time": 1.0,
+                "request_method": "GET",
+                "request_headers": {},
+                "request_parameters": {},
+            })
+        )
+
+        with patch.object(
+            self.scraper, 
+            "write_resource_file", 
+            return_value="/tmp/missing.html",
+        ):
+            await self.scraper.handle_response(resp)
+
+        row = db.execute(
+            """
+            SELECT response_code
+            FROM files
+            WHERE protocol = ? AND host = ? AND remote_path = ?
+            """,
+            ("https", "example.com", "/missing.html"),
+        ).fetchone()
+
+        assert row is not None
+        assert row[0] == 404
+        assert resp.url in self.scraper.saved_urls
+
+    @pytest.mark.asyncio
+    async def test_resp_metadata_persisted(self, tmp_path):
+        self.setup()
+        db = self.create_test_db(tmp_path)
+        self.add_snapshot_record(db, self.scraper.snap_id)
+        req = FakeRequest()
+        req.url = (
+            "https://example.com/search"
+            "?q=lo&q=skull_guardian&e="
+        )
+        req.method = "POST"
+        req.array = [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "Cookie", "value": "lo=3"},
+            {"name": "Cookie", "value": "skull_guardian=4"},
+        ]
+
+        resp = FakeResponse(req)
+        resp.url = req.url
+        resp.status = 200
+
+        self.scraper.req_metadata[id(req)] = asyncio.create_task(
+            self.scraper.collect_req_metadata(req)
+        )
+
+        with patch.object(
+            self.scraper,
+            "write_resource_file",
+            return_value=f"{tmp_path}/search",
+        ):
+            await self.scraper.handle_response(resp)
+        row = db.execute(
+            """
+            SELECT json(request_headers), json(request_parameters),
+            json(response_headers)
+            FROM files
+            WHERE host = ? AND remote_path = ?
+            """,
+            ("example.com", "/search"),
+        ).fetchone()
+        assert row is not None
+        request_headers = json.loads(row[0])
+        request_parameters = json.loads(row[1])
+        response_headers = json.loads(row[2])
+
+        assert request_headers["cookie"] == [
+            "lo=3", "skull_guardian=4",
+        ]
+        assert request_headers["content-type"] == [
+            "application/json",
+        ]
+        assert request_parameters == {
+            "q": ["lo", "skull_guardian"],
+            "e": [""],
+        }
+
+
+class TestResourceHandling:
+    def setup(self):
+        self.scraper = PageScraper()
+        self.scraper.base_dir = None
+        self.scraper.origin_host = "example.com"
+
+    def test_write_exact_bytes(self, tmp_path):
+        self.setup()
+        self.scraper.base_dir = str(tmp_path)
+        url = "https://example.com/page.html"
+        data = b"<html>Ultimate Magician of Attack and Defence</html>"
+        path = self.scraper.write_resource_file(url, data)
+
+        assert path is not None
+        assert os.path.exists(path)
+        with open(path, "rb") as f:
+            assert f.read() == data
+
+    def test_make_right_dirs(self, tmp_path):
+        self.setup()
+        self.scraper.base_dir = str(tmp_path)
+        url = "https://example.com/page.html"
+        data = b"<html>Ultimate Magician of Attack and Defence</html>"
+
+        path = self.scraper.write_resource_file(url, data)
+        assert path is not None
+        assert os.path.isfile(path)
+        assert open(path, "rb").read() == data
+
+
 
