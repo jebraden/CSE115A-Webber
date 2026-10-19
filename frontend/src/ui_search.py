@@ -1,5 +1,6 @@
 import re
 import requests
+import api
 
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtCore import QFile 
@@ -30,59 +31,53 @@ class TextWindow(QWidget):
 # Handles everything related to searching
 class SearchWindow(QWidget):
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Search Database")
-        self.resize(400, 200)
+        super(SearchWindow, self).__init__()
+        search_ui = QFile("ui/search.ui")
+        search_ui.open(QFile.ReadOnly)
+        
+        loader = QUiLoader()
+        self.swin = loader.load(search_ui)
+        self.swin.show()
 
-        self.twin = None # for checking later in open_file
-
-        # Layout
-        search_layout = QVBoxLayout()
-        searchbar_layout = QHBoxLayout()
-        self.search_inp = QLineEdit()
-        self.search_inp.setPlaceholderText("Enter URL...")
-        self.inp_button = QPushButton("Search")
-
-        searchbar_layout.addWidget(self.search_inp)
-        searchbar_layout.addWidget(self.inp_button)
-        search_layout.addLayout(searchbar_layout)
-        self.setLayout(search_layout)
-
-        # Results widget
-        self.results = QListWidget()
-        search_layout.addWidget(self.results)
+        # Layout extras
+        self.swin.searchBar.setPlaceholderText("Enter URL...")
 
         # Button functions: clicking the search button or pressing return on the search bar
-        self.inp_button.clicked.connect(self.search_database)
-        self.search_inp.returnPressed.connect(self.search_database)
-        self.results.itemClicked.connect(self.open_html_view)
+        self.swin.searchButton.clicked.connect(self.search_database)
+        self.swin.searchBar.returnPressed.connect(self.search_database)
+        self.swin.resultsBox.itemClicked.connect(self.open_html_view)
 
     def search_database(self):
         # Get key ready for searching and clear previous results
-        key = self.search_inp.text().strip()
+        key = self.swin.searchBar.text().strip()
         if not key:
             QMessageBox.warning(self, "Warning!", "Please enter a URL")
             return
-        self.results.clear()
+        self.swin.resultsBox.clear()
 
         # For now, returns a list of results based on a certain url, but might be wise to make it
         # modular in the future to handle multiple types of queries
         try:
-            # res = requests.request("QUERY", SERVER + "/search/files", json={"url": key} timeout=...)
-            # if res.status_code == 200:
-            #   ... 
-            #   found = res.json()
-            #   for find in found
-            #       self.results.addItem(find["file_id"]) # idea being: use these file ids to do something with the files
-            # ... (other status code checking here)
-            find = ["id1", "id2", "id3"] # temp
-            self.results.addItems(find)
+            #res = api.query_files(key, "url")
+            #if res.status_code == 200:
+            #    found = res.json()
+            #    for find in found:
+            #       self.swin.results.addItem(find["file_id"]) # idea being: use these file ids to do something with the files
+            #    ph_find = ["id1", "id2", "id3"] # placeholder until server is established
+            #    self.swin.results.addItems(ph_find)
+            #elif res.status_code == 400:
+            #    QMessageBox.critical(self, "Error!", "Bad Request: ", error)
+            #else:
+            #    QMessageBox.critical(self, "Error!", "Internal Server Error: ", error)
+            ph_find = ["id1", "id2", "id3"] # placeholder until server is established
+            self.swin.resultsBox.addItems(ph_find)
         except Exception as error:
             QMessageBox.critical(self, "Error!", "Something went wrong: ", error)
 
     def get_html(self, file_id):
         # try:
-        #   res = requests.request("GET", SERVER + "/files/" + file_id + "/data", timeout=5)
+        #   res = api.get_file_data(file_id)
+        #   ... (handle error checking)
         #   return response.text
         res = "{\n  This is some placeholder text. \n}"
         return res
@@ -102,7 +97,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         # Qt .ui file loading and handling
-        ui_file = QFile("mainwindow.ui")
+        ui_file = QFile("ui/mainwindow.ui")
         ui_file.open(QFile.ReadOnly)
 
         loader = QUiLoader()
@@ -116,5 +111,4 @@ class MainWindow(QMainWindow):
     def open_search(self):
         # Currently recreates window if button is pressed again
         self.swin = SearchWindow()
-        self.swin.show()
 
