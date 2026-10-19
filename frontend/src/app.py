@@ -2,6 +2,9 @@ import sys
 import socket
 import signal
 from . import __version__
+from .archive_list.service import MockSnapshotService
+from .archive_list.window import ArchiveWindow
+from .archive_viewer import ArchiveViewer
 from PySide6.QtCore import Signal, qInfo
 from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QAbstractSocket
@@ -69,5 +72,37 @@ def main():
     app.setApplicationVersion(__version__)
 
     qInfo(f"Webber {__version__} frontend starting")
+
+    window = ArchiveWindow(MockSnapshotService(), demo=True)
+
+    viewer = ArchiveViewer()
+    viewer.setWindowTitle("Webber — Archive Viewer")
+    viewer.resize(1000, 700)
+
+    def open_selected_snapshot(snapshot):
+        """
+        Open the selected snapshot in the viewer, or hide it and show a message
+        if the local HTML file is missing or unavailable.
+        """
+        if snapshot.local_path is None:
+            window.status.setText("No local HTML file available for this snapshot.")
+            viewer.hide()
+            return
+
+        try:
+            viewer.open_archive(str(snapshot.local_path))
+        except (OSError, ValueError):
+            window.status.setText("Could not open this snapshot's HTML file.")
+            viewer.hide()
+            return
+
+        viewer.show()
+        viewer.raise_()
+        window.status.setText(f"Viewing snapshot {snapshot.id}")
+
+    window.snapshot_requested.connect(open_selected_snapshot)
+    app.aboutToQuit.connect(viewer.close)
+
+    window.show()
 
     return app.exec()
