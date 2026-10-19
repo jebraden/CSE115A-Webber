@@ -13,7 +13,7 @@ import sqlite3
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-from urllib.parse import urlparse, unquote, urljoin, parse_qs
+from urllib.parse import urlparse, urljoin, parse_qs
 
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
 
@@ -103,9 +103,12 @@ class PageScraper():
         if url in self.saved_urls: return
 
         local_path = None
+        headers = await response.all_headers()
+        content_type = headers.get("content-type", "")
+        res_type = self.resource_type(content_type)
         try:
             body = await response.body()
-            local_path = self.write_resource_file(url, body)
+            local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
             print(f"Failed to save url {url}: {e}")
 
@@ -201,10 +204,8 @@ class PageScraper():
                 new_height = await page.evaluate("document.body.scrollHeight")
 
                 last_height = new_height
-        # We've scrolled as much to bottom of the page as possible
+           # We've scrolled as much to bottom of the page as possible
        
-            html = await page.content()
-            self.write_html_file(url, html, self.time)
 
             # Added because we started skipping urls 
             # since browser closed early
@@ -259,20 +260,14 @@ class PageScraper():
         return path
 
 
-    def write_html_file(self, url, data):
-        path = self.data_path(url, True)
-        if path is None:
-            print(f"Failed to generate a path for url: {url} - Most likely"
-                    " due to bad extension or non matching domain for js "
-                    " files")
-            return None
-        directory = os.path.dirname(path)
-        os.makedirs(directory, exist_ok=True)
-        with open(path, "w") as file:
-            file.write(data)
-        return path
+    def resource_type(self, content_type: str) -> str | None:
+        content = content_type.split(";", 1)[0].strip().lower()
 
-    def write_resource_file(self, url, data):
+        if content == "text/html": return "html"
+        if content == "text/css": return "css"
+        return None
+
+    def write_resource_file(self, url, data, resource_type: str =None):
         """
             Writes the resource from  specified url to the disc with the
             provided data
@@ -287,7 +282,7 @@ class PageScraper():
             data    - What we're writing
 
         """
-        path = self.data_path(url, False)
+        path = self.data_path(url, resource_type=resource_type)
         if path is None:
             print(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
@@ -301,31 +296,29 @@ class PageScraper():
         print(f"Saved: {url} -> {path}")
         return path
 
-    def data_path(self, url, html):
-        stripped = re.sub(r"^https?://", "", url)
+    def data_path(self, url, resource_type: str = None):
         parsed = urlparse(url)
+        path = parsed.path.lstrip("/")
 
-        stripped = unquote(stripped)
-        if html:
-            if not stripped or stripped.endswith("/"):
-                stripped += "index.html"
-            elif not os.path.splitext(stripped)[1]:
-                stripped += ".html"
-            return os.path.join(self.base_dir, stripped)
+        if not resource_type and not path or parsed.path.endswith("/"):
+            path = os.path.join(path, "index.html")
+        elif not os.path.splitext(path)[1] and resource_type:
+            path += f".{resource_type}"
+        name, extension = os.path.splitext(path)
 
-        if not parsed.path or parsed.path.endswith("/"):
-            return None
+        if parsed.query:
+            query_hash = hashlib.sha256(
+                parsed.query.encode("utf-8")
+            ).hexdigest()[:10]
+            path = f"{name}_{query_hash}{extension}"
 
-        name, extension = os.path.splitext(parsed.path)
-        if not name: name = "asset"
-        host = parsed.hostname
-
-        if host != self.origin_host and (extension is None or ".js" in
-                extension):
+        host = parsed.hostname 
+        if host != self.origin_host and (
+            not extension or extension == ".js"
+        ):
             print(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
-
-        return os.path.join(self.base_dir, stripped)
+        return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
     
 with open("./../../db/001_init.sql") as f:
     sql_script = f.read()
