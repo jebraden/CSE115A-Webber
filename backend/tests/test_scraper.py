@@ -9,7 +9,7 @@ import pytest
 import asyncio
 import json
 import os
-
+import time
 
 
 
@@ -21,6 +21,7 @@ class TestDataPath:
         self.scraper.base_dir = "/tmp/test-snapshot/example.com"
 
     def test_preserves_url_path(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://example.com/blog/thingy.html"
         )
@@ -30,6 +31,7 @@ class TestDataPath:
         )
 
     def test_dir_url_use_indx(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://example.com/blog/"
         )
@@ -39,6 +41,7 @@ class TestDataPath:
         )
 
     def test_http_path(self):
+        self.setup()
         path = self.scraper.data_path(
             "http://example.com/thingy.html"
         )
@@ -49,11 +52,13 @@ class TestDataPath:
 
 
     def test_root_use_indx(self):
+        self.setup()
         path = self.scraper.data_path("https://example.com/")
 
         assert path.endswith("https/example.com/index.html")
 
     def test_query_str_distinct_paths(self):
+        self.setup()
         dark_magician = self.scraper.data_path(
             "https://exaple.com/card?q=dark_magician"
         )
@@ -64,25 +69,29 @@ class TestDataPath:
         assert dark_magician != kuriboh
 
     def test_query_hash_preserve_ext(self):
-        path = self.scraper.datapath(
+        self.setup()
+        path = self.scraper.data_path(
             "https://example.com/cards.html?q=griffoh"
         )
         assert path.endswith(".html")
-        assert not path.contains("griffoh")
+        assert not "griffoh" in path
 
     def test_url_encoded_chars(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://example.com/my%20page.html"
         )
         assert path.endswith("https/example.com/my%20page.html")
 
     def test_no_dup_ext(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://example.com/styles/celtic_guardian.css"
         )
         assert not path.endswith(".css.css")
 
     def test_add_ext_from_type(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://example.com/styles/blue_eyes_white_dragon",
             resource_type="css"
@@ -90,14 +99,16 @@ class TestDataPath:
         assert path.endswith("blue_eyes_white_dragon.css")
 
     def test_ext_resource_preserve_host(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://fonts.ygo.com/griffoh/font.woff2"
         )
         assert path is not None
-        assert "https/fonts/ygo.com" in path
+        assert "https/fonts.ygo.com" in path
         assert path.endswith("griffoh/font.woff2")
 
     def test_reject_external_ext_js_keep_same_js(self):
+        self.setup()
         path = self.scraper.data_path(
             "https://komoney.com/money.js"
         )
@@ -114,6 +125,7 @@ class TestDataPath:
         assert path is not None
 
     def test_fragments_no_change_path(self):
+        self.setup()
         f = self.scraper.data_path(
             "https://example.com/page.html#s1"
         )
@@ -156,34 +168,34 @@ class FakeResponse:
 
 
 class TestRequestMetadata:
+
     @pytest.mark.asyncio
     async def test_preserve_method_headers(self):
-        scraper == PageScraper()
+        scraper = PageScraper()
         metadata = await scraper.collect_req_metadata(FakeRequest())
 
         assert metadata["request_method"] == "POST"
         assert metadata["request_headers"] == {
-            "content-type": ["application/json"],
+            "content-type": ["applications/json"],
             "cookie": ["kuriboh=3", "dark_magician=5"]
         }
-
     @pytest.mark.asyncio
     async def test_parse_repeat_query_params(self):
         scraper = PageScraper()
         metadata = await scraper.collect_req_metadata(FakeRequest())
 
         assert metadata["request_parameters"] == {
-            "q": ["kuriboh, mitsurugi"],
+            "q": ["kuriboh", "mitsurugi"],
             "e": [""],
         }
 
     @pytest.mark.asyncio
     async def test_records_req_time(self):
-        scraper.PageScraper()
+        scraper = PageScraper()
         before = time.time()
         meta = await scraper.collect_req_metadata(FakeRequest())
         after = time.time()
-        assert before <= metadata["request_sent_time"] <= after
+        assert before <= meta["request_sent_time"] <= after
 
     @pytest.mark.asyncio
     async def test_no_query_param_handled(self):
@@ -205,7 +217,7 @@ class TestHandleResponse:
         self.scraper.req_metadata = {}
         self.scraper.db = MagicMock()
 
-    def set_req_vals(request):
+    def set_req_vals(self, req):
         req.url = "https://example.com/page.html"
         req.method = "GET"
         req.array = [{"name": "Accept", "value": "text/html"}]
@@ -213,20 +225,22 @@ class TestHandleResponse:
 
     @pytest.mark.asyncio
     async def test_missing_req_meta_skip_resp(self):
+        self.setup()
         resp = FakeResponse(FakeRequest())
 
         await self.scraper.handle_response(resp)
 
         self.scraper.db.execute.assert_not_called()
 
-        assert response.url not in self.scraper.saved_urls
+        assert resp.url not in self.scraper.saved_urls
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio    
     async def test_dup_url_skipped(self):
+        self.setup()
         req = FakeRequest()
         resp = FakeResponse(req)
 
-        self.scraper.saved_urls.add(response.url)
+        self.scraper.saved_urls.add(resp.url)
         self.scraper.req_metadata[id(req)] = asyncio.create_task(
             asyncio.sleep(0, result={})
         )
@@ -235,8 +249,9 @@ class TestHandleResponse:
 
         self.scraper.db.execute.assert_not_called()
 
-    @pytest.main.asyncio
+    @pytest.mark.asyncio
     async def test_file_write_fail_no_insert_row(self):
+        self.setup()
         req = FakeRequest()
         self.set_req_vals(req)
         resp = FakeResponse(req)
@@ -253,12 +268,13 @@ class TestHandleResponse:
         with patch.object(
                 self.scraper, "write_resource_file", return_value=None
         ):
-            await self.scraper.handle_response(response)
+            await self.scraper.handle_response(resp)
         self.scraper.db.execute.assert_not_called()
-        assert response.url not in self.scraper.saved_urls
+        assert resp.url not in self.scraper.saved_urls
 
     @pytest.mark.asyncio
     async def test_meta_task_fail_skip_resp(self):
+        self.setup()
         req = FakeRequest()
         self.set_req_vals(req)
         resp = FakeResponse(req)
