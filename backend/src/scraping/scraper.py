@@ -66,17 +66,27 @@ class PageScraper():
 
 
 
-    async def handle_requests(self, request):
+    def handle_requests(self, request):
         parsed = urlparse(request.url)
 
         self.req_metadata[id(request)] = asyncio.create_task(
                 self.collect_req_metadata(request)
         )
-        print(f"made request with {id(request)}")
+
+    def on_response(self, response):
+        task = asyncio.create_task(self.handle_response(response))
+        self.tasks.append(task)
 
     async def handle_response(self, response):
+        """
+            Handles the response we get for a page
+            Here a entry in the files table is created,
+            and we download the resource from the response
+
+            Must be linked to a request we also captured
+        """
+
         request = response.request
-        print(f"got response from request {id(request)}")
         task = self.req_metadata.pop(id(request), None)
 
         if task is None:
@@ -92,11 +102,10 @@ class PageScraper():
 
         if url in self.saved_urls: return
 
-        netloc = urlparse(url).netloc
         local_path = None
         try:
             body = await response.body()
-            local_path = self.write_resource_file(url, body, self.time)
+            local_path = self.write_resource_file(url, body)
         except Exception as e:
             print(f"Failed to save url {url}: {e}")
 
@@ -151,6 +160,7 @@ class PageScraper():
 
     async def _download_page(self, url: str):
         if self.working: return
+        self.tasks = []
         self.saved_urls = set()
         self.snap_id = str(uuid.uuid4())
         self.working = True
@@ -176,7 +186,7 @@ class PageScraper():
             self.db.commit()
 
             page.on("request", self.handle_requests)
-            page.on("response", self.handle_response)
+            page.on("response", self.on_response)
 
             await page.goto(url)
             await page.wait_for_timeout(5000)
@@ -195,6 +205,11 @@ class PageScraper():
        
             html = await page.content()
             self.write_html_file(url, html, self.time)
+
+            # Added because we started skipping urls 
+            # since browser closed early
+            await self._drain_tasks()
+
             end_time = time.time()
             await browser.close()
         self.db.execute(
@@ -207,7 +222,35 @@ class PageScraper():
         self.working = False
 
 
+    async def _drain_tasks(self):
+        """
+            Drains the outstanding response tasks. By proxy, this should
+            also handle the outstanding request tasks.
+        """
+        if not self.tasks: return
+        completed = 0
+        while completed < len(self.tasks):
+            undone = self.tasks[completed:]
+            results = await asyncio.gather(
+                *undone,
+                return_exceptions=True,
+            )
+
+            completed += len(undone)
+            
+            for res in results:
+                if isinstance(res, BaseException):
+                    print(f"Task Failed: {res!r}")
+
+
     def get_base_dir(self, url: str):
+        """
+            Gets the base directory where we need to store files in
+            
+            url str - The domain defines the sub directory grouping we'll
+            put the files in. 
+            ie. domain is lego.com ->.webber/<snapshot>/<lego.com>/
+        """
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
@@ -216,8 +259,8 @@ class PageScraper():
         return path
 
 
-    def write_html_file(self, url, data, time):
-        path = self.data_path(url, time, True)
+    def write_html_file(self, url, data):
+        path = self.data_path(url, True)
         if path is None:
             print(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js "
@@ -229,8 +272,22 @@ class PageScraper():
             file.write(data)
         return path
 
-    def write_resource_file(self, url, data, time):
-        path = self.data_path(url, time, False)
+    def write_resource_file(self, url, data):
+        """
+            Writes the resource from  specified url to the disc with the
+            provided data
+
+            Will not write resource if it is a file with no extension from
+            outside of the primary domain (usually junk data) or if it is a
+            js file from such a place. 
+
+            .webber/<snapshot-id>/<og-domain-for-archival>/<url path>
+
+            url str - The url the file path will be based on
+            data    - What we're writing
+
+        """
+        path = self.data_path(url, False)
         if path is None:
             print(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
@@ -244,7 +301,7 @@ class PageScraper():
         print(f"Saved: {url} -> {path}")
         return path
 
-    def data_path(self, url, time, html):
+    def data_path(self, url, html):
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
 
@@ -270,7 +327,6 @@ class PageScraper():
 
         return os.path.join(self.base_dir, stripped)
     
-print("SQLite:", sqlite3.sqlite_version)
 with open("./../../db/001_init.sql") as f:
     sql_script = f.read()
 
