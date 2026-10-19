@@ -16,15 +16,17 @@ _libc = ctypes.CDLL(None, use_errno=True)
 
 
 def _check_libc_syscall_rval(
-    rval: ctypes.c_int, func: ctypes._CFuncPtr, args: tuple
+    rval: ctypes.c_int,
+    func: _libc.FuncPtr,  # type: ignore[name-defined]
+    args: tuple,
 ) -> None:
     errno = ctypes.get_errno()
-    if rval < 0:
+    if int(rval) < 0:
         raise OSError(errno, os.strerror(errno))
     return None
 
 
-_prctl: _libc._FuncPtr = _libc.prctl
+_prctl: _libc._FuncPtr = _libc.prctl  # type: ignore[name-defined]
 _prctl.restype = ctypes.c_int
 _prctl.argtypes = (ctypes.c_int,)
 _prctl.errcheck = _check_libc_syscall_rval
