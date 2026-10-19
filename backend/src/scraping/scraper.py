@@ -320,15 +320,16 @@ class PageScraper():
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
     
-with open("./../../db/001_init.sql") as f:
-    sql_script = f.read()
 
-with sqlite3.connect(db_path) as conn:
-    cursor = conn.cursor()
-    cursor.executescript(sql_script)
-    conn.commit()
-    print("Created db")
-url = "https://oxylabs.io/blog/playwright-web-scraping"
-s = PageScraper()
-asyncio.run(s.archive_page(url))
+#with open("./../../db/001_init.sql") as f:
+#    sql_script = f.read()
+#
+#with sqlite3.connect(db_path) as conn:
+#    cursor = conn.cursor()
+#    cursor.executescript(sql_script)
+#    conn.commit()
+#    print("Created db")
+#url = "https://oxylabs.io/blog/playwright-web-scraping"
+#s = PageScraper()
+#asyncio.run(s.archive_page(url))
        
