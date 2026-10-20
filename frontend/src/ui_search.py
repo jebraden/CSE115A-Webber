@@ -2,19 +2,16 @@ import re
 import requests
 import api
 
-from PySide6.QtWidgets import QMainWindow
-from PySide6.QtCore import QFile 
+from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader 
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QListWidget, QMessageBox,
     QMainWindow, QWidget, QTextEdit
 )
 
-# Import SERVER (backend server host) here
-
-# Window for displaying HTML: currently a separate window, but might be better to open it in the main window
+# Window for displaying HTML: temporary solution
 class TextWindow(QWidget):
     def __init__(self, file_id, text):
         super().__init__()
@@ -22,7 +19,7 @@ class TextWindow(QWidget):
         self.resize(400, 300)
 
         self.text_area = QTextEdit()
-        self.text_area.setText(text)
+        self.text_area.setPlainText(text)
 
         text_layout = QVBoxLayout()
         text_layout.addWidget(self.text_area)
@@ -58,33 +55,33 @@ class SearchWindow(QWidget):
         # For now, returns a list of results based on a certain url, but might be wise to make it
         # modular in the future to handle multiple types of queries
         try:
-            #res = api.query_files(key, "url")
-            #if res.status_code == 200:
-            #    found = res.json()
-            #    for find in found:
-            #       self.swin.results.addItem(find["file_id"]) # idea being: use these file ids to do something with the files
-            #    ph_find = ["id1", "id2", "id3"] # placeholder until server is established
-            #    self.swin.results.addItems(ph_find)
-            #elif res.status_code == 400:
-            #    QMessageBox.critical(self, "Error!", "Bad Request: ", error)
-            #else:
-            #    QMessageBox.critical(self, "Error!", "Internal Server Error: ", error)
-            ph_find = ["id1", "id2", "id3"] # placeholder until server is established
-            self.swin.resultsBox.addItems(ph_find)
+            res = api.query_files(key, "url")
+            if res.status_code == 200:
+                print("\nFound\n")
+                found = res.json()
+                for find in found:
+                   self.swin.resultsBox.addItem(find["file_id"]) # idea being: use these file ids to do something with the files
+            elif res.status_code == 400:
+                QMessageBox.critical(self, "Error!", "Bad Request")
+            else:
+                QMessageBox.critical(self, "Error!", "Internal Server Error")
         except Exception as error:
-            QMessageBox.critical(self, "Error!", "Something went wrong: ", error)
+            QMessageBox.critical(self, "Error!", "Something went wrong.")
 
     def get_html(self, file_id):
-        # try:
-        #   res = api.get_file_data(file_id)
-        #   ... (handle error checking)
-        #   return response.text
+        try:
+           res = api.get_file_data(file_id)
+           if res.status_code == 404:
+               return "File not found."
+           return res.text
+        except Exception as error:
+            QMessageBox.critical(self, "Error!", "Something went wrong: {error}")
         res = "{\n  This is some placeholder text. \n}"
         return res
 
     def open_html_view(self, item):
-        # file_id = item.text()
-        file_id = "Placeholder"
+        file_id = item.text()
+        #file_id = "Placeholder"
         contents = self.get_html(file_id)
 
         # Same deal as in open_search

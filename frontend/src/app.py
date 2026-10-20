@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QAbstractSocket
 from ui_search import MainWindow
 
+#__version__ = "0.1.0"
+
 
 # Credit: https://stackoverflow.com/a/37229299
 class SignalHandler(QAbstractSocket):
@@ -67,10 +69,13 @@ def main():
     )
 
     app.setApplicationName("Webber")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion(__version__)
 
-    qInfo(f"Webber {"1.0.0"} frontend starting")
+    qInfo(f"Webber {__version__} frontend starting")
 
     window = MainWindow()
 
     return app.exec()
+
+if __name__ == "__main__":
+    sys.exit(main())
