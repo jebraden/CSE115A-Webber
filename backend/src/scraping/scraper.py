@@ -27,12 +27,14 @@ class PageScraper():
     style_sheets: set[str]
     req_metadata: dict 
     working: bool
+    debug: bool
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.saved_urls = set()
         self.style_sheets = set()
         self.req_metadata = dict()
         self.working = False
+        self.debug = debug
 
     async def archive_page(self, url: str):
         self.db = sqlite3.connect(db_path)
@@ -90,12 +92,14 @@ class PageScraper():
         task = self.req_metadata.pop(id(request), None)
 
         if task is None:
-            print("No task, Skipping")
+            if debug:
+                print("No task, Skipping")
             return
         try:
             req_data = await task
         except Exception as e:
-            print(f"Failed to get req metadata {e}")
+            if debug:
+                print(f"Failed to get req metadata {e}")
             return
         url = response.url
         parsed = urlparse(url)
@@ -110,7 +114,8 @@ class PageScraper():
             body = await response.body()
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
-            print(f"Failed to save url {url}: {e}")
+            if debug:
+                print(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
         if local_path is None: return
@@ -241,7 +246,8 @@ class PageScraper():
             
             for res in results:
                 if isinstance(res, BaseException):
-                    print(f"Task Failed: {res!r}")
+                    if debug:
+                        print(f"Task Failed: {res!r}")
 
 
     def get_base_dir(self, url: str):
@@ -302,7 +308,8 @@ class PageScraper():
         """
         path = self.data_path(url, resource_type=resource_type)
         if path is None:
-            print(f"Failed to generate a path for url: {url} - Most likely"
+            if debug:
+                print(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
                     " files")
             return None
@@ -311,7 +318,6 @@ class PageScraper():
         with open (path, "wb") as file:
             file.write(data)
 
-        print(f"Saved: {url} -> {path}")
         return path
 
     def data_path(self, url, resource_type: str = None):
@@ -334,11 +340,13 @@ class PageScraper():
         if host != self.origin_host and (
             not extension or extension == ".js"
         ):
-            print(f"url: {url} host: {host} og-host: {self.origin_host}")
+            if debug:
+                print(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
     
 
+# Use to run a manual test
 #with open("./../../db/001_init.sql") as f:
 #    sql_script = f.read()
 #
