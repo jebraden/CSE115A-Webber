@@ -2,7 +2,7 @@
 import re
 import requests 
 
-HOST = "htpps://localhost:8000" # Maybe import this from somewhere else later
+HOST = "http://localhost:8000" # Maybe import this from somewhere else later
 
 def delete_snapshot(snapshot_id):
     return requests.request("DELETE", HOST + "/snapshots/" + snapshot_id, timeout=5)
