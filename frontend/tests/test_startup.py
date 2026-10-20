@@ -70,8 +70,11 @@ raise SystemExit(app.main())
         stdout=log, stderr=log, start_new_session=True,
     )
     try:
-        assert wait_for(health), "Backend never became healthy"
-        assert process.poll() is None
+        wait_for(lambda: health() or process.poll() is not None)
+        if not health() or process.poll() is not None:
+            log.flush()
+            log.seek(0)
+            pytest.fail("Backend never became healthy. Frontend/backend log:\n" + log.read())
         if ending == "close":
             close_file.touch()
             expected = 0
