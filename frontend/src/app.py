@@ -1,73 +1,69 @@
-import sys
-import socket
 import signal
+import sys
+
+from PySide6.QtCore import QObject, QTimer, Signal, qInfo
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QVBoxLayout, QWidget
+
 from . import __version__
-from PySide6.QtCore import Signal, qInfo
-from PySide6.QtWidgets import QApplication
-from PySide6.QtNetwork import QAbstractSocket
+from .backend_process import BackendProcess
 
 
-# Credit: https://stackoverflow.com/a/37229299
-class SignalHandler(QAbstractSocket):
-    """Cause the Python interpreter to run every time the process receives a
-    signal. Because some signals (e.g. SIGINT) just cause the Python
-    interpreter to set a flag and then continue until the next bytecode
-    instruction is executed, signals are never handled if we are just stuck in
-    the Qt event loop. This causes a python function to run on every singal.
-    """
-
+class SignalHandler(QObject):
+    """Let Python handle termination signals while the Qt event loop is idle."""
     signal_recieved = Signal(int)
 
     def __init__(self, parent=None):
-        super().__init__(QAbstractSocket.SocketType.TcpSocket, parent)
-
-        self._old_fd = None
-
-        self._write_sock, self._read_sock = socket.socketpair(
-            type=socket.SOCK_STREAM
-        )
-        self._write_sock.setblocking(False)
-
-        # Need two, one to trigger the signal, one to read the data/emit the
-        # event
-        self.readyRead.connect(lambda: None)
-        self.readyRead.connect(self._ready_read)
-        self.setSocketDescriptor(self._read_sock.fileno())
-
-    def _ready_read(self):
-        # Will not trigger again until we read this...
-        signum = self.readData(1)[0]
-        self.signal_recieved.emit(signum)
+        super().__init__(parent)
+        self._previous = {}
+        self._timer = QTimer(self)
+        self._timer.setInterval(50)
+        self._timer.timeout.connect(lambda: None)
 
     def install(self):
-        if self._old_fd is not None:
-            self.uninstall()
-        self._old_fd = signal.set_wakeup_fd(self._write_sock.fileno())
+        if self._previous:
+            return
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            self._previous[signum] = signal.signal(signum, self._received)
+        self._timer.start()
+
+    def _received(self, signum, frame):
+        self.signal_recieved.emit(signum)
 
     def uninstall(self):
-        if self._old_fd is not None:
-            signal.set_wakeup_fd(self._old_fd)
-            self._old_fd = None
-
-    def __del__(self):
-        self.uninstall()
+        self._timer.stop()
+        for signum, handler in self._previous.items():
+            signal.signal(signum, handler)
+        self._previous.clear()
 
 
 def main():
-    """Main frontend entrypoint."""
-
     app = QApplication(sys.argv)
-
-    signal_handler = SignalHandler(app)
-    signal_handler.install()
-
-    signal_handler.signal_recieved.connect(
-        lambda signum: app.exit(128 + signum)
-    )
-
     app.setApplicationName("Webber")
     app.setApplicationVersion(__version__)
+    signals = SignalHandler(app)
+    signals.install()
+    signals.signal_recieved.connect(lambda signum: app.exit(128 + signum))
 
+    # A small status window makes this startup-only branch testable on desktop.
+    window = QWidget()
+    window.setWindowTitle("Webber")
+    window.resize(480, 160)
+    layout = QVBoxLayout(window)
+    status = QLabel("Starting backend…")
+    status.setWordWrap(True)
+    layout.addWidget(status)
+    close = QPushButton("Close")
+    close.clicked.connect(window.close)
+    layout.addWidget(close)
+    backend = BackendProcess(app)
+    backend.ready.connect(lambda: status.setText("Backend is running at http://127.0.0.1:3000"))
+    backend.failed.connect(lambda message: status.setText(message))
+    app.aboutToQuit.connect(backend.stop)
+    window.show()
+    QTimer.singleShot(0, backend.start)
     qInfo(f"Webber {__version__} frontend starting")
-
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        backend.stop()
+        signals.uninstall()
