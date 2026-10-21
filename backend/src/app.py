@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def _setup_die_with_parent(ppid: int | None):
     if ppid is None:
-        logger.warn(
+        logger.warning(
             "Using `die_with_parent=True` without `ppid` is subject to "
             "race conditions."
         )
@@ -23,9 +23,9 @@ def _setup_die_with_parent(ppid: int | None):
 
         linux.die_with_parent(signal.SIGTERM, ppid)
     else:
-        logger.warn(
-            'The os "%s" does not support `die_with_parent=True`.', system
-        )
+        from .platforms import parent_watch
+
+        parent_watch.die_with_parent(signal.SIGTERM, ppid)
 
 
 def create_app(
