@@ -92,13 +92,13 @@ class PageScraper():
         task = self.req_metadata.pop(id(request), None)
 
         if task is None:
-            if debug:
+            if self.debug:
                 print("No task, Skipping")
             return
         try:
             req_data = await task
         except Exception as e:
-            if debug:
+            if self.debug:
                 print(f"Failed to get req metadata {e}")
             return
         url = response.url
@@ -114,7 +114,7 @@ class PageScraper():
             body = await response.body()
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
-            if debug:
+            if self.debug:
                 print(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
@@ -164,7 +164,6 @@ class PageScraper():
             """,
             values,
         )
-        self.db.commit()
 
     async def _download_page(self, url: str):
         if self.working: return
@@ -191,7 +190,6 @@ class PageScraper():
                 """,
                 (self.snap_id, url, self.time, self.time),
             )
-            self.db.commit()
 
             page.on("request", self.handle_requests)
             page.on("response", self.on_response)
@@ -246,7 +244,7 @@ class PageScraper():
             
             for res in results:
                 if isinstance(res, BaseException):
-                    if debug:
+                    if self.debug:
                         print(f"Task Failed: {res!r}")
 
 
@@ -308,7 +306,7 @@ class PageScraper():
         """
         path = self.data_path(url, resource_type=resource_type)
         if path is None:
-            if debug:
+            if self.debug:
                 print(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
                     " files")
@@ -340,7 +338,7 @@ class PageScraper():
         if host != self.origin_host and (
             not extension or extension == ".js"
         ):
-            if debug:
+            if self.debug:
                 print(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)

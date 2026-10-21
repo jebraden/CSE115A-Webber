@@ -353,7 +353,6 @@ class TestHandleResponse:
         write_file.assert_called_once()
         assert resp.url in self.scraper.saved_urls
         self.scraper.db.execute.assert_called_once()
-        self.scraper.db.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_htpp_err_resp_captured(self, tmp_path):
