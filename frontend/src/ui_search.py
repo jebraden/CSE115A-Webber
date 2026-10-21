@@ -1,15 +1,20 @@
 import re
 import requests
-import api
+from . import api
 
 from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader 
 
 from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout,
-    QLineEdit, QPushButton, QListWidget, QMessageBox,
+    QVBoxLayout, QMessageBox,
     QMainWindow, QWidget, QTextEdit
 )
+
+from pathlib import Path
+
+def get_relative_ui_file(file_name):
+    UI_DIR = Path(__file__).parent / "ui" # Extra step for readability
+    return QFile(str(UI_DIR / file_name))
 
 # Window for displaying HTML: temporary solution
 class TextWindow(QWidget):
@@ -29,7 +34,7 @@ class TextWindow(QWidget):
 class SearchWindow(QWidget):
     def __init__(self):
         super(SearchWindow, self).__init__()
-        search_ui = QFile("ui/search.ui")
+        search_ui = get_relative_ui_file("search.ui")
         search_ui.open(QFile.ReadOnly)
         
         loader = QUiLoader()
@@ -57,7 +62,6 @@ class SearchWindow(QWidget):
         try:
             res = api.query_files(key, "url")
             if res.status_code == 200:
-                print("\nFound\n")
                 found = res.json()
                 for find in found:
                    self.swin.resultsBox.addItem(find["file_id"]) # idea being: use these file ids to do something with the files
@@ -76,12 +80,9 @@ class SearchWindow(QWidget):
            return res.text
         except Exception as error:
             QMessageBox.critical(self, "Error!", "Something went wrong: {error}")
-        res = "{\n  This is some placeholder text. \n}"
-        return res
 
     def open_html_view(self, item):
         file_id = item.text()
-        #file_id = "Placeholder"
         contents = self.get_html(file_id)
 
         # Same deal as in open_search
@@ -94,7 +95,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         # Qt .ui file loading and handling
-        ui_file = QFile("ui/mainwindow.ui")
+        ui_file = get_relative_ui_file("mainwindow.ui")
         ui_file.open(QFile.ReadOnly)
 
         loader = QUiLoader()
