@@ -6,4 +6,4 @@ venv/
 # Database files (please only commit migrations!)
 *.db
 *.db-wal
-*.dm-shm
+*.db-shm
