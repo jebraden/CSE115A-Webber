@@ -4,6 +4,8 @@ import logging
 import platform
 import signal
 from argparse import ArgumentParser
+import sys
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,7 @@ def create_app(
         _setup_die_with_parent(ppid)
 
     app = Flask(__name__)
+    app.logger.setLevel(log_level)
 
     @app.route("/health")
     def health():
@@ -79,15 +82,92 @@ def _handle_options() -> dict[str, Any]:
         default="warning",
     )
 
+    parser.add_argument(
+        "--production",
+        help="use the production web server waitress",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--host",
+        help="set the address to bind to",
+        default="127.0.0.1",
+    )
+    parser.add_argument(
+        "--port",
+        help="set the server port",
+        type=int,
+        default=3000,
+    )
+    parser.add_argument(
+        "--unix-socket",
+        help="set the POSIX socket path to listen on",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--debug",
+        help="enable Flask debug mode",
+        action="store_true",
+        default=False,
+    )
+
     result = parser.parse_args()
+
+    if os.name != "posix" and result.unix_socket is not None:
+        logger.critical("Cannot bind to a POSIX socket on this platform")
+        sys.exit(1)
+    elif result.debug and result.production:
+        logger.critical("Cannot specify both --production and --debug")
+        sys.exit(1)
+
     return {
-        "die_with_parent": result.die_with_parent,
-        "ppid": result.ppid,
-        "log_level": getattr(logging, result.log_level.upper()),
+        "production": result.production,
+        "debug": result.debug,
+        "listen": {
+            "host": result.host,
+            "port": result.port,
+            "unix_socket": result.unix_socket,
+        },
+        "app": {
+            "die_with_parent": result.die_with_parent,
+            "ppid": result.ppid,
+            "log_level": getattr(logging, result.log_level.upper()),
+        },
     }
+
+
+def _start_waitress(
+    app: Flask,
+    host: str | None,
+    port: int,
+    unix_socket: str | None,
+):
+    from waitress import serve  # type: ignore[import-untyped]
+
+    if unix_socket is not None:
+        serve(app, unix_socket=unix_socket)
+    else:
+        serve(app, host=host, port=port)
+
+
+def _start_flask(
+    app: Flask,
+    debug: bool,
+    host: str | None,
+    port: int,
+    unix_socket: str | None,
+):
+    if unix_socket is not None:
+        app.run(host=f"unix://{host}", debug=debug)
+    else:
+        app.run(host=host, port=port, debug=debug)
 
 
 def main():
     """Main entrypoint."""
-    app = create_app(**_handle_options())
-    app.run(host="127.0.0.1", port=3000, debug=False)
+    opts = _handle_options()
+    app = create_app(**opts["app"])
+    if opts["production"]:
+        _start_waitress(app, **opts["listen"])
+    else:
+        _start_flask(app, opts["debug"], **opts["listen"])

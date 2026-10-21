@@ -4,3 +4,5 @@ httpx>=0.28.0
 pytest>=9.1.0
 beautifulsoup4>=4.15.0
 tinycss2>=1.5.0
+waitress>=3.0.0
+types-waitress>=3.0.0
