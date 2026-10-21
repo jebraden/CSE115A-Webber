@@ -11,10 +11,11 @@ run-frontend: # :Run the frontend
 run-backend: # :Run the backend
 	scripts/run-backend.sh
 
-test: test-frontend test-backend # :Test the frontend and backend
+test: # :Test the frontend and backend
+	scripts/run-tests.sh backend frontend
 
 test-backend: # :Test the backend
-	-scripts/run-tests.sh backend
+	scripts/run-tests.sh backend
 
 test-frontend: # :Test the frontend
-	-scripts/run-tests.sh frontend
+	scripts/run-tests.sh frontend

@@ -1,0 +1,23 @@
+name: Run Pytest
+on: push
+
+jobs:
+  run-pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+      - name: Get Python version
+        id: get-version
+        run: printf 'ver=%s' "$(python -V | cut -d' ' -f2)" >"$GITHUB_OUTPUT"
+      - name: Cache venv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/backend/venv
+            ${{ github.workspace }}/frontend/venv
+          key: ${{ runner.os }}-${{ steps.get-version.outputs.ver }}-${{ hashFiles('backend/requirements.txt') }}-${{ hashFiles('frontend/requirements.txt') }}
+      - name: Setup venv
+        run: make setup
+      - name: Run tests
+        run: make test
