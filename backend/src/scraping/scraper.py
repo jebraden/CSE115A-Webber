@@ -173,7 +173,7 @@ class PageScraper():
         self.working = True
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
-                    headless=False,
+                    headless=True,
             )
             self.time = time.time()
             page = await browser.new_page()
