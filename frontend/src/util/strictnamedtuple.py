@@ -2,7 +2,7 @@
 Runtime type checking NamedTuple implementation
 """
 
-from typing import Any, TypeVar, Callable
+from typing import Any, Callable
 from types import GenericAlias
 from operator import itemgetter
 import sys
@@ -10,9 +10,9 @@ import sys
 try:
     import annotationlib
 
-    _have_hannotationlib = True
+    _have_annotationlib = True
 except ImportError:
-    _have_hannotationlib = False
+    _have_annotationlib = False
 
 if sys.version_info >= (3, 14):
     from typing import Union
@@ -55,7 +55,7 @@ class _StrictNamedTupleMeta(type):
         obj: type = super().__new__(cls, name, bases, namespace, **kwargs)
         if "__annotations__" in namespace:
             annotations = namespace["__annotations__"]
-        elif _have_hannotationlib:
+        elif _have_annotationlib:
             af = annotationlib.get_annotate_from_class_namespace(namespace)
             if af:
                 annotations = annotationlib.call_annotate_function(
@@ -96,9 +96,6 @@ class _StrictNamedTupleMeta(type):
         setattr(obj, "_types", tuple(types))
         setattr(obj, "_defaults", tuple(defs))
         return obj
-
-
-_T_co = TypeVar("_T_co", covariant=True)
 
 
 def _pretty_print_type(t: type) -> str:
@@ -177,7 +174,7 @@ def _check_list(
 define_parameterized_checker(list, _check_list)
 
 
-class StrictNamedTuple(tuple, metaclass=_StrictNamedTupleMeta):
+class StrictNamedTuple[*T](tuple[*T], metaclass=_StrictNamedTupleMeta):
     """NamedTuple with runtime type checking.
 
     StrictNamedTuple can use used as a superclass in the same way NamedTuple
@@ -192,7 +189,7 @@ class StrictNamedTuple(tuple, metaclass=_StrictNamedTupleMeta):
     _types: tuple[type, ...]
     _defaults: tuple[Any, ...]
 
-    def __new__(cls, *args: _T_co, **kwargs: _T_co):
+    def __new__(cls, *args: Any, **kwargs: Any):
         if cls is StrictNamedTuple:
             raise TypeError("StrictNamedTuple() cannot be used directly")
         sentinel = object()
