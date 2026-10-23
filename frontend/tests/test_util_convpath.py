@@ -1,6 +1,7 @@
 import pytest
 from typing import Any
 from src.util.convpath import convpath, convert_object
+from types import SimpleNamespace
 
 
 def test_convpath_basic_dict():
@@ -205,3 +206,24 @@ def test_path_splice_dict_empty():
 
     result = convert_object([("kwargs**", maker)], data)
     assert result["kwargs"] == {}
+
+
+def test_path_splice_list_toplevel():
+    """Test * at the toplevel."""
+    data: list[int] = [1, 2, 3]
+
+    def splice_sum(*args):
+        return sum(args)
+
+    result = convert_object([("*", splice_sum)], data)
+    assert result == sum(data)
+
+
+def test_path_splice_dict_toplevel():
+    """Test ** at the toplevel."""
+    data: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+
+    result = convert_object([("**", SimpleNamespace)], data)
+    assert result.a == data["a"]
+    assert result.b == data["b"]
+    assert result.c == data["c"]
