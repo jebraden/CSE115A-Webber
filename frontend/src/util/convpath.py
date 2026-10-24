@@ -33,23 +33,35 @@ def convpath(
     else:
         parts = path
     for i, part in enumerate(parts[:-1]):
+        print(part)
+        print(obj)
         if part == "[]":
+            print("here")
             rest = parts[i + 1 :]
+            print(rest)
             for i, subobj in enumerate(obj):
+                print(subobj)
                 obj[i] = convpath(subobj, rest, conv)
             return root
         try:
             obj = obj[part]
+            print(obj)
         except Exception:
             obj = getattr(obj, part)
+        print()
     if parts[-1] == "[]":
         for i, subobj in enumerate(obj):
             obj[i] = conv(subobj)
     else:
         try:
-            obj[parts[-1]] = conv(obj[parts[-1]])
-        except Exception:
-            setattr(obj, parts[-1], conv(getattr(obj, parts[-1])))
+            to_conv = obj[parts[-1]]
+        except (KeyError, TypeError):
+            to_conv = getattr(obj, parts[-1])
+        to_set = conv(to_conv)
+        try:
+            obj[parts[-1]] = to_set
+        except (KeyError, TypeError):
+            setattr(obj, parts[-1], to_set)
     return root
 
 
