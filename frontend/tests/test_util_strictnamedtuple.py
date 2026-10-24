@@ -1,6 +1,7 @@
 import pytest
 from typing import Optional
 from src.util.strictnamedtuple import StrictNamedTuple
+from copy import copy, deepcopy
 
 
 # Test fixtures
@@ -318,3 +319,30 @@ def test_error_messages_are_descriptive():
         Point("not int", 2)
     msg = str(exc_info.value)
     assert "Point" in msg or "x" in msg  # Should mention field or class
+
+
+def test_shallow_copy():
+    """Test the shallow copy function."""
+
+    class Test(StrictNamedTuple):
+        s1: object
+        s2: object
+
+    t = Test(object(), object())
+    c = copy(t)
+    assert c == t
+    assert c is not t
+
+
+def test_deepcopy():
+    """Test the deepcopy function."""
+
+    class Test(StrictNamedTuple):
+        s1: object
+        s2: object
+
+    t = Test(object(), object())
+    c = deepcopy(t)
+    assert t[0] is not c[0]
+    assert t[1] is not c[1]
+    assert c is not t

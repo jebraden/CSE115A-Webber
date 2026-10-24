@@ -6,6 +6,7 @@ from typing import Any, Callable
 from types import GenericAlias
 from operator import itemgetter
 import sys
+from copy import deepcopy
 
 try:
     import annotationlib
@@ -249,3 +250,11 @@ class StrictNamedTuple[*T](tuple[*T], metaclass=_StrictNamedTupleMeta):
     def __delattr__(self, name: str):
         tn = type(self).__name__
         raise AttributeError(f"{tn} object does not support item deletion")
+
+    def __copy__(self):
+        return type(self)(*self)
+
+    def __deepcopy__(self, memo: dict):
+        return type(self)(
+            *map(lambda x: deepcopy(x, memo), self),  # type: ignore[arg-type]
+        )
