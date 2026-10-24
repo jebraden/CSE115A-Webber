@@ -13,6 +13,7 @@ import httpx
 from .util.strictnamedtuple import StrictNamedTuple
 from .util.convpath import convert_object
 from copy import deepcopy
+import re
 
 
 def _to_json(obj: Any) -> str:
@@ -184,6 +185,105 @@ class BadRequestError(APIError, code=400):
 # Endpoint specific types #
 ###########################
 
+# /snapshots/{SNAPSHOT_ID}
+class GetSnapshotResponse(StrictNamedTuple):
+    """ The response body of a snapshot request """
+
+    # echo back SNAPSHOT_ID
+    id: str
+
+    # URL that triggered the snapshot
+    url: str
+
+    # time when the snapshot creation was started
+    start_time: Timespec | None
+
+    # time when the snapshot creation was finished
+    end_time: Timespec | None
+
+    # id files in this snapshot (see API.ORG for details)
+    files: list[str]
+
+
+# /files/{FILE_ID}
+class ResponseInfo(StrictNamedTuple):
+    """An object for storing information about the response"""
+
+    # time when the response was received
+    received_time: Timespec | None
+
+    # code the server responded with when serving the file
+    code: int
+
+    # response headers
+    headers: dict[str, list[str]]
+
+
+class RequestInfo(StrictNamedTuple):
+    """An object for storing information about the request"""
+
+    # time when the file request was made
+    sent_time: Timespec | None
+
+    # HTTP request method
+    method: str
+
+    # HTTP request headers
+    headers: dict[str, list[str]]
+
+    # request parameters (from the URL)
+    parameters: dict[str, list[str]]
+
+
+class GetFileResponse(StrictNamedTuple):
+    """A response from the /files/{FILE_ID} endpoint"""
+
+    # echo the file id
+    id: str
+
+    # snapshot to which the file belongs
+    snapshot: str
+
+    # url to request the file
+    url: str
+
+    # protocol used to request the file
+    protocol: str
+
+    # port used to request the file
+    port: int
+
+    # (remote) host of the file
+    host: str
+
+    # relative path to file on (remote) host
+    path: str
+
+    # information about the request
+    request: RequestInfo
+
+    # information about the response
+    response: ResponseInfo
+
+
+# /search
+class SnapshotQueryResponse(StrictNamedTuple):
+    """A response from the /search/snapshots endpoint"""
+    snapshot_ids = list[str]
+
+class SnapshotFilePair(StrictNamedTuple):
+    """Holds a snapshot id and its corresponding file id"""
+
+    snapshot_id: str
+
+    file_id: str
+
+class FileQueryResponse(StrictNamedTuple):
+    """A response from the /search/files endpoint"""
+
+    # a list of snapshot ID/file ID pairs
+    snapfilepairs = list[SnapshotFilePair]
+
 
 # /statistics
 class Interval(StrictNamedTuple):
@@ -273,6 +373,120 @@ class WebberAPI:
         except Exception as e:
             raise BadResponseError(resp.text) from e
 
+
+    async def get_snapshot(
+            self, snapshot_id: str
+    ) -> GetSnapshotResponse:
+        """Make a GET request to the /snapshots/{SNAPSHOT_ID} endpoint
+
+        Arguments:
+        snapshot_id -- the id of the snapshot to request
+        """
+        snapshot_id.strip().lower()
+
+        async with httpx.AsyncClient() as client:
+            resp = await self.request(
+                client, "GET", "/snapshots/" + re.escape(snapshot_id), {}
+            )
+            body = self._body_json(resp, 200)
+            try:
+                return convert_object(
+                    [
+                        ("-[].start_time**", Timespec),
+                        ("-[].end_time**", Timespec),
+                        ("", GetSnapshotResponse)
+                    ],
+                    body
+                )
+            except Exception as e:
+                raise BadResponseError(resp.text) from e
+                
+    async def get_file(
+        self, file_id: str
+    ) -> GetFileResponse:
+        """Make a GET request to the /files/{FILE_ID} endpoint
+
+        Arguments:
+        file_id -- the id of the file to request
+        """
+        file_id.strip().lower()
+
+        async with httpx.AsyncClient() as client:
+            resp = await self.request(
+                client, "GET", "/files/" + re.escape(file_id), {}
+            )
+            body = self._body_json(resp, 200)
+            try:
+                return convert_object(
+                    [
+                        ("-[].request.sent_time**", Timespec),
+                        ("[].request**", RequestInfo),
+                        ("-[].response.received_time**", Timespec),
+                        ("[].response**", ResponseInfo),
+                        ("[]**", GetFileResponse),
+                        ("", GetFileResponse)
+                    ],
+                    body
+                )
+            except Exception as e:
+                raise BadResponseError(resp.text) from e
+            
+    async def query_snapshots(
+        self, field: str, key: str
+    ) -> SnapshotQueryResponse:
+        """Make a QUERY request to the /search/snapshots endpoint
+
+        Arguments:
+        field -- the field to query (optional)
+                    (valid fields: start_time, end_time, url)
+        key -- the search key corresponding to the field (optional)
+        """
+        request_body = {field: key} if field else {}
+        async with httpx.AsyncClient() as client:
+            resp = await self.request(
+                client, "QUERY", "/search/snapshots", request_body
+            )
+            body = self._body_json(resp, 200)
+            try:
+                return convert_object(
+                    [
+                        ("", SnapshotQueryResponse)
+                    ],
+                    body
+                )
+            except Exception as e:
+                raise BadResponseError(resp.text) from e
+
+
+    async def query_files(
+        self, field: str, key: str
+    ) -> FileQueryResponse:
+        """Make a QUERY request to the /search/files endpoint
+
+        Arguments:
+        field -- the field to query 
+                    (valid fields: 
+                    snapshot_id, start_time, end_time, 
+                    url, host, protocol, port, path, status_codes)
+        key -- the search key corresponding to the field
+        """
+        request_body = {field: key} if field else {}
+        async with httpx.AsyncClient() as client:
+            resp = await self.request(
+                client, "QUERY", "/search/files", request_body
+            )
+            body = self._body_json(resp, 200)
+            try:
+                return convert_object(
+                    [
+                        ("[].snapfilepairs**", SnapshotFilePair),
+                        ("", FileQueryResponse)
+                    ],
+                    body
+                )
+            except Exception as e:
+                raise BadResponseError(resp.text) from e
+
     async def statistics(
         self, intervals: list[Interval]
     ) -> StatisticsResponse:
@@ -298,4 +512,5 @@ class WebberAPI:
                     body["statistics"],
                 )
             except Exception as e:
-                raise BadResponseError(resp.text) from e
+                raise BadResponseError(resp.text) from e           
+
