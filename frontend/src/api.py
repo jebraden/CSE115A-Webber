@@ -180,14 +180,30 @@ class BadRequestError(APIError, code=400):
     def __str__(self) -> str:
         return self.message
 
+class NotFoundError(APIError, code=404):
+    """Represents an HTTP code 404."""  
+
+    def __init__(self, json_body: Any):
+        self.message = json_body["message"]
+
+    def __str__(self) -> str:
+        return self.message
+
 
 ###########################
 # Endpoint specific types #
 ###########################
 
+# /snapshots/create
+class CreateSnapshotResponse(StrictNamedTuple):
+    """The response body of a snapshot creation request."""
+
+    # the unique id representing the created snapshot
+    id: str
+
 # /snapshots/{SNAPSHOT_ID}
 class GetSnapshotResponse(StrictNamedTuple):
-    """ The response body of a snapshot request """
+    """The response body of a snapshot request"""
 
     # echo back SNAPSHOT_ID
     id: str
@@ -269,19 +285,23 @@ class GetFileResponse(StrictNamedTuple):
 # /search
 class SnapshotQueryResponse(StrictNamedTuple):
     """A response from the /search/snapshots endpoint"""
+
+    # a list of snapshot ids that matched the search
     snapshot_ids = list[str]
 
 class SnapshotFilePair(StrictNamedTuple):
     """Holds a snapshot id and its corresponding file id"""
 
+    # a snapshot id that matched the search
     snapshot_id: str
 
+    # the snapshot id's associated file id
     file_id: str
 
 class FileQueryResponse(StrictNamedTuple):
     """A response from the /search/files endpoint"""
 
-    # a list of snapshot ID/file ID pairs
+    # a list of snapshot id/file id pairs
     snapfilepairs = list[SnapshotFilePair]
 
 
@@ -373,6 +393,47 @@ class WebberAPI:
         except Exception as e:
             raise BadResponseError(resp.text) from e
 
+    async def create_snapshot(
+        self, request_body: str
+    ) -> CreateSnapshotResponse:
+        """Make a POST request to the /snapshots/create endpoint
+
+        Arguments:
+        request_body -- the body of the snapshot creation request 
+        """
+        async with httpx.AsyncClient() as client:
+            resp = await self._request(
+                client, "GET", "/snapshots/create", request_body
+            )
+
+            body = self._body_json(resp, 201)
+
+            retval = CreateSnapshotResponse()
+            retval.id = body["id"]
+            return retval
+            
+
+    async def delete_snapshot(
+            self, snapshot_id: str
+    ) -> bool:
+        """Make a DELETE request to the /snapshots/{SNAPSHOT_ID} endpoint
+
+        Arguments:
+        snapshot_id -- the id of the snapshot to delete
+        """
+        snapshot_id.strip().lower()
+
+        async with httpx.AsyncClient() as client:
+            resp = await self._request(
+                client, "DELETE", "/snapshots/" + re.escape(snapshot_id), {}
+            )
+
+            if resp.status_code == '202':
+                return True
+            else:
+                return False
+
+            
 
     async def get_snapshot(
             self, snapshot_id: str
@@ -385,7 +446,7 @@ class WebberAPI:
         snapshot_id.strip().lower()
 
         async with httpx.AsyncClient() as client:
-            resp = await self.request(
+            resp = await self._request(
                 client, "GET", "/snapshots/" + re.escape(snapshot_id), {}
             )
             body = self._body_json(resp, 200)
@@ -400,6 +461,8 @@ class WebberAPI:
                 )
             except Exception as e:
                 raise BadResponseError(resp.text) from e
+
+
                 
     async def get_file(
         self, file_id: str
@@ -412,7 +475,7 @@ class WebberAPI:
         file_id.strip().lower()
 
         async with httpx.AsyncClient() as client:
-            resp = await self.request(
+            resp = await self._request(
                 client, "GET", "/files/" + re.escape(file_id), {}
             )
             body = self._body_json(resp, 200)
@@ -430,6 +493,23 @@ class WebberAPI:
                 )
             except Exception as e:
                 raise BadResponseError(resp.text) from e
+
+    async def get_file_data(
+        self, file_id: str
+    ) -> httpx.Response:
+        """Make a GET request to the /files/{FILE_ID}/data endpoint
+
+        Arguments:
+        file_id -- the id of the file data to request
+        """
+        file_id.strip().lower()
+
+        async with httpx.AsyncClient() as client:
+            resp = await self._request(
+                client, "GET", "/files/" + re.escape(file_id) + "/data", {}
+            )
+            return resp
+
             
     async def query_snapshots(
         self, field: str, key: str
@@ -443,7 +523,7 @@ class WebberAPI:
         """
         request_body = {field: key} if field else {}
         async with httpx.AsyncClient() as client:
-            resp = await self.request(
+            resp = await self._request(
                 client, "QUERY", "/search/snapshots", request_body
             )
             body = self._body_json(resp, 200)
@@ -472,7 +552,7 @@ class WebberAPI:
         """
         request_body = {field: key} if field else {}
         async with httpx.AsyncClient() as client:
-            resp = await self.request(
+            resp = await self._request(
                 client, "QUERY", "/search/files", request_body
             )
             body = self._body_json(resp, 200)
