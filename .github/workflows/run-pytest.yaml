@@ -4,8 +4,6 @@ on: push
 jobs:
   run-pytest:
     runs-on: ubuntu-latest
-    env:
-      QT_QPA_PLATFORM: offscreen
     steps:
       - name: Check out repository code
         uses: actions/checkout@v6
@@ -26,4 +24,4 @@ jobs:
       - name: Setup venv
         run: make setup
       - name: Run tests
-        run: make test
+        run: make test-headless

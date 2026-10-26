@@ -22,10 +22,12 @@ def _setup_die_with_parent(ppid: int | None):
         from .platforms import linux
 
         linux.die_with_parent(signal.SIGTERM, ppid)
-    else:
-        from .platforms import parent_watch
+    elif system in ("Darwin", "FreeBSD"):
+        from .platforms import bsd
 
-        parent_watch.die_with_parent(signal.SIGTERM, ppid)
+        bsd.die_with_parent(signal.SIGTERM, ppid)
+    else:
+        logger.warning('The os "%s" does not support `die_with_parent=True`.', system)
 
 
 def create_app(
@@ -158,7 +160,7 @@ def _start_flask(
     unix_socket: str | None,
 ):
     if unix_socket is not None:
-        app.run(host=f"unix://{host}", debug=debug)
+        app.run(host=f"unix://{unix_socket}", debug=debug)
     else:
         app.run(host=host, port=port, debug=debug)
 
