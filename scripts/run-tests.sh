@@ -3,9 +3,14 @@
 set -e
 
 if [ ${#} -eq 0 ]; then
-    echo "usage: run-tests.sh [MODULES...]"
+    echo "usage: run-tests.sh [--headless] [MODULES...]"
     echo "Modules are probably \"frontend\" and \"backend\"."
     exit 1
+fi
+
+if [ "${1}" = "--headless" ]; then
+    export QT_QPA_PLATFORM=offscreen
+    shift
 fi
 
 out=0

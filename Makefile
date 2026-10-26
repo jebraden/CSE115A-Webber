@@ -19,3 +19,6 @@ test-backend: # :Test the backend
 
 test-frontend: # :Test the frontend
 	scripts/run-tests.sh frontend
+
+test-headless: # :Test without a display server
+	scripts/run-tests.sh --headless backend frontend

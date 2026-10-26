@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def _setup_die_with_parent(ppid: int | None):
     if ppid is None:
-        logger.warn(
+        logger.warning(
             "Using `die_with_parent=True` without `ppid` is subject to "
             "race conditions."
         )
@@ -22,10 +22,12 @@ def _setup_die_with_parent(ppid: int | None):
         from .platforms import linux
 
         linux.die_with_parent(signal.SIGTERM, ppid)
+    elif system in ("Darwin", "FreeBSD"):
+        from .platforms import bsd
+
+        bsd.die_with_parent(signal.SIGTERM, ppid)
     else:
-        logger.warn(
-            'The os "%s" does not support `die_with_parent=True`.', system
-        )
+        logger.warning('The os "%s" does not support `die_with_parent=True`.', system)
 
 
 def create_app(
@@ -158,7 +160,7 @@ def _start_flask(
     unix_socket: str | None,
 ):
     if unix_socket is not None:
-        app.run(host=f"unix://{host}", debug=debug)
+        app.run(host=f"unix://{unix_socket}", debug=debug)
     else:
         app.run(host=host, port=port, debug=debug)
 

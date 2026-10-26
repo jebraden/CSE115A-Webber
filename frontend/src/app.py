@@ -1,73 +1,63 @@
+"""Application lifecycle and assembly; widgets and OS details live separately."""
+import os
 import sys
-import socket
-import signal
-from . import __version__
-from PySide6.QtCore import Signal, qInfo
+import tempfile
+
+from PySide6.QtCore import QTimer, qInfo
 from PySide6.QtWidgets import QApplication
-from PySide6.QtNetwork import QAbstractSocket
+
+from . import __version__
+from .backend import WebberBackend
+from .backend_status import BackendStatus
+from .platforms import make_signal_handler
+from .startup_window import StartupWindow
 
 
-# Credit: https://stackoverflow.com/a/37229299
-class SignalHandler(QAbstractSocket):
-    """Cause the Python interpreter to run every time the process receives a
-    signal. Because some signals (e.g. SIGINT) just cause the Python
-    interpreter to set a flag and then continue until the next bytecode
-    instruction is executed, signals are never handled if we are just stuck in
-    the Qt event loop. This causes a python function to run on every singal.
-    """
-
-    signal_recieved = Signal(int)
-
-    def __init__(self, parent=None):
-        super().__init__(QAbstractSocket.SocketType.TcpSocket, parent)
-
-        self._old_fd = None
-
-        self._write_sock, self._read_sock = socket.socketpair(
-            type=socket.SOCK_STREAM
-        )
-        self._write_sock.setblocking(False)
-
-        # Need two, one to trigger the signal, one to read the data/emit the
-        # event
-        self.readyRead.connect(lambda: None)
-        self.readyRead.connect(self._ready_read)
-        self.setSocketDescriptor(self._read_sock.fileno())
-
-    def _ready_read(self):
-        # Will not trigger again until we read this...
-        signum = self.readData(1)[0]
-        self.signal_recieved.emit(signum)
-
-    def install(self):
-        if self._old_fd is not None:
-            self.uninstall()
-        self._old_fd = signal.set_wakeup_fd(self._write_sock.fileno())
-
-    def uninstall(self):
-        if self._old_fd is not None:
-            signal.set_wakeup_fd(self._old_fd)
-            self._old_fd = None
-
-    def __del__(self):
-        self.uninstall()
-
-
-def main():
-    """Main frontend entrypoint."""
-
+def main(backend_address=None):
     app = QApplication(sys.argv)
-
-    signal_handler = SignalHandler(app)
-    signal_handler.install()
-
-    signal_handler.signal_recieved.connect(
-        lambda signum: app.exit(128 + signum)
-    )
-
     app.setApplicationName("Webber")
     app.setApplicationVersion(__version__)
+    signals = make_signal_handler(app)
+    signals.install()
+    signals.signal_recieved.connect(lambda signum: app.exit(128 + signum))
 
+    backend = WebberBackend()
+    # A private short socket path avoids collisions with other running instances
+    # and macOS's AF_UNIX path-length limit. TCP remains the Windows fallback.
+    socket_dir = tempfile.TemporaryDirectory(prefix="webber-", dir="/tmp") if os.name == "posix" and backend_address is None else None
+    if socket_dir:
+        backend.address = f"unix://{socket_dir.name}/backend.sock"
+    elif backend_address is not None:
+        backend.address = backend_address
+    backend.auto_restart = False
+    status = BackendStatus(backend, app)
+    window = StartupWindow()
+    status.ready.connect(window.backend_ready)
+    status.failed.connect(window.backend_failed)
+
+    def stop():
+        status.stop()
+        backend.auto_restart = False
+        backend.stop()
+        backend.join(timeout=2)
+        if backend.running:
+            backend.kill()
+            backend.join(timeout=2)
+
+    def start():
+        backend.start()
+        status.start()
+
+    app.aboutToQuit.connect(stop)
+    window.show()
+    QTimer.singleShot(0, start)
     qInfo(f"Webber {__version__} frontend starting")
-
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        stop()
+        signals.uninstall()
+        if hasattr(signals, "close"):
+            signals.close()
+        if socket_dir:
+            socket_dir.cleanup()
