@@ -409,9 +409,11 @@ class WebberAPI:
             body = self._body_json(resp, 201)
 
             retval = CreateSnapshotResponse()
-            retval.id = body["id"]
-            return retval
-            
+            try:
+                retval.id = body["id"]
+                return retval
+            except KeyError as e:
+                raise BadResponseError(resp.text) from e
 
     async def delete_snapshot(
             self, snapshot_id: str
@@ -421,19 +423,15 @@ class WebberAPI:
         Arguments:
         snapshot_id -- the id of the snapshot to delete
         """
-        snapshot_id.strip().lower()
-
         async with httpx.AsyncClient() as client:
             resp = await self._request(
-                client, "DELETE", "/snapshots/" + re.escape(snapshot_id), {}
+                client, "DELETE", "/snapshots/" + snapshot_id, {}
             )
 
-            if resp.status_code == '202':
+            if resp.status_code == 202:
                 return True
             else:
-                return False
-
-            
+                return False      
 
     async def get_snapshot(
             self, snapshot_id: str
@@ -443,11 +441,9 @@ class WebberAPI:
         Arguments:
         snapshot_id -- the id of the snapshot to request
         """
-        snapshot_id.strip().lower()
-
         async with httpx.AsyncClient() as client:
             resp = await self._request(
-                client, "GET", "/snapshots/" + re.escape(snapshot_id), {}
+                client, "GET", "/snapshots/" + snapshot_id, {}
             )
             body = self._body_json(resp, 200)
             try:
@@ -472,11 +468,9 @@ class WebberAPI:
         Arguments:
         file_id -- the id of the file to request
         """
-        file_id.strip().lower()
-
         async with httpx.AsyncClient() as client:
             resp = await self._request(
-                client, "GET", "/files/" + re.escape(file_id), {}
+                client, "GET", "/files/" + file_id, {}
             )
             body = self._body_json(resp, 200)
             try:
@@ -502,12 +496,15 @@ class WebberAPI:
         Arguments:
         file_id -- the id of the file data to request
         """
-        file_id.strip().lower()
-
         async with httpx.AsyncClient() as client:
             resp = await self._request(
-                client, "GET", "/files/" + re.escape(file_id) + "/data", {}
+                client, "GET", "/files/" + file_id + "/data", {}
             )
+
+            if resp.status_code == 404:
+                raise NotFoundError(resp.text)
+            elif resp.status_code == 500:
+                raise InternalServerError(resp.text)
             return resp
 
             
