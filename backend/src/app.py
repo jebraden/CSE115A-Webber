@@ -9,6 +9,8 @@ import os
 
 logger = logging.getLogger(__name__)
 
+from flask import Flask, jsonify, Response, request
+from request_manager import RequestManager 
 
 def _setup_die_with_parent(ppid: int | None):
     if ppid is None:
@@ -57,6 +59,63 @@ def create_app(
         return jsonify({"status": "ok"}), 200
 
     return app
+
+    @app.route("/snapshots/create", methods=["POST"])
+    def create_snapshot():
+        error = None
+        manager = RequestManager()
+        resp = manager.create_snapshot(request)
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/snapshots/<str:snapshot_id>", methods=["GET", "DELETE"])
+    def snapshot_view(snapshot_id: str):
+        manager = RequestManager()
+        resp = None
+        if request.method == "GET":
+            resp = manager.get_snapshot(snapshot_id)
+        if request.method == "DELETE":
+            resp = manager.delete_snapshot(snapshot_id)
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/files/<str:file_id>/data", methods=["GET"])
+    def get_file(file_id: str):
+        resp = None
+        manager = RequestManager()
+        resp = manager.get_file(file_id)
+        if resp[1] != 200:
+            return jsonify(resp[0]), resp[1]
+        data = resp[0]
+        return Response(
+            data["body"],
+            status=data["status"],
+            content_type=data["content_type"]
+        )
+
+    @app.route("/data/<str:snapshot_id>/<path:url_path>", methods=["GET"])
+    def file_by_url(snapshot_id: str, url_path: str):
+        resp = None
+        manager = RequestManager()
+        resp = manager.get_file_by_url(snapshot_id, url_path, request)
+
+        if resp[1] != 200:
+            return jsonify(resp[0]), resp[1]
+        data = resp[0]
+        return Response(
+            data["body"],
+            status=data["status"]
+            content_type=data["content_type"]
+        )
+
+    @app.route("/search/snapshots", methods=["QUERY"])
+    def query_snapshots():
+        resp = None
+        manager = RequestManager()
+        resp = manager.query_snapshots(request)
+
+
+
+
+
 
 
 def _handle_options() -> dict[str, Any]:
