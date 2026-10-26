@@ -8,10 +8,16 @@ The primary public functions are:
  - relativize_stylesheet -- Relativize a standalone CSS file
 """
 
-import tinycss2
+import tinycss2  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, Tag
 import urllib.parse
-from typing import NamedTuple, Optional, Protocol, override, Iterator
+from typing import (
+    NamedTuple,
+    Optional,
+    override,
+    Iterator,
+    Callable,
+)
 from abc import ABC, abstractmethod
 from itertools import islice, takewhile
 import re
@@ -32,7 +38,7 @@ class URLRewriter(ABC):
 
     def parse_document_url(
         self, document_url: str
-    ) -> urllib.parse.ParseResult:
+    ) -> urllib.parse.SplitResult:
         """Parse a document URL into parts.
 
         Arguments:
@@ -103,7 +109,7 @@ def _split_path_preserving_seperators(path: str) -> list[PathComponent]:
 
 def _normalize_path(parts: list[PathComponent]) -> list[PathComponent]:
     """Remove '.' and '..' from an HTTP path."""
-    out = []
+    out: list[PathComponent] = []
     for i in range(len(parts)):
         part = parts[i]
         if part.file == "..":
@@ -189,7 +195,7 @@ class URLRelativizer(URLRewriter):
 
     def _get_split_result_port(
         self,
-        parsed: urllib.parse.ParseResult,
+        parsed: urllib.parse.SplitResult,
     ) -> Optional[int]:
         """Try to extract the port from a parsed URL.
 
@@ -222,7 +228,7 @@ class URLRelativizer(URLRewriter):
             out += str(port)
         return out
 
-    def _normalize_netloc_port(self, parsed: urllib.parse.ParseResult) -> str:
+    def _normalize_netloc_port(self, parsed: urllib.parse.SplitResult) -> str:
         """Maybe remove a netloc port if it is redundant with the scheme."""
         scheme = parsed.scheme.lower()
         port = self._get_split_result_port(parsed)
@@ -230,12 +236,12 @@ class URLRelativizer(URLRewriter):
             scheme == "https" and port == 443
         ):
             return self._construct_netloc(
-                parsed.username, parsed.password, parsed.hostname, None
+                parsed.username, parsed.password, parsed.hostname or "", None
             )
         else:
             return parsed.netloc
 
-    def _build_prefix(self, parsed: urllib.parse.ParseResult) -> str:
+    def _build_prefix(self, parsed: urllib.parse.SplitResult) -> str:
         """Build a URL encoded path component from a URLs scheme and netloc."""
         netloc = self._normalize_netloc_port(parsed)
         scheme = parsed.scheme.lower()
@@ -244,7 +250,7 @@ class URLRelativizer(URLRewriter):
     def _relativize_html_hostful_url(
         self,
         url: str,
-        parsed: urllib.parse.ParseResult,
+        parsed: urllib.parse.SplitResult,
     ) -> str:
         """Relativize an HTML URL that has a host."""
         # The extra +1 is for going into the directory containing hosts
@@ -263,7 +269,7 @@ class URLRelativizer(URLRewriter):
         )
 
     def _relativize_html_hostless_url(
-        self, url: str, parsed: urllib.parse.ParseResult
+        self, url: str, parsed: urllib.parse.SplitResult
     ) -> str:
         """Relativize a URL without a host."""
         path_parts = _split_path_preserving_seperators(parsed.path)
@@ -326,7 +332,7 @@ class URLRelativizer(URLRewriter):
     @override
     def parse_document_url(
         self, document_url: str
-    ) -> urllib.parse.ParseResult:
+    ) -> urllib.parse.SplitResult:
         url_parts = super().parse_document_url(document_url)
         path_parts = _split_path_preserving_seperators(url_parts.path)
         norm_parts = _normalize_path(path_parts)
@@ -357,25 +363,15 @@ class URLRelativizer(URLRewriter):
             return url
 
 
-class HTMLAttributeRewriter(Protocol):
-    """Protocol for rewriting HTML attributes."""
-
-    def __call__(
-        self,
-        attr: str,
-        value: str,
-        rewrite_func: URLRewriter,
-    ) -> str:
-        """Rewrite a given HTML attribute.
-
-        Arguments:
-        attr -- the attribute's name
-        value -- the attribute's value (to be rewritten)
-        relativize_func -- the function to use to rewrite URLs
-
-        Returns: the rewritten attribute value
-        """
-        pass
+# Rewrite a given HTML attribute.
+#
+# Arguments:
+# attr -- the attribute's name
+# value -- the attribute's value (to be rewritten)
+# relativize_func -- the function to use to rewrite URLs
+#
+# Returns: the rewritten attribute value
+type HTMLAttributeRewriter = Callable[[str, str, URLRewriter], str]
 
 
 def identity_attribute_rewriter(
@@ -443,7 +439,7 @@ class HTMLTagMatcher(ABC):
 class HTMLAttributeValueTagMatcher(HTMLTagMatcher):
     """HTML Tag matcher that matches on attribute values."""
 
-    def __init__(self, *args: list[tuple[str, str]]):
+    def __init__(self, *args: tuple[str, str]):
         """Construct the matcher.
 
         Arguments:
@@ -503,7 +499,11 @@ class HTMLRewriteRule(NamedTuple):
         else:
             for attr, value in tag.attrs.items():
                 if attr in self.rewriters:
-                    new_value = self.rewriters[attr](attr, value, url_rewriter)
+                    new_value = self.rewriters[attr](
+                        attr,
+                        value,  # type: ignore[arg-type]
+                        url_rewriter,
+                    )
                     tag[attr] = new_value
 
 
@@ -529,7 +529,7 @@ class HTMLRewriter(NamedTuple):
         return False
 
     @classmethod
-    def compile(cls, *rules: list[HTMLRewriteRule]) -> "HTMLRewriter":
+    def compile(cls, *rules: HTMLRewriteRule) -> "HTMLRewriter":
         """Compile a list of rewrite rules.
 
         The order of rules in this list matters.
@@ -675,9 +675,12 @@ def relativize_html(text: str, url: str) -> str:
     for tag in soup.find_all():
         REWRITER.rewrite(tag, rewriter)
         if not tag.decomposed and "style" in tag.attrs:
-            tag["style"] = relativize_css_rule_list(tag["style"], url)
+            tag["style"] = relativize_css_rule_list(
+                tag["style"],  # type: ignore[arg-type]
+                url,
+            )
     for tag in soup.find_all("style"):
-        tag.string.replace_with(relativize_stylesheet(tag.string, url))
+        tag.string = relativize_stylesheet(tag.string or "", url)
     return str(soup)
 
 
