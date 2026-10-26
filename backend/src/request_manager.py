@@ -238,28 +238,35 @@ class RequestManager():
 
     def query_files(self, request) -> (dict, int):
         form = request.form
-        start = float("-inf")
-        end = float("inf")
         other_conds = []
         other_vals = []
+
+        snap_id = form.get("snapshot_id", "")
+        if snap_id:
+            other_conds.append("snapshot_id = ?")
+            other_vals.append(snap_id)
 
         try:
             start_spec = form.get("start_time", {})
             if start_spec:
                 start = self._time(start_spec)
+                other_conds.append("request_sent_time >= ?")
+                other_vals.append(start)
             end_spec = form.get("end_time", {})
             if end_spec:
                 end = self._time(end_spec)
+                other_conds.append("response_recieved_time <= ?")
+                other_vals.append(end)
         except KeyError:
             return self.bad_request("start time or end time spec improperly formatted")
         except Exception as e:
             logger.warning(f"query_files: Encoutered unexpected error reading time specs: {e}")
             return self.internal_server_error("Encountered unexpected internal error")
-        pattern_fields = {"url": "remote_path", "host": "host", "protocol": "protocol", "path": "on_disk_path"}
-
+        pattern_fields = {"host": "host", "protocol": "protocol", "path": "remote_path"}
         try:
             for field in pattern_fields:
                 self._build_pattern(form, pattern_fields[field], field, other_conds, other_vals)
+            self._url_subquery(form, "url", other_conds, other_vals)
         except re.error:
             return self._bad_request("Failed to generate regex pattern for one of the provided regex options!")
         except Exception as e:
@@ -284,12 +291,40 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"query_files: Encountered unexpected error port values / status code: {e}")
             return self.internal_server_error("Encountered unexpected internal error")
-
-
-
+        conditions_string = "AND ".join(other_conds)
+        
+        db = sqlite3.connect(db_path)
+        db.row_factory = sqlite3.Row
+        with db:
+            db.create_function("REGEXP", 2, regexp)
+            results = db.execute(
+                f"""
+                SELECT snapshot_id, id
+                FROM files
+                WHERE {conditions_string}
+                """,
+                other_vals
+            ).fetchAll()
+        db.close()    
+        data = [
+            {
+                "snapshot_id": row["snapshot_id"],
+                "file_id": row["id"]
+            }
+            for row in results
+        ]
+        return {"content": data}, 200
 
 
         
+    def _url_subquery(self, form, field: str, conditions: list, values: list):
+        """ Callers must surround method in try catch block """
+        raw_pattern = form.get(field, "")
+        if not raw_pattern: return None
+        pattern = re.compile(raw_pattern)
+        subquery = "snapshot_id IN (SELECT id FROM snapshots WHERE url REGEXP ?)"
+        conditions.append(subquery)
+        values.append(raw_pattern)
 
     
     def _build_pattern(self, form, sql_name: str, field: str, conditons: list, values: list):

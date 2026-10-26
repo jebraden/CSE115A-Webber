@@ -111,6 +111,16 @@ def create_app(
         resp = None
         manager = RequestManager()
         resp = manager.query_snapshots(request)
+        if resp[1] != 200:
+            return jsonify(resp[0]), resp[1]
+        data = resp[0]
+        return jsonify(data["content"]), resp[1]
+
+    @app.route("/search/files", methods=["QUERY"])
+    def query_files():
+        resp = None
+        manager = RequestManager()
+        resp = manager.query_files(request) 
 
 
 
