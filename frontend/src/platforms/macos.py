@@ -29,4 +29,3 @@ class SignalHandler(QObject):
         for signum, handler in self._previous.items():
             signal.signal(signum, handler)
         self._previous.clear()
-
