@@ -433,3 +433,21 @@
     #+end_src
 *** Error Response
     Only the global error responses defined above apply.
+** GET =/statistics/limits=
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // If not snapshots have been taken, these values shall both be `null`
+
+          // (timespec) the timespec of the first (oldest) snapshot taken
+          "first_snapshot": {...},
+          // (timespec) the timespec of the last (most recent) snapshot taken
+          "last_snapshot": {...}
+      }
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.

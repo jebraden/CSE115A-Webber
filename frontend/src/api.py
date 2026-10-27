@@ -13,6 +13,7 @@ import httpx
 from .util.strictnamedtuple import StrictNamedTuple
 from .util.convpath import convert_object
 from copy import deepcopy
+from enum import Enum
 
 
 def _to_json(obj: Any) -> str:
@@ -29,6 +30,11 @@ def _to_json(obj: Any) -> str:
             return cur
 
     return json.dumps(rec(obj))
+
+
+class ContentType(str, Enum):
+    EMPTY = None
+    JSON = "application/json"
 
 
 ################
@@ -242,6 +248,13 @@ class StatisticsResponse(StrictNamedTuple):
     statistics: list[Statistics]
 
 
+class StatisticsLimitsResponse(StrictNamedTuple):
+    """Class representing a response from the `/statistics/limits` endpoint."""
+
+    first_snapshot: Timespec | None
+    last_snapshot: Timespec | None
+
+
 ###########
 # The API #
 ###########
@@ -253,17 +266,35 @@ class WebberAPI:
         base_url -- the base URL of the backend
         """
         self.base_url = base_url.removesuffix("/")
+        self.client = httpx.AsyncClient()
+
+    async def aclose(self):
+        """Close the client associated with this instance."""
+        await self.client.aclose()
 
     def _endpoint(self, endpoint: str) -> str:
         return self.base_url + endpoint
 
     async def _request(
-        self, client: httpx.AsyncClient, method: str, endpoint: str, body: Any
+        self,
+        method: str,
+        endpoint: str,
+        content_type: ContentType,
+        body: Any = None,
     ) -> httpx.Response:
-        json_str = _to_json(body)
-        return await client.request(
-            method, self._endpoint(endpoint), content=json_str.encode()
-        )
+        match content_type:
+            case ContentType.EMPTY:
+                return await self.client.request(
+                    method, self._endpoint(endpoint)
+                )
+            case ContentType.JSON:
+                json_str = _to_json(body)
+                return await self.client.request(
+                    method,
+                    self._endpoint(endpoint),
+                    headers={"Content-Type": content_type},
+                    content=json_str.encode(),
+                )
 
     def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
         if resp.status_code != expected_status:
@@ -280,22 +311,53 @@ class WebberAPI:
 
         Arguments:
         intervals -- the interval over which to take the statistics
+
+        Returns: the response
         """
-        async with httpx.AsyncClient() as client:
-            resp = await self._request(
-                client, "QUERY", "/statistics", {"intervals": intervals}
+        resp = await self._request(
+            "QUERY",
+            "/statistics",
+            ContentType.JSON,
+            {"intervals": intervals},
+        )
+        body = self._body_json(resp, 200)
+        try:
+            return convert_object(
+                [
+                    ("-[].interval.start**", Timespec),
+                    ("-[].interval.end**", Timespec),
+                    ("[].interval**", Interval),
+                    ("[]**", Statistics),
+                    ("", StatisticsResponse),
+                ],
+                body["statistics"],
             )
-            body = self._body_json(resp, 200)
-            try:
-                return convert_object(
-                    [
-                        ("-[].interval.start**", Timespec),
-                        ("-[].interval.end**", Timespec),
-                        ("[].interval**", Interval),
-                        ("[]**", Statistics),
-                        ("", StatisticsResponse),
-                    ],
-                    body["statistics"],
-                )
-            except Exception as e:
-                raise BadResponseError(resp.text) from e
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    async def statistics_limits(self) -> StatisticsLimitsResponse:
+        """Make a request to the `/statistics/limits` endpoint.
+
+        Returns: the response
+        """
+        resp = await self._request(
+            "GET",
+            "/statistics/limits",
+            ContentType.EMPTY,
+        )
+        body = self._body_json(resp, 200)
+        try:
+            obj = convert_object(
+                [
+                    ("-first_snapshot**", Timespec),
+                    ("-last_snapshot**", Timespec),
+                    ("**", StatisticsLimitsResponse),
+                ],
+                body,
+            )
+            # Only one time is None
+            if sum(map(bool, obj)) == 1:
+                raise Exception("Only one end of statistics limits is None")
+            return obj
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
