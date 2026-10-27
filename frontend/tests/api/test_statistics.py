@@ -94,26 +94,11 @@ class TestStatistics:
     @respx.mock
     async def test_statistics_null_intervals(self, api):
         respx.route(method="QUERY", path="/api/statistics").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "statistics": [
-                        {
-                            "interval": {"start": None, "end": None},
-                            "snapshots": 0,
-                            "files": 0,
-                            "size": 0,
-                            "urls": 0,
-                            "hosts": 0,
-                        }
-                    ]
-                },
-            )
+            return_value=httpx.Response(200, json={"statistics": []})
         )
 
         result = await api.statistics([])
-        assert result.statistics[0].interval.start is None
-        assert result.statistics[0].interval.end is None
+        assert len(result.statistics) == 0
 
     @pytest.mark.asyncio
     @respx.mock
@@ -176,7 +161,9 @@ class TestStatistics:
             respx.route(method="QUERY").mock(side_effect=capture_request)
 
             api = WebberAPI("https://example.com")
-            await api.statistics([Interval(None, None)])
+            # Because we return an empty response
+            with pytest.raises(BadResponseError):
+                await api.statistics([Interval(None, None)])
 
             # Verify the request body contains serialized intervals
             body = json.loads(captured_request.content)

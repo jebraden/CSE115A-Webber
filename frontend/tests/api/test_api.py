@@ -81,6 +81,62 @@ class TestTimespecToQDateTime:
         assert not result.isNull()
 
 
+# Test Timespec.from_qdatetime conversion
+class TestTimespecFromQDateTime:
+    def test_from_qdatetime_basic(self):
+        # 10 seconds and 500 milliseconds
+        dt = QDateTime.fromMSecsSinceEpoch(10500)
+        ts = Timespec.from_qdatetime(dt)
+        assert ts.sec == 10
+        assert ts.nsec == 500000000  # 500 ms converted to nanoseconds
+
+    def test_from_qdatetime_zero(self):
+        dt = QDateTime.fromMSecsSinceEpoch(0)
+        ts = Timespec.from_qdatetime(dt)
+        assert ts.sec == 0
+        assert ts.nsec == 0
+
+    def test_from_qdatetime_sub_second_only(self):
+        # 999 milliseconds = 0 seconds + 999000000 nanoseconds
+        dt = QDateTime.fromMSecsSinceEpoch(999)
+        ts = Timespec.from_qdatetime(dt)
+        assert ts.sec == 0
+        assert ts.nsec == 999000000
+
+    def test_from_qdatetime_negative(self):
+        # Before epoch: -1500 ms
+        # Python floor division: -1500 // 1000 = -2, remainder = 500
+        # Result: -2 sec + 500 ms = -1.5 sec
+        dt = QDateTime.fromMSecsSinceEpoch(-1500)
+        ts = Timespec.from_qdatetime(dt)
+        assert ts.sec == -2
+        assert ts.nsec == 500000000
+
+    def test_from_qdatetime_returns_timespec(self):
+        dt = QDateTime.fromMSecsSinceEpoch(12345)
+        ts = Timespec.from_qdatetime(dt)
+        assert isinstance(ts, Timespec)
+
+    def test_from_qdatetime_roundtrip(self):
+        """Verify that to_qdatetime/from_qdatetime preserve millisecond precision."""
+        # Create Timespec with exact millisecond precision (500,000,000 ns = 500 ms)
+        original = Timespec(10, 500000000)
+        qdt = original.to_qdatetime()
+        recovered = Timespec.from_qdatetime(qdt)
+        assert recovered == original
+        assert recovered.sec == 10
+        assert recovered.nsec == 500000000
+
+    def test_from_qdatetime_millisecond_precision(self):
+        """Nanoseconds should be multiples of 1,000,000 (1 millisecond)."""
+        dt = QDateTime.fromMSecsSinceEpoch(12345)
+        ts = Timespec.from_qdatetime(dt)
+        assert ts.sec == 12
+        # nsec should be 345 ms expressed as nanoseconds
+        assert ts.nsec == 345000000
+        assert ts.nsec % 1000000 == 0  # Multiple of 1 millisecond
+
+
 # Test APIError hierarchy
 class TestAPIError:
     def test_error_creation_by_code(self):

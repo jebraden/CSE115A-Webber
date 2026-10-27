@@ -76,6 +76,18 @@ class Timespec(StrictNamedTuple):
             self.sec * 1000 + self.nsec // 1000000
         )
 
+    @staticmethod
+    def from_qdatetime(dt: QDateTime) -> "Timespec":
+        """Construct a Timespec from a QDateTime.
+
+        Arguments:
+        dt -- the QDateTime object to convert (not modified)
+
+        Returns: the new Timespec
+        """
+        msec = dt.toMSecsSinceEpoch()
+        return Timespec(msec // 1000, (msec % 1000) * 1000000)
+
 
 # Error Types
 class APIError(Exception):
@@ -336,7 +348,7 @@ class WebberAPI:
         )
         body = self._body_json(resp, 200)
         try:
-            return convert_object(
+            obj: StatisticsResponse = convert_object(
                 [
                     ("-[].interval.start**", Timespec),
                     ("-[].interval.end**", Timespec),
@@ -346,6 +358,9 @@ class WebberAPI:
                 ],
                 body["statistics"],
             )
+            if len(intervals) != len(obj.statistics):
+                raise Exception("Output length is != to input length")
+            return obj
         except Exception as e:
             raise BadResponseError(resp.text) from e
 
