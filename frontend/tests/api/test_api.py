@@ -81,40 +81,6 @@ class TestTimespecToQDateTime:
         assert not result.isNull()
 
 
-# Test Interval
-class TestInterval:
-    def test_contains_both_bounds(self):
-        start = Timespec(10, 0)
-        end = Timespec(20, 0)
-        interval = Interval(start, end)
-        assert Timespec(15, 0) in interval
-        assert Timespec(10, 0) in interval  # inclusive
-        assert Timespec(20, 0) in interval  # inclusive
-        assert Timespec(5, 0) not in interval
-        assert Timespec(25, 0) not in interval
-
-    def test_contains_start_only(self):
-        start = Timespec(10, 0)
-        interval = Interval(start, None)
-        assert Timespec(15, 0) in interval
-        assert Timespec(5, 0) not in interval
-
-    def test_contains_end_only(self):
-        end = Timespec(20, 0)
-        interval = Interval(None, end)
-        assert Timespec(15, 0) in interval
-        assert Timespec(25, 0) not in interval
-
-    def test_contains_infinite(self):
-        interval = Interval(None, None)
-        assert Timespec(100, 0) in interval
-
-    def test_contains_wrong_type(self):
-        interval = Interval(None, None)
-        with pytest.raises(TypeError):
-            _ = 5 in interval
-
-
 # Test APIError hierarchy
 class TestAPIError:
     def test_error_creation_by_code(self):

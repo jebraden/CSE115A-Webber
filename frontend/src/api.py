@@ -67,7 +67,10 @@ class Timespec(StrictNamedTuple):
     def to_qdatetime(self) -> QDateTime:
         """Convert this Timespec into a QDateTime.
 
-        Return: a QDateTime representing the same instant as this Timespec
+        Note that QDateTime only has milisecond resolution, while Timespec has
+        nanosecond resolution.
+
+        Return: a QDateTime representing this Timespec
         """
         return QDateTime.fromMSecsSinceEpoch(
             self.sec * 1000 + self.nsec // 1000000
@@ -206,13 +209,13 @@ class BadRequestError(APIError, code=400):
 class Interval(StrictNamedTuple):
     """Represents a span of time.
 
-    The start and end are inclusive.
+    The start is inclusive, but the end is exclusive.
     """
 
     # the start of the interval (inclusive)
     start: Timespec | None
 
-    # the end of the interval (inclusive)
+    # the end of the interval (exclusive)
     end: Timespec | None
 
     def __contains__(self, time: object) -> bool:
@@ -221,11 +224,11 @@ class Interval(StrictNamedTuple):
                 f"Cannot check if a {type(time)} falls in the interval"
             )
         if self.start is not None and self.end is not None:
-            return self.start <= time <= self.end
+            return self.start <= time < self.end
         elif self.start is not None:
             return self.start <= time
         elif self.end is not None:
-            return time <= self.end
+            return time < self.end
         else:
             return True
 

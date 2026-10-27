@@ -379,8 +379,8 @@
 
      #+begin_src json-ts
        {
-           // Note that the below two are inclusive. That is, the interval
-           // is [start, end].
+           // Note that start is inclusive, but end is exclusive. That is, the
+           // interval is [start, end).
 
            // (timespec or null) start time of the interval
            // a value of `null` means -infinity
