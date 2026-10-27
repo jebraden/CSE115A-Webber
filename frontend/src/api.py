@@ -15,6 +15,8 @@ from .util.convpath import convert_object
 from copy import deepcopy
 from enum import Enum
 
+from PySide6.QtCore import QDateTime
+
 
 def _to_json(obj: Any) -> str:
     """Encode obj to JSON, handling StrictNamedTuple objects."""
@@ -61,6 +63,15 @@ class Timespec(StrictNamedTuple):
         elif self.sec == other.sec:
             return self.nsec < other.nsec
         return self.sec < other.sec
+
+    def to_qdatetime(self) -> QDateTime:
+        """Convert this Timespec into a QDateTime.
+
+        Return: a QDateTime representing the same instant as this Timespec
+        """
+        return QDateTime.fromMSecsSinceEpoch(
+            self.sec * 1000 + self.nsec // 1000000
+        )
 
 
 # Error Types

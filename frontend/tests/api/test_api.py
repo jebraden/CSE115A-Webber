@@ -1,6 +1,7 @@
 # tests/test_api.py
 import pytest
 import json
+from PySide6.QtCore import QDateTime
 from frontend.src.api import (
     WebberAPI,
     Timespec,
@@ -41,6 +42,43 @@ class TestTimespec:
         assert t[1] == 500
         assert t.sec == 10
         assert t.nsec == 500
+
+
+# Test Timespec.to_qdatetime conversion
+class TestTimespecToQDateTime:
+    def test_to_qdatetime_seconds_only(self):
+        t = Timespec(10, 0)
+        qdt = t.to_qdatetime()
+        assert qdt.toMSecsSinceEpoch() == 10000
+
+    def test_to_qdatetime_with_nanoseconds(self):
+        # 10 seconds + 500000000 ns (0.5s) = 10500 ms
+        t = Timespec(10, 500000000)
+        qdt = t.to_qdatetime()
+        assert qdt.toMSecsSinceEpoch() == 10500
+
+    def test_to_qdatetime_zero(self):
+        t = Timespec(0, 0)
+        qdt = t.to_qdatetime()
+        assert qdt.toMSecsSinceEpoch() == 0
+
+    def test_to_qdatetime_sub_second_only(self):
+        # 999999999 ns = 999.999999 ms -> truncates to 999 ms
+        t = Timespec(0, 999999999)
+        qdt = t.to_qdatetime()
+        assert qdt.toMSecsSinceEpoch() == 999
+
+    def test_to_qdatetime_truncation(self):
+        # 500000 ns = 0.5 ms -> truncates to 0
+        t = Timespec(0, 500000)
+        qdt = t.to_qdatetime()
+        assert qdt.toMSecsSinceEpoch() == 0
+
+    def test_to_qdatetime_returns_qdatetime(self):
+        t = Timespec(1, 500)
+        result = t.to_qdatetime()
+        assert isinstance(result, QDateTime)
+        assert not result.isNull()
 
 
 # Test Interval
