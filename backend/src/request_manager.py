@@ -1,17 +1,18 @@
 import sqlite3
+import os
 import json
 import uuid
 import logging
 import shutil
 import re
-import urllib.parse import urlsplit, parse_qs
+from urllib.parse import unquote, urlsplit, parse_qs
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
 class RequestManager():
-    def __init__():
+    def __init__(self):
         pass
 
 
@@ -52,74 +53,78 @@ class RequestManager():
 
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
         db = sqlite3.connect(db_path)
-        with db:
-            row = db.execute(
-                """
-                SELECT * 
-                FROM snapshots
-                WHERE id = ?
-                """,
-                (snapshot_id,)
-             ).fetchone()
-            if row is None:
-                return self.not_found(f"{snapshot_id} is not a valid snapshot id")
-            path = os.path.join(base_dir, snapshot_id)
-            # Should clean up the directory
-            shutil.rmtree(path)
-            logger.info(f"Deleted files on disk for the snapshot {snapshot_id}")
-            # Delete file rows
-            db.execute(
-                """
-                DELETE
-                FROM files
-                WHERE snapshot_id = ?
-                """,
-                (snapshot_id,)
-            )
-            logger.info(f"Deleted file entries assosciated with snapshot_id {snapshot_id}")
-            db.execute(
-                """
-                DELETE 
-                FROM snapshots
-                WHERE id = ?
-                """,
-                (snapshot_id,)
-            )
-            logger.info(f"Deleted snapshot ({snapshot_id}) entry from snapshots table ")
-            db.commit()
-    db.close()
-    path = os.path.join(base_dir, snapshot_id)
-    # Should clean up the directory
-    shutil.rmtree(path)
-    logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
-    return ({}, 202)
+        try:
+            with db:
+                row = db.execute(
+                    """
+                    SELECT * 
+                    FROM snapshots
+                    WHERE id = ?
+                    """,
+                    (snapshot_id,)
+                ).fetchone()
+                if row is None:
+                    return self.not_found(f"{snapshot_id} is not a valid snapshot id")
+                path = os.path.join(base_dir, snapshot_id)
+                # Should clean up the directory
+                shutil.rmtree(path)
+                logger.info(f"Deleted files on disk for the snapshot {snapshot_id}")
+                # Delete file rows
+                db.execute(
+                    """
+                    DELETE
+                    FROM files
+                    WHERE snapshot_id = ?
+                    """,
+                    (snapshot_id,)
+                )
+                logger.info(f"Deleted file entries assosciated with snapshot_id {snapshot_id}")
+                db.execute(
+                    """
+                    DELETE 
+                    FROM snapshots
+                    WHERE id = ?
+                    """,
+                    (snapshot_id,)
+                )
+                logger.info(f"Deleted snapshot ({snapshot_id}) entry from snapshots table ")
+                db.commit()
+        finally:
+            db.close()
+        path = os.path.join(base_dir, snapshot_id)
+        # Should clean up the directory
+        shutil.rmtree(path)
+        logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
+        return ({}, 202)
 
-    def get_snapshot(self, snapshot_id: str) -> (dict, int)
+    def get_snapshot(self, snapshot_id: str) -> (dict, int):
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         row = None
         file_ids = None
-        with db:
-            row = db.execute(
-                """
-                SELECT *
-                FROM snapshots
-                WHERE id = ?
-                """,
-                (snapshot_id,)
-            ).fetchone()
-            if row is None:
-                db.close()
-                return self.not_found(f"{snapshot_id} is not a valid snapshot id")
-            file_ids = db.execute(
-                """
-                SELECT id 
-                FROM files
-                WHERE snapshot_id = ?
-                """,
-                (snapshot_id,)
-            ).fetchall()
-        db.close()
+        try:
+            with db:
+                row = db.execute(
+                    """
+                    SELECT *
+                    FROM snapshots
+                    WHERE id = ?
+                    """,
+                    (snapshot_id,)
+                ).fetchone()
+                if row is None:
+                    return self.not_found(f"{snapshot_id} is not a valid snapshot id")
+                file_rows = db.execute(
+                    """
+                    SELECT id 
+                    FROM files
+                    WHERE snapshot_id = ?
+                    """,
+                    (snapshot_id,)
+                ).fetchall()
+        finally:
+            db.close()
+        file_ids = [row["id"] for row in file_rows]
         resp = {
             "id": row["id"],
             "url": row["url"],
@@ -131,60 +136,73 @@ class RequestManager():
 
     def get_file(self, file_id: str) -> (dict, int):
         db = sqlite3.connect(db_path)
+        db.row_factory = sqlite3.Row
         row = None
-        with db:
-            row = db.execute(
-                """
-                SELECT on_disk_path 
-                FROM files
-                WHERE id = ?
-                """,
-                (file_id,)
-            ).fetchone()
-            if row is None:
-                db.close()
-                return self.not_found(f"Failed to find file with id {file_id} in the database")
-        db.close()
-        return self._file_from_row(row)   
+        try:
+            with db:
+                row = db.execute(
+                    f"""
+                    SELECT {self._file_params()} 
+                    FROM files
+                    WHERE id = ?
+                    """,
+                    (file_id,)
+                ).fetchone()
+                if row is None:
+                    return self.not_found(f"Failed to find file with id {file_id} in the database")
+        finally:
+            db.close()
+        return self._file_from_row(row)  
 
     def get_file_by_url(self, snapshot_id: str, url_path: str, request) -> (dict, int):
         safe_path = unquote(url_path)
         comps = urlsplit(safe_path)
-        protocol = parsed.scheme
-        host = parsed.hostname
-        port = parsed.port
-        remote_path = parsed.path or "/"
+        protocol = comps.scheme
+        host = comps.hostname
+        port = comps.port
+        if port is None:
+            port = 443 if protocol == "https" else 80
+        remote_path = comps.path or "/"
 
-        params = request.args
-        if not params:
-            params = {}
+        params = request.args.to_dict(flat=False)
+        print(params)
         
-        query_values = (snapshot_id, protocol, port, host, remote_path, json.dumps(params))
+        query_values = (snapshot_id, protocol, host, port, remote_path, json.dumps(params))
+        print(query_values)
 
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         row = None
-        with db:
-            row = db.execute(
-                """
-                SELECT on_disk_path
-                FROM files
-                WHERE snapshot_id = ?  
-                    AND protocol = ?
-                    AND host = ?
-                    AND port = ?
-                    AND remote_path = ?
-                    AND request_parameters = jsonb(?)
-                """,
-                query_values
-            ).fetchone() # There should only be one archive for this exact situation
-
-        db.close()
+        try:
+            with db:
+                row = db.execute(
+                    f"""
+                    SELECT {self._file_params()}
+                    FROM files
+                    WHERE snapshot_id = ?  
+                        AND protocol = ?
+                        AND host = ?
+                        AND port = ?
+                        AND remote_path = ?
+                        AND request_parameters = jsonb(?)
+                    """,
+                    query_values
+                ).fetchone() # There should only be one archive for this exact situation
+        except Exception as e:
+            logger.warning(f"Encountered unexpected error searching for a file by url: {e}")
+            return self.internal_server_error("An unexpected error occured!")
+        finally:
+            db.close()
         if row is None:
             return self.not_found(f"Failed to match url {safe_path} to a file in the DB")
         return self._file_from_row(row) 
 
-    def regexp(pattern, url):
+    def _file_params(self) -> str:
+        return """
+            id, on_disk_path, json(response_headers) AS response_headers, response_code
+        """
+
+    def regexp(self, pattern, url):
         if url is None: return False
         return re.search(pattern, url) is not None
 
@@ -210,30 +228,32 @@ class RequestManager():
             logger.warning(f"query_snapshots: Encountered unexpected error {e}")
             return self.internal_server_error("Encountered unexpected internal error")
         try:
-            pattern = re.compile(pattern)
+            pattern = re.compile(url_reg)
         except re.error:
             return self.bad_request(f"The provided url-regex represents an invalid pattern {url_reg}")
 
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         results = None
-        with db:
-            db.create_function("REGEXP", 2, regexp)
-         
-            results = db.execute(
-                """
-                SELECT *
-                FROM snapshots
-                WHERE start_time < ?
-                    AND end_time > ?
+        try:
+            with db:
+                db.create_function("REGEXP", 2, self.regexp)
+
+                results = db.execute(
+                    """
+                    SELECT *
+                    FROM snapshots
+                    WHERE start_time >= ?
+                    AND end_time <= ?
                     AND url REGEXP ?
-                """,
-                (start, end, url_reg)
-            )
-        db.close()
+                    """,
+                    (start, end, url_reg)
+                ).fetchall()
+        finally:
+            db.close()
         if results is None:
             return ({"content": []}, 200)
-        ids = [row["id"] for row in rows]
+        ids = [row["id"] for row in results]
         return ({"content": ids}, 200)
 
     def query_files(self, request) -> (dict, int):
@@ -283,9 +303,10 @@ class RequestManager():
             codes = form.get("status_codes", [])
             if not isinstance(codes, list):
                 return self._bad_request(f"Expected a list for field 'status_codes', instead recieved {type(codes)}")
-            list_params = ", ".join(["?"]) * len(codes)
-            other_conds.append(f"response_code IN ({list_params})")
-            other_vals.extend(codes)
+            list_params = ", ".join(["?"] * len(codes))
+            if list_params:
+                other_conds.append(f"response_code IN ({list_params})")
+                other_vals.extend(codes)
         except TypeError, ValueError:
             return self._bad_request("Bad value provided for the port or status codes field")
         except Exception as e:
@@ -295,17 +316,22 @@ class RequestManager():
         
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
-        with db:
-            db.create_function("REGEXP", 2, regexp)
-            results = db.execute(
-                f"""
-                SELECT snapshot_id, id
-                FROM files
-                WHERE {conditions_string}
-                """,
-                other_vals
-            ).fetchAll()
-        db.close()    
+        where_clause = f"WHERE {conditions_string}" if conditions_string else ""
+        print(where_clause)
+        print(other_vals)
+        try:
+            with db:
+                db.create_function("REGEXP", 2, self.regexp)
+                results = db.execute(
+                    f"""
+                    SELECT snapshot_id, id
+                    FROM files
+                    {where_clause}
+                    """,
+                    other_vals
+                ).fetchall()
+        finally:
+            db.close()    
         data = [
             {
                 "snapshot_id": row["snapshot_id"],
@@ -327,14 +353,14 @@ class RequestManager():
         values.append(raw_pattern)
 
     
-    def _build_pattern(self, form, sql_name: str, field: str, conditons: list, values: list):
+    def _build_pattern(self, form, sql_name: str, field: str, conditions: list, values: list):
         """ Callers must surround this method in a try catch block """
-            raw_pattern = form.get(field, "")
-            if not raw_pattern: return None
-            pattern = re.compile(raw_pattern))
-            # Need to catch and handle above error
-            conditions.append(f"{sql_name} REGEXP ?")
-            values.append(raw_pattern)
+        raw_pattern = form.get(field, "")
+        if not raw_pattern: return None
+        pattern = re.compile(raw_pattern)
+        # Need to catch and handle above error
+        conditions.append(f"{sql_name} REGEXP ?")
+        values.append(raw_pattern)
 
 
     def _file_from_row(self, row: dict) -> (dict, int):
@@ -344,7 +370,7 @@ class RequestManager():
             return self.internal_server_error(f"Could not find file {file_id} locally at {disk_path}")
 
         body = None
-        with open(path, "rb") as file:
+        with open(disk_path, "rb") as file:
             body = file.read()
         
         headers = json.loads(row["response_headers"])
