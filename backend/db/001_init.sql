@@ -2,22 +2,24 @@
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
-CREATE TABLE snapshots (
+CREATE TABLE IF NOT EXISTS snapshots (
 -- can also use integer primary key, but the limited to signed 8byte integer
 -- limit on number of row
 id TEXT PRIMARY KEY,
 url TEXT NOT NULL,
 start_time REAL NOT NULL,
-end_time REAL NOT NULL,
-) WITHOUT ROWID IF NOT EXISTS;
+end_time REAL NOT NULL
+) WITHOUT ROWID;
 
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
 -- same comments as above about integer primary keys
 id TEXT PRIMARY KEY,
 snapshot_id TEXT,
 -- not strictly nessessary depending on how we choose to organize files on
 -- disk, but might be helpful for future storage changes
 on_disk_path TEXT NOT NULL,
+-- logical file size in bytes on disk (ignoring hardlinks, FS compression, etc.)
+file_size INTEGER NOT NULL,
 protocol TEXT NOT NULL,
 port INTEGER NOT NULL,
 host TEXT NOT NULL,
@@ -25,7 +27,7 @@ host TEXT NOT NULL,
 remote_path TEXT NOT NULL,
 request_sent_time REAL NOT NULL,
 request_method TEXT NOT NULL,
--- jsonb object mapping request headers to their values
+-- jsonb object mapping response headers to their values
 -- (see `/files/{FILE_ID}` for format)
 request_headers BLOB NOT NULL,
 -- jsonb object mapping request parameters to their values
@@ -38,10 +40,12 @@ response_code INTEGER NOT NULL,
 response_headers BLOB NOT NULL,
 
 FOREIGN KEY (snapshot_id) REFERENCES snapshots (id)
-    ON UPDATE SET NULL,
-    ON DELETE SET NULL,
-) WITHOUT ROWID IF NOT EXISTS;
+    ON UPDATE SET NULL
+    ON DELETE SET NULL
+) WITHOUT ROWID;
 
 -- Speed up searches in the form of
 -- `SELECT * FROM files WHERE snapshot_id = '...';`
-CREATE INDEX idx_files_snapshot ON files(snapshot_id) IF NOT EXISTS;
+CREATE INDEX IF NOT EXISTS idx_files_snapshot ON files(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_files_rec_time ON files(response_recieved_time);
+CREATE INDEX IF NOT EXISTS idx_snapshots_start_time ON snapshots(start_time);
