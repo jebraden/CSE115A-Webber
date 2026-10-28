@@ -1,5 +1,13 @@
 """
 Statistics UI Panel
+
+You can test this file separately from the rest of the program! From the root
+of the project, simply run:
+```
+python -m frontend.src.statistics.statistics
+```
+and you should see a window open with just this widget. In addition, it is
+populated with random data from a mock backend.
 """
 
 from typing import Any
