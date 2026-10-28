@@ -1,6 +1,7 @@
 from src.request_manager import RequestManager
 import src.request_manager
 
+from src.app import create_app
 from unittest.mock import MagicMock, patch
 from flask import Flask, request
 
@@ -71,6 +72,7 @@ def insert_file(test_db, insert_snapshot):
             )
 
     return insert
+
 
 
 class TestTimeConversion:
@@ -496,10 +498,11 @@ class TestQueryFiles:
             snapshot_id="snap-1",
             host="example.com",
             protocol="https",
-            port=443,
+            port=445,
             remote_path="/index.html",
             response_code=200,
-            request_sent_time=105,
+            request_sent_time=104,
+            response_recieved_time=105,
         )
 
         insert_file(
@@ -583,7 +586,51 @@ class TestQueryFiles:
             {"snapshot_id": "snap-1", "file_id": "file-1"}
         ]
 
+class TestDeleteSnapshot:
+    def delete_not_exist(self):
+        manager = RequestManager()
+        resp, status = manager.delete_snapshot("snap-1")
+        assert status == 404
+
+    def delete_exist_has_files(self, tmp_path, insert_snapshot, insert_file):
+        manager = RequestManager()
+
+        insert_snapshot(snapshot_id="snap-1")
+
+        path = tmp_path / "test.html"
+        path.write_bytes(b"hello")
+
+        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path))
+
+        res, status = manager.delete_snapshot("snap-1")
+        assert status == 202
+        assert not path.exists()
+
+        _, status2 = manager.get_file("file-1")
+        assert status2 == 404
+
+        _, status3 = maager.get_snapshot("snap-1")
+        assert status3 == 404
+
+
+
         
+class TestFlaskRoutes:
+    def setup(self):
+        self.app = create_app()
+        self.client = self.app.test_client()
+
+    def test_get_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1")
+        resp = self.client.get("/snapshots/snap-1")
+
+        resp2 = self.client.get("/snapshots/snap-2")
+
+        assert resp.status_code == 200
+        assert resp2.status_code == 404
+
+
 
 
 

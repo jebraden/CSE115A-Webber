@@ -10,7 +10,7 @@ import os
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from request_manager import RequestManager 
+from src.request_manager import RequestManager 
 
 def _setup_die_with_parent(ppid: int | None):
     if ppid is None:
@@ -58,8 +58,6 @@ def create_app(
     def health():
         return jsonify({"status": "ok"}), 200
 
-    return app
-
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
         error = None
@@ -67,7 +65,7 @@ def create_app(
         resp = manager.create_snapshot(request)
         return jsonify(resp[0]), resp[1]
 
-    @app.route("/snapshots/<str:snapshot_id>", methods=["GET", "DELETE"])
+    @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
         manager = RequestManager()
         resp = None
@@ -77,7 +75,7 @@ def create_app(
             resp = manager.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
-    @app.route("/files/<str:file_id>/data", methods=["GET"])
+    @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
         resp = None
         manager = RequestManager()
@@ -91,7 +89,7 @@ def create_app(
             content_type=data["content_type"]
         )
 
-    @app.route("/data/<str:snapshot_id>/<path:url_path>", methods=["GET"])
+    @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
         resp = None
         manager = RequestManager()
@@ -102,7 +100,7 @@ def create_app(
         data = resp[0]
         return Response(
             data["body"],
-            status=data["status"]
+            status=data["status"],
             content_type=data["content_type"]
         )
 
@@ -121,6 +119,8 @@ def create_app(
         resp = None
         manager = RequestManager()
         resp = manager.query_files(request) 
+
+    return app
 
 
 

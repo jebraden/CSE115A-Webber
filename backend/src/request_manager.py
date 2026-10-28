@@ -312,7 +312,7 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"query_files: Encountered unexpected error port values / status code: {e}")
             return self.internal_server_error("Encountered unexpected internal error")
-        conditions_string = "AND ".join(other_conds)
+        conditions_string = " AND ".join(other_conds)
         
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
