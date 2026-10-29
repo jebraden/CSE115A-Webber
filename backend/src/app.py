@@ -119,6 +119,24 @@ def create_app(
         resp = None
         manager = RequestManager()
         resp = manager.query_files(request) 
+        if resp[1] != 200:
+            return jsonify(resp[0]), resp[1]
+        data = resp[0]
+        return jsonify(data["content"]), reps[1]
+
+    @app.route("/statistics", methods=["QUERY"])
+    def query_statistics():
+        resp = None
+        manager = RequestManager()
+        resp = manager.query_statistics(request)
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/statistics/limits", methods=["GET"])
+    def get_limits():
+        resp = None
+        manager = RequestManager()
+        resp = manager.get_limits()
+        return jsonify(resp[0]), resp[1]
 
     return app
 

@@ -36,18 +36,19 @@ class PageScraper():
         self.working = False
         self.debug = debug
 
-    async def archive_page(self, url: str):
+    async def archive_page(self, url: str, headers: dict=None, method: str="GET"):
         self.db = sqlite3.connect(db_path)
 
         self.db.execute("PRAGMA foreign_keys = ON")
         self.req_metadata = dict()
 
         try:
-            await self._download_page(url)
+            snap_id = await self._download_page(url, headers, method)
         finally:
             self.db.close()
             self.db = None
             self.working = False
+        return snap_id
 
 
     async def collect_req_metadata(self, request):
@@ -165,8 +166,8 @@ class PageScraper():
             values,
         )
 
-    async def _download_page(self, url: str):
-        if self.working: return
+    async def _download_page(self, url: str, headers: dict=None, method:str="GET"):
+        if self.working: return None
         self.tasks = []
         self.saved_urls = set()
         self.snap_id = str(uuid.uuid4())
@@ -177,8 +178,14 @@ class PageScraper():
             )
             self.time = time.time()
             page = await browser.new_page()
+            
             parsed = urlparse(url)
             self.url = url
+
+
+            if headers is not None:
+                await page.setExtraHTTPHeaders(headers)
+
             self.origin = parsed.netloc
             self.origin_host = parsed.hostname
             self.base_dir = self.get_base_dir(url)
@@ -224,6 +231,7 @@ class PageScraper():
         )
         self.db.commit()
         self.working = False
+        return self.snap_id
 
 
     async def _drain_tasks(self):

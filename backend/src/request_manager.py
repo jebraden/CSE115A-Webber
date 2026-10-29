@@ -5,7 +5,9 @@ import uuid
 import logging
 import shutil
 import re
+import asyncio
 from urllib.parse import unquote, urlsplit, parse_qs
+from src.scraping.scraper import PageScraper
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -35,17 +37,21 @@ class RequestManager():
             except json.JSONDecodeError:
                 return self.bad_request("'request-options' contained invalid json. Failed to parse")
         if options_dict:
-            method = options.get("method", None)
+            method = options_dict.get("method", None)
             try:
-                raw_headers = options.get("headers", None)
+                raw_headers = options_dict.get("headers", None)
                 if raw_headers:
-                    headers = json.loads(options["headers"])
+                    headers = json.loads(options_dict["headers"])
             except json.JSONDecodeError:
                 return self.bad_request("'request_options.headers' contained invalid json. Failed to parse")
 
+        if url is None:
+            return self.bad_request("No url found")
+
         # Parameters validated
-        # TODO: CALL WEB SCRAPER - NEED TO ADD SUPPORT FOR THE THINGS
-        uid = uuid.uuid4()
+        # Currently on GET explicitly supported
+        scraper = PageScraper()
+        snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(uid)}
         logger.info(f"Created new snapshot with id: {uid}")
         return (response, 201)
@@ -342,6 +348,108 @@ class RequestManager():
         return {"content": data}, 200
 
 
+    def query_statistics(self, request):
+        form = request.form
+        intervals: list[dict] = None
+
+        intervals = form.get("intervals", None)
+        if not intervals:
+            return self.bad_request("query_statistics requires payloads consisting of an array of interval objects")
+
+        db = sqlite3.connect(db_path)
+        db.row_factory(sqlite3.Row)
+        results = []
+        for interval in intervals:
+            resp, status = self._process_interval(interval, db) 
+            if status != 200:
+                return (resp, status)
+            results.append(resp)
+        return {"statistics": results}, 200
+
+            
+
+    def _process_interval(self,interval: dict, db) -> (dict, int):
+        numeric = self._numeric_interval(interval)
+        if numeric[0] and numeric[1] and numeric[0] > numeric[1]:
+            return self.bad_request("Encountered bad interval object, start time > end time")
+        conditions = []
+        vals = []
+        if numeric[0] is not None:
+            conditions.append("start_time >= ?")
+            vals.append(numeric[0])
+        if numeric[1] is not None:
+            conditions.append("start_time < ?")
+            vals.append(numeric[1])
+        condition_str = " AND ".join(conditions)
+        where_clause = f"WHERE {condition_str}" if conditions else ""
+        results = None
+        with db:
+            results = db.execute(
+                f"""
+                SELECT s.id AS snapshot_id, s.url, f.id AS file_id,
+                    f.on_disk_path, f.host
+                FROM snapshots AS s
+                LEFT JOIN files AS f ON f.snapshot_id = s.id
+                {where_clause}
+                """,
+                vals
+            ).fetchall()
+        if results is None:
+            return self.internal_server_error("Hit unexpected error")
+        snap_set = set()
+        file_set = set()
+        url_set = set()
+        host_set = set()
+        size: int = 0
+        for result in results:
+            snap_set.add(result["snapshot_id"])
+            url_set.add(result["url"])
+            if result["file_id"] is None: continue
+            file_set.add(result["file_id"])
+            host_set.add(result["host"])
+
+            path = result["on_disk_path"]
+            if not os.path.isfile(path):
+                logger.warning(f"query_statistics: Unexpected snag: Found file in db {path}, but could not find file on local filesystem")
+                return self.internal_server_error("Hit unexpected error: found path in db not reflected in local storage!")
+            size += os.path.getsize(path)
+        return self._build_statistics(interval, len(snap_set), len(file_set), size, len(url_set), len(host_set)), 200
+        
+
+    def get_limits(self) -> (dict, int):
+        db = sqlite3.connect(db_path)
+        db.row_factory = sqlite3.Row
+        results = None
+        try:
+            results = db.execute(
+                """
+                SELECT MIN(start_time) AS first_snapshot, MAX(start_time) AS last_snapshot
+                FROM snapshots
+                """
+            ).fetchone()
+        except Exception as e:
+            return self.internal_server_error("Encountered unexpected error querying snapshot limit statistics")
+        finally:
+            db.close()
+
+        first_snapshot = None
+        last_snapshot = None
+        if results:
+            first_snapshot = (self._time_spec(results["first_snapshot"])
+            if results["first_snapshot"] is not None
+            else None)
+
+            last_snapshot = (self._time_spec(results["last_snapshot"])
+                if results["last_snapshot"] is not None
+                else None)
+        return ({
+            "first_snapshot": first_snapshot,
+            "last_snapshot": last_snapshot
+        }, 200)
+            
+
+
+
         
     def _url_subquery(self, form, field: str, conditions: list, values: list):
         """ Callers must surround method in try catch block """
@@ -388,7 +496,8 @@ class RequestManager():
 
 
 
-    def _time(self, ts: dict):
+    def _time(self, ts: dict) -> float:
+        if not ts: return None
         return ts["sec"] + ts["nsec"] / 1_000_000_000
 
     def _time_spec(self, t: float) -> dict:
@@ -397,6 +506,30 @@ class RequestManager():
             "sec": total_ns // 1_000_000_000,
             "nsec": total_ns % 1_000_000_000,
         }
+    def _numeric_interval(self, interval_dict: dict) -> (float, float):
+        raw_start = interval_dict.get("start", None)
+        raw_end = interval_dict.get("end", None)
+        if raw_start == 'null': raw_start = None
+        if raw_end == 'null': raw_end = None
+        start = self._time(raw_start)
+        end = self._time(raw_end)
+        return (start, end)
+
+
+    def _build_interval(self, start: float, end: float) -> dict:
+        return {"start": self._time_spec(start), "end": self._time_spec(end)}
+
+    def _build_statistics(self, interval: dict, snapshots: int, files: int, size: int, urls: int, hosts: int) -> dict:
+        return {
+            "interval": interval,
+            "snapshots": snapshots,
+            "files": files,
+            "size": size,
+            "urls": urls,
+            "hosts": hosts,
+        }
+
+
         
 
     def internal_server_error(self, msg: str) -> (dict, int):
@@ -406,5 +539,4 @@ class RequestManager():
         return ({"message": f"Bad Request: {msg}"}, 400)
     def not_found(self, msg: str) -> (dict, int):
         return ({"message": msg}, 404)
-
 

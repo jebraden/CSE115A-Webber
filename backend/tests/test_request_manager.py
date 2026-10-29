@@ -1,4 +1,5 @@
 from src.request_manager import RequestManager
+from src.scraping.scraper import PageScraper
 import src.request_manager
 
 from src.app import create_app
@@ -612,6 +613,116 @@ class TestDeleteSnapshot:
         _, status3 = maager.get_snapshot("snap-1")
         assert status3 == 404
 
+
+class TestProcessInterval:
+    def test_process_single_interval(self, test_db, insert_snapshot, insert_file, tmp_path):
+        manager = RequestManager()
+        insert_snapshot(
+            snapshot_id="snap-1",
+            url="https://example.com",
+            start_time=120.0,
+            end_time=125.0,
+        )
+        insert_snapshot(
+            snapshot_id="snap-2",
+            url="https://example.com",
+            start_time=150.0,
+            end_time=155.0,
+        )
+
+        file1 = tmp_path / "file1.html"
+        file1.write_bytes(b"aaa")
+
+        file2 = tmp_path / "file2.html"
+        file2.write_bytes(b"bbb")
+
+        file3 = tmp_path / "file3.html"
+        file3.write_bytes(b"ccc")
+
+        insert_file(
+            file_id="file-1",
+            snapshot_id="snap-1",
+            on_disk_path=str(file1),
+            host="cdn.example.com",
+        )
+        insert_file(
+            file_id="file-2",
+            snapshot_id="snap-1",
+            on_disk_path=str(file2),
+            host="cdn.example.com",
+        )
+        insert_file(
+            file_id="file-3",
+            snapshot_id="snap-2",
+            on_disk_path=str(file3),
+            host="example.com",
+        )
+        db = sqlite3.connect(test_db)
+        db.row_factory = sqlite3.Row
+        interval = {
+            "start": {"sec": 100, "nsec": 0},
+            "end": {"sec": 200, "nsec": 0},
+        }
+        try:
+            res, status = manager._process_interval(interval, db)
+        finally:
+            db.close()
+        assert status == 200
+        assert res["snapshots"] == 2
+        assert res["files"] == 3
+        assert res["size"] == 9
+        assert res["urls"] == 1
+        assert res["hosts"] == 2
+
+    def test_process_bad_interval(self):
+        manager = RequestManager()
+
+        interval = manager._build_interval(200, 100) 
+        res, status = manager._process_interval(interval, None)
+        assert status == 400
+
+    def test_process_no_results(self, test_db):
+        manager = RequestManager()
+        db = sqlite3.connect(test_db)
+        db.row_factory = sqlite3.Row
+        interval = manager._build_interval(100, 200)
+        try:
+            res, status = manager._process_interval(interval, db)
+        finally:
+            db.close()
+        assert status == 200
+        assert res["snapshots"] == 0
+        assert res["files"] == 0
+        assert res["size"] == 0
+        assert res["urls"] == 0
+        assert res["hosts"] == 0
+
+
+class TestGetLimits:
+    def test_no_snaps(self, test_db):
+        manager = RequestManager()
+        res, status = manager.get_limits()
+        assert status == 200
+        assert res == {
+            "first_snapshot": None,
+            "last_snapshot": None
+        }
+
+    def test_get_right_snaps(self, test_db, insert_snapshot):
+        manager = RequestManager()
+        insert_snapshot(snapshot_id="snap-1", start_time=100)
+        insert_snapshot(snapshot_id="snap-2", start_time=102)
+        insert_snapshot(snapshot_id="snap-3", start_time=104)
+        insert_snapshot(snapshot_id="snap-4", start_time=106)
+
+        res, status = manager.get_limits()
+        assert status == 200
+        assert res == {
+            "first_snapshot": manager._time_spec(100),
+            "last_snapshot": manager._time_spec(106)
+        }
+
+            
 
 
         
