@@ -18,12 +18,17 @@ import os
 def test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_archive.db"
     monkeypatch.setattr(src.request_manager, "db_path", str(db_file))
+    monkeypatch.setattr(src.app, "db_path", str(db_file))
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_file) as db:
         with open(schema, "r") as sql_script:
             db.executescript(sql_script.read())
     return str(db_file)
+
+@pytest.fixture
+def test_conn(test_db):
+    return sqlite3.connect(test_db)
 
 @pytest.fixture
 def insert_snapshot(test_db):
@@ -81,30 +86,30 @@ class TestTimeConversion:
     def _time_dict(self, sec, nsec):
         return {"sec": sec, "nsec": nsec}
 
-    def test_whole_seconds(self):
-        manager = RequestManager()
+    def test_whole_seconds(self, test_conn):
+        manager = RequestManager(test_conn)
         assert manager._time(self._time_dict(10, 0)) == 10
 
-    def test_fractional_secons(self):
-        manager = RequestManager()
+    def test_fractional_secons(self, test_conn):
+        manager = RequestManager(test_conn)
         assert manager._time(self._time_dict(10, 500_000_000)) == 10.5
 
-    def test_time_spec_whole_seconds(self):
-        manager = RequestManager()
+    def test_time_spec_whole_seconds(self, test_conn):
+        manager = RequestManager(test_conn)
         assert manager._time_spec(10.0) == {
             "sec": 10,
             "nsec": 0,
         }
 
-    def test_time_spec_fract_seconds(self):
-        manager = RequestManager()
+    def test_time_spec_fract_seconds(self, test_conn):
+        manager = RequestManager(test_conn)
         assert manager._time_spec(10.5) == {
             "sec": 10,
             "nsec": 500_000_000
         }
 
-    def test_conversion_safety(self):
-        manager = RequestManager()
+    def test_conversion_safety(self, test_conn):
+        manager = RequestManager(test_conn)
         timestamp = 1720000000.123456
         res = manager._time(manager._time_spec(timestamp))
 
@@ -112,19 +117,19 @@ class TestTimeConversion:
 
 
 class TestRegexp:
-    def test_matches(self):
-        assert RequestManager().regexp( r"example\.com", "https://example.com/index.html")
+    def test_matches(self, test_conn):
+        assert RequestManager(test_conn).regexp( r"example\.com", "https://example.com/index.html")
 
-    def test_no_match(self):
-        assert not RequestManager().regexp(r".*", None)
+    def test_no_match(self, test_conn):
+        assert not RequestManager(test_conn).regexp(r".*", None)
 
-    def test_bad_pattern_throws(self):
+    def test_bad_pattern_throws(self, test_conn):
         with pytest.raises(Exception):
-            RequestManager().regexp("[", "example.com")
+            RequestManager(test_conn).regexp("[", "example.com")
 
 class TestBuildPattern:
-    def test_add_regex_cond(self):
-        manager = RequestManager()
+    def test_add_regex_cond(self, test_conn):
+        manager = RequestManager(test_conn)
         conds = []
         vals = []
         form = {"host": r"example\.com$"}
@@ -133,16 +138,16 @@ class TestBuildPattern:
         assert conds == ["host REGEXP ?"]
         assert vals == [r"example\.com$"]
 
-    def test_omit_empty_pattern(self): 
-        manager = RequestManager()
+    def test_omit_empty_pattern(self, test_conn): 
+        manager = RequestManager(test_conn)
         conds = []
         vals = []
         manager._build_pattern({}, "host", "host", conds, vals)
         assert conds == []
         assert vals == []
 
-    def test_bad_regex_raises(self):
-        manager = RequestManager()
+    def test_bad_regex_raises(self, test_conn):
+        manager = RequestManager(test_conn)
         with pytest.raises(Exception):
             manager._build_pattern(
                 {"host": "["},
@@ -154,8 +159,8 @@ class TestBuildPattern:
 
 
 class TestUrlSubquery:
-    def test_add_url_subquery(self):
-        manager = RequestManager()
+    def test_add_url_subquery(self, test_conn):
+        manager = RequestManager(test_conn)
         conds = []
         vals = []
         form = {"url": r"https://example\.com/.*"}
@@ -166,8 +171,8 @@ class TestUrlSubquery:
         ] 
         assert vals == [r"https://example\.com/.*"]
 
-    def test_omit_empty_url(self):
-        manager = RequestManager()
+    def test_omit_empty_url(self, test_conn):
+        manager = RequestManager(test_conn)
         conds = []
         vals = []
         manager._url_subquery({}, "url", conds, vals)
@@ -185,8 +190,8 @@ class TestFileFromRow:
             "response_code": status
         }
 
-    def test_reads_file(self, tmp_path):
-        manager = RequestManager()
+    def test_reads_file(self, tmp_path, test_conn):
+        manager = RequestManager(test_conn)
         path = tmp_path / "test.html"
         path.write_bytes(b"<html>Hello</html>")
 
@@ -198,8 +203,8 @@ class TestFileFromRow:
         assert resp["status"] == 200
         assert resp["content_type"] == "text/html; charset=utf-8"
 
-    def test_content_header_case_insensitive(self, tmp_path):
-        manager = RequestManager()
+    def test_content_header_case_insensitive(self, tmp_path, test_conn):
+        manager = RequestManager(test_conn)
         path = tmp_path / "file.txt"
         path.write_bytes(b"Hi")
         resp, status = manager._file_from_row(
@@ -209,8 +214,8 @@ class TestFileFromRow:
         assert status == 200
         assert resp["content_type"] == "text/plain"
 
-    def test_missing_file_500s(self, tmp_path):
-        manager = RequestManager()
+    def test_missing_file_500s(self, tmp_path, test_conn):
+        manager = RequestManager(test_conn)
         path = tmp_path / "fake-file.html"
         resp,status = manager._file_from_row(
             self.make_row(path)
@@ -219,8 +224,8 @@ class TestFileFromRow:
         assert "message" in resp
 
 class TestGetSnapshot:
-    def test_snapshot_with_files(self, test_db, insert_snapshot, insert_file):
-        manager = RequestManager()
+    def test_snapshot_with_files(self, test_db, insert_snapshot, insert_file, test_conn):
+        manager = RequestManager(test_conn)
         insert_snapshot(
             snapshot_id="snap-1",
             url="https://example.com",
@@ -245,8 +250,8 @@ class TestGetSnapshot:
         }
         assert set(resp["files"]) == {"file-1", "file-2"}
 
-    def test_snapshot_no_files(self, test_db, insert_snapshot):
-        manager = RequestManager()
+    def test_snapshot_no_files(self, test_db, insert_snapshot, test_conn):
+        manager = RequestManager(test_conn)
         insert_snapshot(snapshot_id="snap-1")
         resp, status = manager.get_snapshot("snap-1")
         assert status == 200
@@ -258,8 +263,8 @@ class TestGetSnapshot:
         assert status == 404
 
 class TestGetFile:
-    def test_existing_file_returns_body(self, test_db, tmp_path, insert_snapshot, insert_file):
-        manager = RequestManager()
+    def test_existing_file_returns_body(self, test_db, tmp_path, insert_snapshot, insert_file, test_conn):
+        manager = RequestManager(test_conn)
         insert_snapshot(snapshot_id="snap-1")
         file_path = tmp_path / "file-1.html"
         body=b"Hello, world!"
@@ -283,8 +288,8 @@ class TestGetFile:
         resp, status = manager.get_file("fake-1")
         assert status == 404
 
-    def test_binary_return_exact_bytes(self, test_db, insert_snapshot, insert_file, tmp_path):
-        manager = RequestManager()
+    def test_binary_return_exact_bytes(self, test_db, insert_snapshot, insert_file, tmp_path, test_conn):
+        manager = RequestManager(test_conn)
         insert_snapshot()
         body = b"\x00\xff\x90\x01"
         file_path = tmp_path / "binary.bin"
@@ -297,7 +302,7 @@ class TestGetFile:
 
 
 class TestGetFileByUrl:
-    def test_repeated_query_params(self, insert_snapshot, insert_file, tmp_path):
+    def test_repeated_query_params(self, insert_snapshot, insert_file, tmp_path, test_conn):
         insert_snapshot(snapshot_id="snap-1")
         file_path = tmp_path / "test.html"
         file_path.write_bytes(b"test content")
@@ -314,13 +319,13 @@ class TestGetFileByUrl:
             "%3Ftag%3Da%26tag%3Db"
         )
         app = Flask(__name__)
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         with app.test_request_context("/?tag=a&tag=b"):
             res, status = manager.get_file_by_url("snap-1", url, request)
         assert status == 200
         assert res["body"] == b"test content"
 
-    def test_no_query_params(self, insert_snapshot, insert_file, tmp_path):
+    def test_no_query_params(self, insert_snapshot, insert_file, tmp_path, test_conn):
         insert_snapshot(snapshot_id="snap-1")
         file_path = tmp_path / "test.html"
         file_path.write_bytes(b"test content")
@@ -343,13 +348,13 @@ class TestGetFileByUrl:
 
         url = "https%3A%2F%2Fexample.com%2Findex.html"
         app = Flask(__name__)
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         with app.test_request_context(""):
             res, status = manager.get_file_by_url("snap-1", url, request)
         assert status == 200
         assert res["body"] == b"test content"
 
-    def test_no_file(self, insert_snapshot, insert_file, tmp_path):
+    def test_no_file(self, insert_snapshot, insert_file, tmp_path, test_conn):
         insert_snapshot(snapshot_id="snap-1")
 
         insert_file("file-1",
@@ -359,14 +364,14 @@ class TestGetFileByUrl:
         )
         url = "https%3A%2F%2Fexample.com%2Findex.html"
         app = Flask(__name__)
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         with app.test_request_context(""):
             res, status = manager.get_file_by_url("snap-1", url, request)
         assert status == 500
 
-    def test_no_file_entry(self, insert_snapshot, insert_file, tmp_path):
+    def test_no_file_entry(self, insert_snapshot, insert_file, tmp_path, test_conn):
         url = "https%3A%2F%2Fexample.com%2Findex.html"
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         app = Flask(__name__)
         with app.test_request_context(""):
             res, status = manager.get_file_by_url("snap-1", url, request)
@@ -376,13 +381,13 @@ class MockRequest:
     form = dict()
 
 class TestQuerySnapshots:
-    def test_query_multiple(self, insert_snapshot):
+    def test_query_multiple(self, insert_snapshot, test_conn):
         insert_snapshot(snapshot_id="snap-1", start_time=100, end_time=102)
         insert_snapshot(snapshot_id="snap-2", start_time=103, end_time=104)
         insert_snapshot(snapshot_id="snap-3", start_time=104, end_time=104)
         insert_snapshot(snapshot_id="snap-4", start_time=105, end_time=106)
 
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         request = MockRequest()
         request.form = {
             "start_time": manager._time_spec(104),
@@ -394,11 +399,11 @@ class TestQuerySnapshots:
         content = res["content"]
         assert content == ["snap-3", "snap-4"]
 
-    def test_query_regex(self, insert_snapshot):
+    def test_query_regex(self, insert_snapshot, test_conn):
         insert_snapshot(snapshot_id="snap-1", url="http://example.com")
         insert_snapshot(snapshot_id="snap-2", url="https://example.com")
 
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         request = MockRequest()
         request.form = {
             "url": "^http:\\/\\/example"
@@ -408,7 +413,7 @@ class TestQuerySnapshots:
         content = res["content"]
         assert content == ["snap-1",]
 
-    def test_query_empty_form(self, insert_snapshot):
+    def test_query_empty_form(self, insert_snapshot, test_conn):
         insert_snapshot(snapshot_id="snap-1", start_time=100, end_time=102)
         insert_snapshot(snapshot_id="snap-2", start_time=103, end_time=104)
         insert_snapshot(snapshot_id="snap-3", start_time=104, end_time=104)
@@ -423,7 +428,7 @@ class TestQuerySnapshots:
 
 
 class TestQueryFiles:
-    def test_query_no_filters(self, insert_snapshot, insert_file):
+    def test_query_no_filters(self, insert_snapshot, insert_file, test_conn):
         insert_snapshot(snapshot_id="snap-1", url="https://example.com")
         insert_snapshot(snapshot_id="snap-2", url="https://example.com", start_time=200, end_time=201)
 
@@ -434,7 +439,7 @@ class TestQueryFiles:
         request = MockRequest()
         request.form = {}
 
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
 
         res, status = manager.query_files(request)
         assert status == 200
@@ -455,7 +460,7 @@ class TestQueryFiles:
             }
         ]
 
-    def test_query_snapshot_url_regex(self, insert_snapshot, insert_file):
+    def test_query_snapshot_url_regex(self, insert_snapshot, insert_file, test_conn):
         insert_snapshot(
             snapshot_id="snap-1",
             url="https://example.com/index.html",
@@ -467,7 +472,7 @@ class TestQueryFiles:
         insert_file(file_id="file-1", snapshot_id="snap-1")
         insert_file(file_id="file-2", snapshot_id="snap-2")
 
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         request = MockRequest()
         request.form = {"url": "/index\\.html$"}
 
@@ -480,7 +485,7 @@ class TestQueryFiles:
         ]
         
 
-    def test_query_combined_filters(self, insert_snapshot, insert_file):
+    def test_query_combined_filters(self, insert_snapshot, insert_file, test_conn):
         insert_snapshot(
             snapshot_id="snap-1",
             url="https://example.com/index.html",
@@ -569,7 +574,7 @@ class TestQueryFiles:
             request_sent_time=105,
         )
 
-        manager = RequestManager()
+        manager = RequestManager(test_conn)
         request = MockRequest()
         request.form = {
             "start_time": manager._time_spec(104),
@@ -588,13 +593,13 @@ class TestQueryFiles:
         ]
 
 class TestDeleteSnapshot:
-    def delete_not_exist(self):
-        manager = RequestManager()
+    def delete_not_exist(self, test_conn):
+        manager = RequestManager(test_conn)
         resp, status = manager.delete_snapshot("snap-1")
         assert status == 404
 
-    def delete_exist_has_files(self, tmp_path, insert_snapshot, insert_file):
-        manager = RequestManager()
+    def delete_exist_has_files(self, tmp_path, insert_snapshot, insert_file, test_conn):
+        manager = RequestManager(test_conn)
 
         insert_snapshot(snapshot_id="snap-1")
 
@@ -615,8 +620,8 @@ class TestDeleteSnapshot:
 
 
 class TestProcessInterval:
-    def test_process_single_interval(self, test_db, insert_snapshot, insert_file, tmp_path):
-        manager = RequestManager()
+    def test_process_single_interval(self, test_db, insert_snapshot, insert_file, tmp_path, test_conn):
+        manager = RequestManager(test_conn)
         insert_snapshot(
             snapshot_id="snap-1",
             url="https://example.com",
@@ -674,15 +679,15 @@ class TestProcessInterval:
         assert res["urls"] == 1
         assert res["hosts"] == 2
 
-    def test_process_bad_interval(self):
-        manager = RequestManager()
+    def test_process_bad_interval(self, test_conn):
+        manager = RequestManager(test_conn)
 
         interval = manager._build_interval(200, 100) 
         res, status = manager._process_interval(interval, None)
         assert status == 400
 
-    def test_process_no_results(self, test_db):
-        manager = RequestManager()
+    def test_process_no_results(self, test_db, test_conn):
+        manager = RequestManager(test_conn)
         db = sqlite3.connect(test_db)
         db.row_factory = sqlite3.Row
         interval = manager._build_interval(100, 200)

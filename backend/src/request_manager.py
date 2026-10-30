@@ -13,8 +13,13 @@ base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
+# Please note db = self.db usage is due to this member var not existing before
+# And I am too lazy to insert self.db everywhere
 class RequestManager():
-    def __init__(self):
+    def __init__(self, db_conn=None):
+        if db_conn is None:
+            db_conn = sqlite3.connect(db_path)
+        self.db = db_conn
         pass
 
 
@@ -50,7 +55,7 @@ class RequestManager():
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper()
+        scraper = PageScraper(db_conn = self.db)
         snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(uid)}
         logger.info(f"Created new snapshot with id: {uid}")
@@ -58,7 +63,7 @@ class RequestManager():
 
 
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
-        db = sqlite3.connect(db_path)
+        db = self.db 
         try:
             with db:
                 row = db.execute(
@@ -72,9 +77,6 @@ class RequestManager():
                 if row is None:
                     return self.not_found(f"{snapshot_id} is not a valid snapshot id")
                 path = os.path.join(base_dir, snapshot_id)
-                # Should clean up the directory
-                shutil.rmtree(path)
-                logger.info(f"Deleted files on disk for the snapshot {snapshot_id}")
                 # Delete file rows
                 db.execute(
                     """
@@ -95,8 +97,9 @@ class RequestManager():
                 )
                 logger.info(f"Deleted snapshot ({snapshot_id}) entry from snapshots table ")
                 db.commit()
-        finally:
-            db.close()
+        except Exception as e:
+            logger.warning(f"delete_snapshot: Encountered unexpected error {e}")
+            return self.internal_server_error(f"encountered unexpected error deleting snapshot {snapshot_id}")
         path = os.path.join(base_dir, snapshot_id)
         # Should clean up the directory
         shutil.rmtree(path)
@@ -104,7 +107,7 @@ class RequestManager():
         return ({}, 202)
 
     def get_snapshot(self, snapshot_id: str) -> (dict, int):
-        db = sqlite3.connect(db_path)
+        db = self.db 
         db.row_factory = sqlite3.Row
         row = None
         file_ids = None
@@ -128,8 +131,9 @@ class RequestManager():
                     """,
                     (snapshot_id,)
                 ).fetchall()
-        finally:
-            db.close()
+        except Exception as e:
+            logger.warning(f"get_snapshot: Encountered unexpected error {e}")
+            return self.internal_server_error("Encountered unexpected error when getting snapshot data")
         file_ids = [row["id"] for row in file_rows]
         resp = {
             "id": row["id"],
@@ -141,7 +145,7 @@ class RequestManager():
         return (resp, 200)
 
     def get_file(self, file_id: str) -> (dict, int):
-        db = sqlite3.connect(db_path)
+        db = self.db
         db.row_factory = sqlite3.Row
         row = None
         try:
@@ -156,8 +160,9 @@ class RequestManager():
                 ).fetchone()
                 if row is None:
                     return self.not_found(f"Failed to find file with id {file_id} in the database")
-        finally:
-            db.close()
+        except Exception as e:
+            logger.warning(f"get_file: Encountered unexpected error getting snapshot data {e}")
+            return self.internal_server_error("Encountered unexpected error when getting file data")
         return self._file_from_row(row)  
 
     def get_file_by_url(self, snapshot_id: str, url_path: str, request) -> (dict, int):
@@ -176,7 +181,7 @@ class RequestManager():
         query_values = (snapshot_id, protocol, host, port, remote_path, json.dumps(params))
         print(query_values)
 
-        db = sqlite3.connect(db_path)
+        db = self.db
         db.row_factory = sqlite3.Row
         row = None
         try:
@@ -197,8 +202,6 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"Encountered unexpected error searching for a file by url: {e}")
             return self.internal_server_error("An unexpected error occured!")
-        finally:
-            db.close()
         if row is None:
             return self.not_found(f"Failed to match url {safe_path} to a file in the DB")
         return self._file_from_row(row) 
@@ -238,7 +241,7 @@ class RequestManager():
         except re.error:
             return self.bad_request(f"The provided url-regex represents an invalid pattern {url_reg}")
 
-        db = sqlite3.connect(db_path)
+        db = self.db
         db.row_factory = sqlite3.Row
         results = None
         try:
@@ -255,8 +258,9 @@ class RequestManager():
                     """,
                     (start, end, url_reg)
                 ).fetchall()
-        finally:
-            db.close()
+        except Exception as e:
+            logger.warning(f"query_snapshots: Encountered unexpected error in the db {e}")
+            return self.internal_server_error("Encountered unexpected internal error")
         if results is None:
             return ({"content": []}, 200)
         ids = [row["id"] for row in results]
@@ -320,7 +324,7 @@ class RequestManager():
             return self.internal_server_error("Encountered unexpected internal error")
         conditions_string = " AND ".join(other_conds)
         
-        db = sqlite3.connect(db_path)
+        db = self.db
         db.row_factory = sqlite3.Row
         where_clause = f"WHERE {conditions_string}" if conditions_string else ""
         print(where_clause)
@@ -336,8 +340,9 @@ class RequestManager():
                     """,
                     other_vals
                 ).fetchall()
-        finally:
-            db.close()    
+        except Exception as e:
+            logger.warning(f"query_files: Encountered error in the db {e}")
+            return self.internal_server_error("Encountered unexpected internal error")
         data = [
             {
                 "snapshot_id": row["snapshot_id"],
@@ -356,7 +361,7 @@ class RequestManager():
         if not intervals:
             return self.bad_request("query_statistics requires payloads consisting of an array of interval objects")
 
-        db = sqlite3.connect(db_path)
+        db = self.db
         db.row_factory(sqlite3.Row)
         results = []
         for interval in intervals:
@@ -428,9 +433,8 @@ class RequestManager():
                 """
             ).fetchone()
         except Exception as e:
+            logger.warning(f"get_limits: Encountered unexpected DB error {e}")
             return self.internal_server_error("Encountered unexpected error querying snapshot limit statistics")
-        finally:
-            db.close()
 
         first_snapshot = None
         last_snapshot = None
