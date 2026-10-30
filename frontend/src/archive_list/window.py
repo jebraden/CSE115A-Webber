@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QSize, QTimer, Signal, Slot
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QAction, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QHeaderView, QLabel, QLineEdit, QMainWindow,
     QPushButton, QHBoxLayout, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from .service import SnapshotService
 from .loader import load_snapshots
 from ..tasks import TaskRunner
+from ..archive_request import ArchiveRequestDialog
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,15 @@ logger = logging.getLogger(__name__)
 class ArchiveWindow(QMainWindow):
     # Story 1.3.2 can connect a viewer to this signal; no file is opened here.
     snapshot_requested = Signal(object)
+    archive_created = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo: bool = False, debounce_ms: int = 200):
+    def __init__(self, service: SnapshotService, *, demo: bool = False, debounce_ms: int = 200, create_snapshot=None):
         super().__init__()
+        self._create_snapshot = create_snapshot
+        self._archive_dialog = None
+        archive_action = QAction("Archive URL…", self)
+        archive_action.triggered.connect(self.open_archive_dialog)
+        self.menuBar().addMenu("File").addAction(archive_action)
         self._runner = TaskRunner()
         self._runner.result.connect(self._search_result)
         self._runner.error.connect(self._search_error)
@@ -90,6 +97,24 @@ class ArchiveWindow(QMainWindow):
         self.table.cellClicked.connect(self._request_snapshot)
         self.table.cellActivated.connect(self._request_snapshot)
         self.search_input.setFocus()
+        self.search()
+
+    def open_archive_dialog(self):
+        if self._archive_dialog is None:
+            self._archive_dialog = ArchiveRequestDialog(self._create_snapshot, parent=self)
+            self._archive_dialog.archive_created.connect(self._archive_finished)
+            self._archive_dialog.finished.connect(self._archive_dialog_finished)
+        self._archive_dialog.show()
+        self._archive_dialog.raise_()
+        self._archive_dialog.activateWindow()
+
+    def _archive_dialog_finished(self, result):
+        dialog, self._archive_dialog = self._archive_dialog, None
+        if dialog is not None:
+            dialog.deleteLater()
+
+    def _archive_finished(self, snapshot_id):
+        self.archive_created.emit(snapshot_id)
         self.search()
 
     def _invalidate(self):
@@ -170,6 +195,8 @@ class ArchiveWindow(QMainWindow):
         self._closed = True
         self._debounce.stop()
         self._runner.close()
+        if self._archive_dialog is not None:
+            self._archive_dialog.reject()
         super().closeEvent(event)
 
     def _request_snapshot(self, row: int, column: int):
