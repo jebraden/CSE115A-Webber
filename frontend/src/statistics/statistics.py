@@ -195,7 +195,7 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
         if hours:
             out.append(f"{hours}h")
         if mins:
-            out.append(f"{mins}s")
+            out.append(f"{mins}m")
         if secs:
             out.append(f"{secs}s")
         return " ".join(out)
