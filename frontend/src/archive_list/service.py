@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Awaitable, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -16,11 +16,14 @@ class Snapshot:
 
 
 class SnapshotService(Protocol):
-    def search_snapshots(self, query: str) -> Sequence[Snapshot]:
+    def search_snapshots(self, query: str) -> Sequence[Snapshot] | Awaitable[Sequence[Snapshot]]:
         """Return URL substring matches, newest first; blank returns all.
 
         Matching is case-insensitive. Datetimes must be timezone-aware.
         Raise an exception on failure (an empty result means no matches).
+        Called on a pool thread. Create DB connections there, use bounded I/O
+        timeouts, and never access widgets. Async adapters must create/use/close
+        their client inside the coroutine returned by this call.
         """
         ...
 

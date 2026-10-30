@@ -96,3 +96,7 @@ All eight existing tests passed during integration. Manual testing also confirme
 ### Remaining Work
 
 The application currently uses `MockSnapshotService`. A future backend adapter must provide real snapshot metadata and the corresponding local HTML paths.
+## GUI background tasks
+
+See [GUI_TASKS.md](GUI_TASKS.md) for Sprint 2.2.4 worker integration, the slow
+search demo, tests and cancellation limits.

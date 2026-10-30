@@ -1,10 +1,9 @@
 """Basic temporary Qt UI for story 1.3.1."""
 
 import logging
-from datetime import timezone
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Signal
+from PySide6.QtCore import QSize, QTimer, Signal, Slot
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QHeaderView, QLabel, QLineEdit, QMainWindow,
@@ -12,6 +11,8 @@ from PySide6.QtWidgets import (
 )
 
 from .service import SnapshotService
+from .loader import load_snapshots
+from ..tasks import TaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +21,17 @@ class ArchiveWindow(QMainWindow):
     # Story 1.3.2 can connect a viewer to this signal; no file is opened here.
     snapshot_requested = Signal(object)
 
-    def __init__(self, service: SnapshotService, *, demo: bool = False):
+    def __init__(self, service: SnapshotService, *, demo: bool = False, debounce_ms: int = 200):
         super().__init__()
+        self._runner = TaskRunner()
+        self._runner.result.connect(self._search_result)
+        self._runner.error.connect(self._search_error)
+        self._closed = False
+        self._current_request = None
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(debounce_ms)
+        self._debounce.timeout.connect(self.search)
         self._service = service
         self._snapshots = []
         self._default_icon = QIcon(str(Path(__file__).parent / "assets" / "webpage.svg"))
@@ -49,6 +59,10 @@ class ArchiveWindow(QMainWindow):
         search_row.addWidget(self.search_input)
         self.clear_button = QPushButton("Clear")
         search_row.addWidget(self.clear_button)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_search)
+        search_row.addWidget(self.cancel_button)
         layout.addLayout(search_row)
         layout.addWidget(QLabel("Snapshots"))
         self.table = QTableWidget(0, 3)
@@ -71,59 +85,92 @@ class ArchiveWindow(QMainWindow):
         layout.addWidget(self.status)
         self.setCentralWidget(root)
         self.clear_button.clicked.connect(self.clear_search)
-        self.search_input.textChanged.connect(self.search)
+        self.search_input.textChanged.connect(self._schedule_search)
         self.search_input.returnPressed.connect(self.search)
         self.table.cellClicked.connect(self._request_snapshot)
         self.table.cellActivated.connect(self._request_snapshot)
         self.search_input.setFocus()
         self.search()
 
-    def clear_search(self):
-        if self.search_input.text():
-            self.search_input.clear()
-        else:
-            self.search()
-        self.search_input.setFocus()
-
-    def search(self):
-        query = self.search_input.text().strip()
+    def _invalidate(self):
+        if self._current_request is not None:
+            self._runner.cancel(self._current_request)
+            self._current_request = None
         self.table.setRowCount(0)
         self._snapshots = []
-        try:
-            snapshots = list(self._service.search_snapshots(query))
-            # Format before populating so a malformed adapter response cannot
-            # leave a partially displayed result set.
-            rows = [
-                (s.url, s.archived_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), str(s.id))
-                for s in snapshots
-            ]
-        except Exception:
-            logger.exception("Snapshot search failed")
-            self.status.setText("Could not load snapshots. Please try searching again.")
+
+    def _set_busy(self, busy):
+        self.cancel_button.setEnabled(busy)
+        self.table.setEnabled(not busy)
+
+    def _schedule_search(self):
+        # Invalidate at the first keystroke, including the debounce interval.
+        self._invalidate()
+        self._set_busy(True)
+        self.status.setText("Searching…")
+        self._debounce.start()
+
+    def clear_search(self):
+        self.search_input.clear()
+        self.search()
+        self.search_input.setFocus()
+
+    def cancel_search(self):
+        self._debounce.stop()
+        self._invalidate()
+        self._set_busy(False)
+        self.status.setText("Search cancelled.")
+
+    def search(self):
+        if self._closed:
             return
-        self._snapshots = snapshots
-        self.table.setRowCount(len(rows))
-        for row, values in enumerate(rows):
-            for column, value in enumerate(values):
+        self._debounce.stop()
+        self._invalidate()
+        query = self.search_input.text().strip()
+        service = self._service
+        self._set_busy(True)
+        self.status.setText("Searching…")
+        self._current_request = self._runner.submit(
+            lambda token: load_snapshots(service, query, token), key="snapshot-search",
+        )
+
+    @Slot(int, object)
+    def _search_error(self, request_id, failure):
+        if self._closed or request_id != self._current_request:
+            return
+        self._current_request = None
+        self._set_busy(False)
+        logger.error("Snapshot search failed: %s", failure.traceback)
+        self.status.setText("Could not load snapshots. Please try searching again.")
+
+    @Slot(int, object)
+    def _search_result(self, request_id, result):
+        if self._closed or request_id != self._current_request:
+            return
+        self._current_request = None
+        self._set_busy(False)
+        self._snapshots = result.snapshots
+        self.table.setRowCount(len(result.rows))
+        for row, (url, time, snapshot_id, image) in enumerate(result.rows):
+            for column, value in enumerate((url, time, snapshot_id)):
                 item = QTableWidgetItem(value)
                 if column == 0:
-                    item.setIcon(self._snapshot_icon(snapshots[row].favicon_path))
+                    icon = self._default_icon if image.isNull() else QIcon(QPixmap.fromImage(image))
+                    item.setIcon(icon)
                 item.setToolTip(value)
                 self.table.setItem(row, column, item)
-        if rows:
-            self.status.setText(f"{len(rows)} snapshot(s) • Newest first")
-        elif query:
+        if result.rows:
+            self.status.setText(f"{len(result.rows)} snapshot(s) • Newest first")
+        elif self.search_input.text().strip():
             self.status.setText("No snapshots match this URL. Try another search or clear the search field.")
         else:
             self.status.setText("No archived webpages yet.")
 
-    def _snapshot_icon(self, path: Path | None) -> QIcon:
-        # Only read archived local icons; browsing the list never contacts a site.
-        if path is not None and path.is_file():
-            pixmap = QPixmap(str(path))
-            if not pixmap.isNull():
-                return QIcon(pixmap)
-        return self._default_icon
+    def closeEvent(self, event):
+        self._closed = True
+        self._debounce.stop()
+        self._runner.close()
+        super().closeEvent(event)
 
     def _request_snapshot(self, row: int, column: int):
         if 0 <= row < len(self._snapshots):
