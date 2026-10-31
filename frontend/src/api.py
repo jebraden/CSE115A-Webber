@@ -287,7 +287,7 @@ class SnapshotQueryResponse(StrictNamedTuple):
     """A response from the /search/snapshots endpoint"""
 
     # a list of snapshot ids that matched the search
-    snapshot_ids = list[str]
+    snapshot_ids: list[str]
 
 class SnapshotFilePair(StrictNamedTuple):
     """Holds a snapshot id and its corresponding file id"""
@@ -302,7 +302,7 @@ class FileQueryResponse(StrictNamedTuple):
     """A response from the /search/files endpoint"""
 
     # a list of snapshot id/file id pairs
-    snapfilepairs = list[SnapshotFilePair]
+    snapfilepairs: list[SnapshotFilePair]
 
 
 # /statistics
@@ -403,16 +403,14 @@ class WebberAPI:
         """
         async with httpx.AsyncClient() as client:
             resp = await self._request(
-                client, "GET", "/snapshots/create", request_body
+                client, "POST", "/snapshots/create", request_body
             )
 
             body = self._body_json(resp, 201)
 
-            retval = CreateSnapshotResponse()
             try:
-                retval.id = body["id"]
-                return retval
-            except KeyError as e:
+                return CreateSnapshotResponse(id=body["id"])
+            except (TypeError, KeyError) as e:
                 raise BadResponseError(resp.text) from e
 
     async def delete_snapshot(
@@ -449,9 +447,9 @@ class WebberAPI:
             try:
                 return convert_object(
                     [
-                        ("-[].start_time**", Timespec),
-                        ("-[].end_time**", Timespec),
-                        ("", GetSnapshotResponse)
+                        ("-start_time**", Timespec),
+                        ("-end_time**", Timespec),
+                        ("**", GetSnapshotResponse)
                     ],
                     body
                 )
@@ -476,12 +474,11 @@ class WebberAPI:
             try:
                 return convert_object(
                     [
-                        ("-[].request.sent_time**", Timespec),
-                        ("[].request**", RequestInfo),
-                        ("-[].response.received_time**", Timespec),
-                        ("[].response**", ResponseInfo),
-                        ("[]**", GetFileResponse),
-                        ("", GetFileResponse)
+                        ("-request.sent_time**", Timespec),
+                        ("request**", RequestInfo),
+                        ("-response.received_time**", Timespec),
+                        ("response**", ResponseInfo),
+                        ("**", GetFileResponse)
                     ],
                     body
                 )
@@ -527,7 +524,7 @@ class WebberAPI:
             try:
                 return convert_object(
                     [
-                        ("", SnapshotQueryResponse)
+                        ("**", SnapshotQueryResponse)
                     ],
                     body
                 )
@@ -556,10 +553,10 @@ class WebberAPI:
             try:
                 return convert_object(
                     [
-                        ("[].snapfilepairs**", SnapshotFilePair),
-                        ("", FileQueryResponse)
+                        ("snapfilepairs.[]**", SnapshotFilePair),
+                        ("**", FileQueryResponse)
                     ],
-                    body
+                    body,
                 )
             except Exception as e:
                 raise BadResponseError(resp.text) from e
