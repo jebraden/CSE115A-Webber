@@ -29,13 +29,14 @@ class PageScraper():
     working: bool
     debug: bool
 
-    def __init__(self, db_conn=None, debug=False):
+    def __init__(self, db_conn=None, debug=False, archive_dir=None):
         self.saved_urls = set()
         self.style_sheets = set()
         self.req_metadata = dict()
         self.working = False
         self.debug = debug
         self.db = db_conn
+        self.archive_dir = archive_dir or os.path.join(os.getenv("HOME"), ".webber")
 
     async def archive_page(self, url: str, headers: dict=None, method: str="GET"):
         if self.db is None:
@@ -266,8 +267,7 @@ class PageScraper():
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
-        path = os.path.join(os.path.join(os.getenv("HOME"), ".webber",
-                    self.snap_id, host))
+        path = os.path.join(self.archive_dir, self.snap_id, host)
         return path
 
 

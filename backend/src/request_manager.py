@@ -7,7 +7,8 @@ import shutil
 import re
 import asyncio
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from src.scraping.scraper import PageScraper
+from .scraping.scraper import PageScraper
+from playwright.async_api import TimeoutError as ScrapeTimeout
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -16,10 +17,11 @@ logger = logging.getLogger(__name__)
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
 class RequestManager():
-    def __init__(self, db_conn=None):
+    def __init__(self, db_conn=None, *, archive_dir=None):
         if db_conn is None:
             db_conn = sqlite3.connect(db_path)
         self.db = db_conn
+        self.archive_dir = archive_dir or base_dir
         pass
 
     def _json_check(self, payload):
@@ -41,11 +43,18 @@ class RequestManager():
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
+        try:
+            parsed = urlsplit(url)
+            if not isinstance(url, str) or parsed.scheme not in ("http", "https") or not parsed.hostname:
+                return self.bad_request("Enter a complete http:// or https:// URL.")
+            parsed.port
+        except (TypeError, ValueError, AttributeError):
+            return self.bad_request("Enter a valid http:// or https:// URL.")
         raw_options = payload.get("request_options", None)
         # Assume that options parameters are... optional
         if raw_options:
             try:
-                options_dict = json.loads(raw_options)
+                options_dict = raw_options if isinstance(raw_options, dict) else json.loads(raw_options)
             except json.JSONDecodeError:
                 return self.bad_request("'request-options' contained invalid json. Failed to parse")
         if options_dict:
@@ -62,8 +71,19 @@ class RequestManager():
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper(db_conn = self.db)
-        snap_id = asyncio.run(scraper.archive_page(url))
+        scraper = PageScraper(db_conn=self.db, archive_dir=self.archive_dir)
+        try:
+            snap_id = asyncio.run(asyncio.wait_for(scraper.archive_page(url), timeout=120))
+        except (TimeoutError, ScrapeTimeout):
+            self.db.rollback()
+            return {"message": "Archiving timed out. Check your archives before retrying."}, 504
+        except Exception:
+            self.db.rollback()
+            logger.exception("Unable to archive URL")
+            return {"message": "Could not archive this page. Check the URL and connection, then retry."}, 500
+        if not isinstance(snap_id, str) or not snap_id:
+            self.db.rollback()
+            return self.internal_server_error("The scraper did not return a snapshot ID.")
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
@@ -83,7 +103,7 @@ class RequestManager():
                 ).fetchone()
                 if row is None:
                     return self.not_found(f"{snapshot_id} is not a valid snapshot id")
-                path = os.path.join(base_dir, snapshot_id)
+                path = os.path.join(self.archive_dir, snapshot_id)
                 # Delete file rows
                 db.execute(
                     """
@@ -107,7 +127,7 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"delete_snapshot: Encountered unexpected error {e}")
             return self.internal_server_error(f"encountered unexpected error deleting snapshot {snapshot_id}")
-        path = os.path.join(base_dir, snapshot_id)
+        path = os.path.join(self.archive_dir, snapshot_id)
         # Should clean up the directory
         shutil.rmtree(path)
         logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
@@ -196,7 +216,7 @@ class RequestManager():
                 "parameters": params,
             },
             "response": {
-                "recieved_time": self._time_spec(row["response_recieved_time"]),
+                "received_time": self._time_spec(row["response_recieved_time"]),
                 "code": row["response_code"],
                 "headers": response_headers,
             },

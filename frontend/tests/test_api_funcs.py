@@ -54,14 +54,16 @@ def backend(monkeypatch) -> FakeBackend:
     state = FakeBackend()
 
     class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *exc):
             return False
 
-        async def request(self, method, url, content=None):
-            state.calls.append({"method": method, "url": url, "content": content})
+        async def request(self, method, url, content=None, **kwargs):
+            state.calls.append({"method": method, "url": url, "content": content, **kwargs})
             return state.response
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
@@ -92,7 +94,8 @@ class TestCreateSnapshot:
         run(api.create_snapshot("http://example.com"))
 
         assert backend.last["url"] == f"{BASE}/snapshots/create"
-        assert backend.last["content"] == json.dumps("http://example.com").encode()
+        assert backend.last["content"] == json.dumps({"url": "http://example.com"}).encode()
+        assert backend.last["headers"]["Content-Type"] == "application/json"
 
     def test_uses_post(self, api, backend):
         # NOTE: the docstring says POST, but the implementation currently sends
@@ -472,4 +475,3 @@ class TestQueryFiles:
 
         with pytest.raises(BadResponseError):
             run(api.query_files("host", "x"))
-            

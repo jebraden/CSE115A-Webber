@@ -6,6 +6,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 from PySide6.QtWidgets import QApplication, QWidget
 from frontend.src.archive_list.service import MockSnapshotService, Snapshot
 from frontend.src import main_window
+from .test_tasks import until
 
 
 class ViewerDouble(QWidget):
@@ -35,6 +36,7 @@ def window(app, monkeypatch, tmp_path):
     ]
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
     win = main_window.MainWindow(MockSnapshotService(snapshots), demo=True, settings=settings)
+    until(app, lambda: win._search_request is None)
     yield win
     win.close()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -44,6 +46,7 @@ def select(window, snapshot_id):
     for i, snapshot in enumerate(window._snapshots):
         if snapshot.id == snapshot_id:
             window.ui.snapshotList.setCurrentRow(i)
+            until(QApplication.instance(), lambda: not window._tabs[snapshot_id].get("loading"))
             return
     raise AssertionError(snapshot_id)
 
@@ -79,10 +82,12 @@ def test_missing_file_clears_previous_content(window):
 def test_search_keeps_open_tab_and_filters(window):
     select(window, "valid")
     window.ui.searchInput.setText("missing.example")
+    until(QApplication.instance(), lambda: window.ui.snapshotList.count() == 1)
     assert window.ui.snapshotList.count() == 1
     assert window._snapshot.id == "valid"
     assert window.ui.openWindowButton.isEnabled()
     window.ui.searchInput.setText("no-match")
+    until(QApplication.instance(), lambda: window.ui.snapshotList.count() == 0)
     assert window.ui.snapshotList.count() == 0
     assert window._snapshot.id == "valid"
     assert window.ui.viewerStack.currentWidget() is window.ui.webPage

@@ -12,6 +12,10 @@ class InvalidArchiveResponse(Exception):
     """A successful request did not return the required snapshot ID."""
 
 
+class BackendUnavailable(Exception):
+    """An owned backend failed startup or has stopped."""
+
+
 @dataclass(frozen=True)
 class ErrorMessage:
     title: str
@@ -34,6 +38,11 @@ def _message(error):
 
 
 def present_error(error: Exception) -> ErrorMessage:
+    if isinstance(error, BackendUnavailable):
+        return ErrorMessage(
+            "Archive service unavailable",
+            "The local archive service did not start or has stopped. Restart Webber and try again.",
+        )
     if isinstance(error, ArchiveServiceUnavailable):
         return ErrorMessage(
             "Archive service is not connected",

@@ -1,6 +1,31 @@
 # CSE115A-Webber
 The repository for Webber, a local website archiver being developed for CSE115A.
 
+## Run the desktop app
+
+Use Python 3.14 or newer. From the project root:
+
+```sh
+make setup
+make install-browser
+make run-frontend
+```
+
+The normal app starts its own local backend and reads real archives from
+`~/.webber`. Use **Save a page** to archive a full HTTP/HTTPS URL, search the
+sidebar as you type, and select a snapshot to open its saved page or raw HTML.
+For a separate test collection:
+
+```sh
+scripts/run-frontend.sh --data-dir /tmp/webber-test-archives
+```
+
+`make run-demo` opens the bundled sample UI. `make test-offscreen` runs the
+regular tests; `make test-integration` captures a temporary local website and
+checks that its saved HTML, styles and image remain viewable after the original
+server stops. See [frontend integration](docs/FRONTEND_INTEGRATION.md) for the
+architecture, task boundaries and additional run options.
+
 
 # Project Description (copied from GrepThink2)
 
@@ -34,4 +59,5 @@ The main goals of the project are to develop a functioning program that handles 
 The project will involve developing a desktop program that should be able to supply a web crawler and a limited browser with support for HTML. It'll also involve developing a database. Being able to support JavaScript heavy or more complex sites would be nice as well, but that's very much a stretch goal.
 
 ## Tech Stack
-Tentatively, we'll probably use Electron for the browser, React or HTML for the UI, Python and Node.js on the backend for scraping, and SQLite for the database. We can also talk and see if there are better alternatives.
+Python, PySide6 / Qt Widgets and Qt WebEngine, a local Flask / Waitress backend,
+Playwright for capture, and SQLite for archive metadata.
