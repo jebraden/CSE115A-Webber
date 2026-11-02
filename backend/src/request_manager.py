@@ -6,7 +6,7 @@ import logging
 import shutil
 import re
 import asyncio
-from urllib.parse import unquote, urlsplit, parse_qs
+from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from src.scraping.scraper import PageScraper
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
@@ -22,19 +22,26 @@ class RequestManager():
         self.db = db_conn
         pass
 
+    def _json_check(self, payload):
+        if not isinstance(payload, dict):
+            return self.bad_request("Expected JSON payload")
+        else:
+            return None
 
     def create_snapshot(self, request) -> (dict, int):
-        form = request.form
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
 
         url: str = None
         options_dict: dict = None
         method: str = None
         headers: dict = None
         try:
-            url = form["url"]
+            url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        raw_options = form.get("request_options", None)
+        raw_options = payload.get("request_options", None)
         # Assume that options parameters are... optional
         if raw_options:
             try:
@@ -144,6 +151,57 @@ class RequestManager():
         }
         return (resp, 200)
 
+    def get_file_info(self, file_id: str) -> (dict, int):
+        db = self.db
+        db.row_factory = sqlite3.Row
+
+        row = None
+        try:
+            with db:
+                row = db.execute(
+                    f"""
+                    SELECT id, snapshot_id, protocol, port,
+                        host, remote_path, request_sent_time, request_method,
+                        json(request_headers) AS request_headers, 
+                        json(request_parameters) AS request_parameters,
+                        response_recieved_time, response_code,
+                        json(response_headers) AS response_headers
+                    FROM files
+                    WHERE id = ?
+                    """,
+                    (file_id,)
+                ).fetchone()
+                if row is None:
+                    return self.not_found(f"Failed to find file with id {file_id} in the database")
+        except Exception as e:
+            logger.warning(f"get_file_info: Encountered unexpected error fetching file data from {file_id}: {e}")
+            return self.internal_server_error("Encountered unexpected error getting file data")
+
+        headers = json.loads(row["request_headers"])
+        response_headers = json.loads(row["response_headers"])
+        params = json.loads(row["request_parameters"])
+        url = self._build_url(row)
+        return ({
+            "id": row["id"],
+            "snapshot": row["snapshot_id"],
+            "url": url,
+            "protocol": row["protocol"],
+            "port": row["port"],
+            "host": row["host"],
+            "path": row["remote_path"].lstrip("/"),
+            "request": {
+                "sent_time": self._time_spec(row["request_sent_time"]),
+                "method": row["request_method"],
+                "headers": headers,
+                "parameters": params,
+            },
+            "response": {
+                "recieved_time": self._time_spec(row["response_recieved_time"]),
+                "code": row["response_code"],
+                "headers": response_headers,
+            },
+        }, 200)
+
     def get_file(self, file_id: str) -> (dict, int):
         db = self.db
         db.row_factory = sqlite3.Row
@@ -161,7 +219,7 @@ class RequestManager():
                 if row is None:
                     return self.not_found(f"Failed to find file with id {file_id} in the database")
         except Exception as e:
-            logger.warning(f"get_file: Encountered unexpected error getting snapshot data {e}")
+            logger.warning(f"get_file: Encountered unexpected error getting file data {e}")
             return self.internal_server_error("Encountered unexpected error when getting file data")
         return self._file_from_row(row)  
 
@@ -216,19 +274,22 @@ class RequestManager():
         return re.search(pattern, url) is not None
 
     def query_snapshots(self, request) -> (dict, int):
-        form = request.form
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
         start = float("-inf")
         end = float("inf") 
         url_reg = r"." # match anything in the db
         pattern = None
         try:
-            start_spec = form.get("start_time", {})
+            start_spec = payload.get("start_time", {})
             if start_spec:
                 start = self._time(start_spec)
-            end_spec = form.get("end_time", {})
+            end_spec = payload.get("end_time", {})
             if end_spec:
                 end = self._time(end_spec)
-            raw_pattern = form.get("url", "")
+            raw_pattern = payload.get("url", "")
             if raw_pattern:
                 url_reg = rf"{raw_pattern}"
         except KeyError:
@@ -267,22 +328,25 @@ class RequestManager():
         return ({"content": ids}, 200)
 
     def query_files(self, request) -> (dict, int):
-        form = request.form
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
         other_conds = []
         other_vals = []
 
-        snap_id = form.get("snapshot_id", "")
+        snap_id = payload.get("snapshot_id", "")
         if snap_id:
             other_conds.append("snapshot_id = ?")
             other_vals.append(snap_id)
 
         try:
-            start_spec = form.get("start_time", {})
+            start_spec = payload.get("start_time", {})
             if start_spec:
                 start = self._time(start_spec)
                 other_conds.append("request_sent_time >= ?")
                 other_vals.append(start)
-            end_spec = form.get("end_time", {})
+            end_spec = payload.get("end_time", {})
             if end_spec:
                 end = self._time(end_spec)
                 other_conds.append("response_recieved_time <= ?")
@@ -295,8 +359,8 @@ class RequestManager():
         pattern_fields = {"host": "host", "protocol": "protocol", "path": "remote_path"}
         try:
             for field in pattern_fields:
-                self._build_pattern(form, pattern_fields[field], field, other_conds, other_vals)
-            self._url_subquery(form, "url", other_conds, other_vals)
+                self._build_pattern(payload, pattern_fields[field], field, other_conds, other_vals)
+            self._url_subquery(payload, "url", other_conds, other_vals)
         except re.error:
             return self._bad_request("Failed to generate regex pattern for one of the provided regex options!")
         except Exception as e:
@@ -305,12 +369,12 @@ class RequestManager():
 
         port = None
         try:
-            raw_port = form.get("port", "")
+            raw_port = payload.get("port", "")
             if raw_port:
                 port = int(raw_port)
                 other_conds.append("port = ?")
                 other_vals.append(port)
-            codes = form.get("status_codes", [])
+            codes = payload.get("status_codes", [])
             if not isinstance(codes, list):
                 return self._bad_request(f"Expected a list for field 'status_codes', instead recieved {type(codes)}")
             list_params = ", ".join(["?"] * len(codes))
@@ -354,10 +418,13 @@ class RequestManager():
 
 
     def query_statistics(self, request):
-        form = request.form
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
         intervals: list[dict] = None
 
-        intervals = form.get("intervals", None)
+        intervals = payload.get("intervals", None)
         if not intervals:
             return self.bad_request("query_statistics requires payloads consisting of an array of interval objects")
 
@@ -371,7 +438,24 @@ class RequestManager():
             results.append(resp)
         return {"statistics": results}, 200
 
-            
+    def _build_url(self, row) -> str:
+        params = json.loads(row["request_parameters"])
+
+        url = (
+            f"/data/{row['snapshot_id']}/"
+            f"{row['protocol']}://{row['host']}"
+        )
+        protocol = row["protocol"]
+        port = row["port"]
+        if not (
+            (protocol == "https" and port == 443) or
+            (protocol == "http" and port == 80)
+        ):
+            url += f":{port}"
+        url+=row["remote_path"]
+        if params:
+            url += "?" + urlencode(params, doseq=True)
+        return url
 
     def _process_interval(self,interval: dict, db) -> (dict, int):
         numeric = self._numeric_interval(interval)
@@ -455,9 +539,9 @@ class RequestManager():
 
 
         
-    def _url_subquery(self, form, field: str, conditions: list, values: list):
+    def _url_subquery(self, payload, field: str, conditions: list, values: list):
         """ Callers must surround method in try catch block """
-        raw_pattern = form.get(field, "")
+        raw_pattern = payload.get(field, "")
         if not raw_pattern: return None
         pattern = re.compile(raw_pattern)
         subquery = "snapshot_id IN (SELECT id FROM snapshots WHERE url REGEXP ?)"
@@ -465,9 +549,9 @@ class RequestManager():
         values.append(raw_pattern)
 
     
-    def _build_pattern(self, form, sql_name: str, field: str, conditions: list, values: list):
+    def _build_pattern(self, payload, sql_name: str, field: str, conditions: list, values: list):
         """ Callers must surround this method in a try catch block """
-        raw_pattern = form.get(field, "")
+        raw_pattern = payload.get(field, "")
         if not raw_pattern: return None
         pattern = re.compile(raw_pattern)
         # Need to catch and handle above error

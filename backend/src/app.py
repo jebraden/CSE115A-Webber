@@ -91,6 +91,14 @@ def create_app(
             resp = manager.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
+
+    @app.route("/files/<string:file_id>", methods=["GET"])
+    def get_file_info(file_id: str):
+        resp = None
+        manager = RequestManager(db_conn=query_conn)
+        resp = manager.get_file_info(file_id)
+        return jsonify(resp[0]), resp[1]
+
     @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
         resp = None
@@ -138,7 +146,7 @@ def create_app(
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
-        return jsonify(data["content"]), reps[1]
+        return jsonify(data["content"]), resp[1]
 
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():

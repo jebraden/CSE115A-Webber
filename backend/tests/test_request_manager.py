@@ -378,7 +378,11 @@ class TestGetFileByUrl:
         assert status == 404
 
 class MockRequest:
-    form = dict()
+    def __init__(self):
+        self.json_dat = dict()
+
+    def get_json(self, silent=False):
+        return self.json_dat
 
 class TestQuerySnapshots:
     def test_query_multiple(self, insert_snapshot, test_conn):
@@ -389,7 +393,7 @@ class TestQuerySnapshots:
 
         manager = RequestManager(test_conn)
         request = MockRequest()
-        request.form = {
+        request.json_dat = {
             "start_time": manager._time_spec(104),
             "end_time": manager._time_spec(106)
         }
@@ -405,7 +409,7 @@ class TestQuerySnapshots:
 
         manager = RequestManager(test_conn)
         request = MockRequest()
-        request.form = {
+        request.json_dat = {
             "url": "^http:\\/\\/example"
         }
         res, status = manager.query_snapshots(request)
@@ -420,7 +424,7 @@ class TestQuerySnapshots:
         insert_snapshot(snapshot_id="snap-4", start_time=105, end_time=106)
         manager = RequestManager()
         request = MockRequest()
-        request.form = {}
+        request.json_dat = {}
         res, status = manager.query_snapshots(request)
         assert status == 200
         content = res["content"]
@@ -437,7 +441,7 @@ class TestQueryFiles:
         insert_file(file_id="file-3", snapshot_id="snap-2")
 
         request = MockRequest()
-        request.form = {}
+        request.json_dat = {}
 
         manager = RequestManager(test_conn)
 
@@ -474,7 +478,7 @@ class TestQueryFiles:
 
         manager = RequestManager(test_conn)
         request = MockRequest()
-        request.form = {"url": "/index\\.html$"}
+        request.json_dat = {"url": "/index\\.html$"}
 
         res, status = manager.query_files(request)
     
@@ -576,7 +580,7 @@ class TestQueryFiles:
 
         manager = RequestManager(test_conn)
         request = MockRequest()
-        request.form = {
+        request.json_dat = {
             "start_time": manager._time_spec(104),
             "end_time": manager._time_spec(106),
             "host": r"^example\.com$",
@@ -726,6 +730,59 @@ class TestGetLimits:
             "first_snapshot": manager._time_spec(100),
             "last_snapshot": manager._time_spec(106)
         }
+
+
+class TestGetFileInfo:
+    def test_get_file_info(self, test_conn, insert_snapshot, insert_file):
+        insert_snapshot(snapshot_id="snap-1", start_time=100)
+        insert_file(
+            file_id="file-1",
+            request_sent_time=100.0,
+            request_method="GET",
+            request_headers=json.dumps({
+                "Authorization": ["Basic abc123"]
+            }),
+            request_parameters=json.dumps({
+                "param1": ["val"],
+                "param2": ["val"]
+            }),
+            response_recieved_time=101.0,
+            response_code=200,
+            response_headers=json.dumps({
+                "Content-Type": ["text/html"],
+                "X-Factor": ["1000"]
+            })
+        )
+        manager = RequestManager(db_conn=test_conn)
+        resp, status = manager.get_file_info("file-1")
+        assert status == 200
+        assert resp["id"] == "file-1"
+        assert resp["snapshot"] == "snap-1"
+        assert resp["url"] == "/data/snap-1/https://example.com/index.html?param1=val&param2=val"
+        assert resp["protocol"] == "https"
+        assert resp["port"] == 443
+        assert resp["host"] == "example.com"
+        assert resp["path"] == "index.html"
+        assert resp["request"] == {
+            "sent_time": {"sec": 100,  "nsec": 0},
+            "method": "GET",
+            "headers": {
+                "Authorization": ["Basic abc123"]
+            },
+            "parameters": {
+                "param1": ["val"],
+                "param2": ["val"],
+            }
+        }
+        assert resp["response"] == {
+            "recieved_time": {"sec": 101, "nsec": 0},
+            "code": 200,
+            "headers": {
+                "Content-Type": ["text/html"],
+                "X-Factor": ["1000"]
+            },
+        }
+
 
             
 
