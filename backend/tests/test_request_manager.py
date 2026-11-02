@@ -52,6 +52,7 @@ def insert_file(test_db, insert_snapshot):
             "id": file_id,
             "snapshot_id": snapshot_id,
             "on_disk_path": "/tmp/file-1.html",
+            "file_size": 100,
             "protocol": "https",
             "port": 443,
             "host": "example.com",
@@ -652,18 +653,21 @@ class TestProcessInterval:
             file_id="file-1",
             snapshot_id="snap-1",
             on_disk_path=str(file1),
+            file_size=os.path.getsize(file1),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-2",
             snapshot_id="snap-1",
             on_disk_path=str(file2),
+            file_size=os.path.getsize(file2),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-3",
             snapshot_id="snap-2",
             on_disk_path=str(file3),
+            file_size=os.path.getsize(file3),
             host="example.com",
         )
         db = sqlite3.connect(test_db)

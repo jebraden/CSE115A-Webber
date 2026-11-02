@@ -476,7 +476,7 @@ class RequestManager():
             results = db.execute(
                 f"""
                 SELECT s.id AS snapshot_id, s.url, f.id AS file_id,
-                    f.on_disk_path, f.host
+                    f.on_disk_path, f.host, f.file_size
                 FROM snapshots AS s
                 LEFT JOIN files AS f ON f.snapshot_id = s.id
                 {where_clause}
@@ -501,7 +501,10 @@ class RequestManager():
             if not os.path.isfile(path):
                 logger.warning(f"query_statistics: Unexpected snag: Found file in db {path}, but could not find file on local filesystem")
                 return self.internal_server_error("Hit unexpected error: found path in db not reflected in local storage!")
-            size += os.path.getsize(path)
+            # matches if it is NULL or 0. Good probably
+            if not result["file_size"]: 
+                size += os.path.getsize(path)
+            else: size += result["file_size"]
         return self._build_statistics(interval, len(snap_set), len(file_set), size, len(url_set), len(host_set)), 200
         
 

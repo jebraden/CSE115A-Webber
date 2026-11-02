@@ -347,7 +347,7 @@ class TestHandleResponse:
             self.scraper,
             "write_resource_file",
             return_value="/tmp/page.html",
-        ) as write_file:
+        ), patch("os.path.getsize", return_value=100) as write_file:
             await self.scraper.handle_response(resp)
         
         write_file.assert_called_once()
@@ -380,7 +380,7 @@ class TestHandleResponse:
             self.scraper, 
             "write_resource_file", 
             return_value="/tmp/missing.html",
-        ):
+        ), patch("os.path.getsize", return_value=100):
             await self.scraper.handle_response(resp)
 
         row = db.execute(
@@ -425,7 +425,7 @@ class TestHandleResponse:
             self.scraper,
             "write_resource_file",
             return_value=f"{tmp_path}/search",
-        ):
+        ), patch("os.path.getsize", return_value=100):
             await self.scraper.handle_response(resp)
         row = db.execute(
             """
