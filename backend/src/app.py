@@ -61,7 +61,14 @@ def create_app(
     app.logger.setLevel(log_level)
 
     snapshot_conn = sqlite3.connect(db_path)
+
     query_conn = sqlite3.connect(db_path)
+
+    schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
+    with sqlite3.connect(db_path) as db:
+        with open(schema, "r") as sql_script:
+            snapshot_conn.executescript(sql_script.read())
+            query_conn.executescript(sql_script.read())
 
     @app.route("/health")
     def health():

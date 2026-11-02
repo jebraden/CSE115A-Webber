@@ -57,8 +57,8 @@ class RequestManager():
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn = self.db)
         snap_id = asyncio.run(scraper.archive_page(url))
-        response = {"id": str(uid)}
-        logger.info(f"Created new snapshot with id: {uid}")
+        response = {"id": str(snap_id)}
+        logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
 
 
