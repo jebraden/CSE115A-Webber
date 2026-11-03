@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
 
 from .archive_list.service import SnapshotService
 from .archive_viewer import ArchiveViewer
-from .themes import stylesheet_for
+from .themes import (
+    BUTTON_CHARCOAL, BUTTON_GRAY_BORDER, DARK_SAGE, LIGHT_GREEN, LIGHT_MOSS,
+    OFF_WHITE, OLIVE, PALE_SAGE, SAGE, WARM_GRAY_BORDER, stylesheet_for,
+)
 from .viewing import DEFAULTS, normalize_preferences
 
 
@@ -264,8 +267,11 @@ class MainWindow(QMainWindow):
         close_icon = QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg"))
         for button in self.findChildren(_TabCloseButton):
             button.setIcon(close_icon)
-        foreground, background, border = ("#b6d1aa", "#1c1c1c", "#3b3b3b") if mode == "dark" else ("#566446", "#f8f8f6", "#cececa")
-        hover, focus = ("#293629", "#8ca37b") if mode == "dark" else ("#e9ecdf", "#879b76")
+        foreground, background, border = (
+            (LIGHT_GREEN, BUTTON_CHARCOAL, BUTTON_GRAY_BORDER)
+            if mode == "dark" else (OLIVE, OFF_WHITE, WARM_GRAY_BORDER)
+        )
+        hover, focus = (DARK_SAGE, LIGHT_MOSS) if mode == "dark" else (PALE_SAGE, SAGE)
         self.popout.setStyleSheet(
             f"QToolButton {{ color: {foreground}; background: {background}; border: 1px solid {border}; border-radius: 8px; }}"
             f"QToolButton:hover, QToolButton:focus {{ background: {hover}; border-color: {focus}; }}"
