@@ -25,8 +25,12 @@ for module; do
 
     echo "Installing dependencies..."
     . "${module}/venv/bin/activate"
+    set --
+    for file in "${module}"/*requirements.txt; do
+        set -- '-r' "${file}" "${@}"
+    done
     set -x
-    pip install -r "${module}/requirements.txt"
+    pip install "${@}"
     set +x
     deactivate
 done

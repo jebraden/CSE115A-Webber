@@ -8,7 +8,6 @@ from src.urlreplace import (
 import pytest
 import base64
 from bs4 import BeautifulSoup
-import os
 
 
 class TestJoinPaths:
