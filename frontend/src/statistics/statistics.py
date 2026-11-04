@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QAbstractButton,
     QTableWidgetItem,
     QHeaderView,
+    QVBoxLayout,
 )
 from .chart import LineChart
 from enum import Enum, auto
@@ -212,7 +213,7 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
             return f"{count} B"
         PREFIX = "KMGTPEZYRQ"
         scale = math.floor(math.log(count, 1024))
-        prefix = PREFIX[scale]
+        prefix = PREFIX[scale - 1]
         return f"{count // (1024 ** scale)} {prefix}iB"
 
     def _update_table(self, stats: UIStatisticsResponse):
@@ -390,7 +391,7 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
 if __name__ == "__main__":
     import sys
     from PySide6.QtAsyncio import run
-    from PySide6.QtWidgets import QMainWindow, QApplication, QVBoxLayout
+    from PySide6.QtWidgets import QMainWindow, QApplication
 
     from .mock_api import MockWebberAPI
 
