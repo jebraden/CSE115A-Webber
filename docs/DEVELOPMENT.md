@@ -100,3 +100,8 @@ The application currently uses `MockSnapshotService`. A future backend adapter m
 
 See [GUI_TASKS.md](GUI_TASKS.md) for Sprint 2.2.4 worker integration, the slow
 search demo, tests and cancellation limits.
+
+## URL request errors
+
+See [URL_ERRORS.md](URL_ERRORS.md) for Sprint 2.3.1, the archive dialog, offline
+error-response demo and real API integration seam.
