@@ -2,4 +2,4 @@
 
 . backend/venv/bin/activate
 
-exec python -m backend.src -- "${@}"
+exec python -m backend.src "${@}"
