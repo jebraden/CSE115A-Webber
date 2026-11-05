@@ -807,6 +807,22 @@ class TestFlaskRoutes:
         assert resp.status_code == 200
         assert resp2.status_code == 404
 
+    def test_query_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1", start_time=400)
+    
+        body = {"start_time": {"sec": 300, "nsec": 0}}
+        resp = self.client.post("/search/snapshots", json=body)
+        resp = self.client.open(
+            "/search/snapshots",
+            method="QUERY",
+            json={"host": "example.com"}
+        )
+        assert resp.status_code == 200
+
+        assert resp.json is not None
+        assert resp.get_json()[0] == "snap-1"
+
 
 
 
