@@ -139,17 +139,14 @@ class TestBuildPattern:
         assert conds == ["host REGEXP ?"]
         assert vals == [r"example\.com$"]
 
-    def test_omit_empty_pattern(self, test_conn): 
+
+     def test_omit_empty_pattern(self, test_conn): 
         manager = RequestManager(test_conn)
         conds = []
         vals = []
         manager._build_pattern({}, "host", "host", conds, vals)
         assert conds == []
         assert vals == []
-
-
-        urls = await scraper.gather_hyperlinks(page)
-        assert urls == set()
 
     def test_bad_regex_raises(self, test_conn):
         manager = RequestManager(test_conn)
