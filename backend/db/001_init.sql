@@ -18,6 +18,7 @@ snapshot_id TEXT,
 -- not strictly nessessary depending on how we choose to organize files on
 -- disk, but might be helpful for future storage changes
 on_disk_path TEXT NOT NULL,
+file_size INTEGER NOT NULL,
 protocol TEXT NOT NULL,
 port INTEGER NOT NULL,
 host TEXT NOT NULL,

@@ -52,6 +52,7 @@ def insert_file(test_db, insert_snapshot):
             "id": file_id,
             "snapshot_id": snapshot_id,
             "on_disk_path": "/tmp/file-1.html",
+            "file_size": 100,
             "protocol": "https",
             "port": 443,
             "host": "example.com",
@@ -652,18 +653,21 @@ class TestProcessInterval:
             file_id="file-1",
             snapshot_id="snap-1",
             on_disk_path=str(file1),
+            file_size=os.path.getsize(file1),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-2",
             snapshot_id="snap-1",
             on_disk_path=str(file2),
+            file_size=os.path.getsize(file2),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-3",
             snapshot_id="snap-2",
             on_disk_path=str(file3),
+            file_size=os.path.getsize(file3),
             host="example.com",
         )
         db = sqlite3.connect(test_db)
@@ -802,6 +806,22 @@ class TestFlaskRoutes:
 
         assert resp.status_code == 200
         assert resp2.status_code == 404
+
+    def test_query_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1", start_time=400)
+    
+        body = {"start_time": {"sec": 300, "nsec": 0}}
+        resp = self.client.post("/search/snapshots", json=body)
+        resp = self.client.open(
+            "/search/snapshots",
+            method="QUERY",
+            json={"host": "example.com"}
+        )
+        assert resp.status_code == 200
+
+        assert resp.json is not None
+        assert resp.get_json()[0] == "snap-1"
 
 
 

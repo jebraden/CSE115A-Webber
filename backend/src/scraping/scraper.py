@@ -15,6 +15,8 @@ from playwright.async_api import async_playwright
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
+from src.urlreplace import relativize_html, relativize_stylesheet 
+
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
 
 class PageScraper():
@@ -28,9 +30,11 @@ class PageScraper():
     req_metadata: dict 
     working: bool
     debug: bool
+    saved_resources: dict
 
     def __init__(self, db_conn=None, debug=False):
         self.saved_urls = set()
+        self.saved_resources = dict()
         self.style_sheets = set()
         self.req_metadata = dict()
         self.working = False
@@ -42,7 +46,8 @@ class PageScraper():
             self.db = sqlite3.connect(db_path)
             self.db.execute("PRAGMA foreign_keys = ON")
             self.req_metadata = dict()
-
+        
+       
         try:
             snap_id = await self._download_page(url, headers, method)
         finally:
@@ -119,8 +124,15 @@ class PageScraper():
 
         # Should be logged by the above
         if local_path is None: return
+
         self.saved_urls.add(url)
+
+        # keep track of this so that we dont need to dig into the DB later when we need to relativize everything
+        self.saved_resources[url] = {"path": local_path, "content_type": content_type}
+
         headers = dict()
+
+
         for header in await response.headers_array():
             name = header["name"].lower()
             value = header["value"]
@@ -133,10 +145,20 @@ class PageScraper():
         }
         default_port = 443 if parsed.scheme == "https" else 80
 
+        file_size:int = 0
+        try:
+            file_size = os.path.getsize(local_path)
+        except Exception as e:
+            if self.debug:
+                print(f"Failed to save url {url}: {e} at file byte size gathering")
+            return 
+    
+
         values = (
                 str(uuid.uuid4()),
                 self.snap_id,
                 local_path,
+                file_size,
                 parsed.scheme,
                 parsed.port or default_port,
                 parsed.hostname or "",
@@ -153,14 +175,14 @@ class PageScraper():
         self.db.execute(
             """
             INSERT INTO files (
-                id, snapshot_id, on_disk_path,
+                id, snapshot_id, on_disk_path, file_size,
                 protocol, port, host, remote_path,
                 request_sent_time, request_method,
                 request_headers, request_parameters,
                 response_recieved_time, response_code,
                 response_headers
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
             """,
             values,
         )
@@ -169,6 +191,7 @@ class PageScraper():
         if self.working: return None
         self.tasks = []
         self.saved_urls = set()
+        self.saved_resources = dict()
         self.snap_id = str(uuid.uuid4())
         self.working = True
         async with async_playwright() as pw:
@@ -219,6 +242,9 @@ class PageScraper():
             # Added because we started skipping urls 
             # since browser closed early
             await self._drain_tasks()
+
+            # Rewrite files where needed
+            self.rewrite_resource_paths()
 
             end_time = time.time()
             await browser.close()
@@ -288,13 +314,44 @@ class PageScraper():
             case "image/vnd.microsoft.icon": return "ico"
             case "font/woff": return "woff"
             case "font/woff2": return "woff2"
-            case "font/ttf": return "ttf",
+            case "font/ttf": return "ttf"
             case "font/otf": return "otf"
             case "application/font-woff": return "woff"
             case "application/vnd.ms-fontobject": return "eot"
             case _: return None
         # Redundant
         return None
+
+    def rewrite_resource_paths(self):
+        for url, resource in self.saved_resources.items():
+            path = resource["path"]
+            content_type = resource.get("content_type", "").split(";", 1)[0].strip().lower()
+            html_flag = None
+            if content_type == "text/html":
+                html_flag = True
+            if content_type == "text/css":
+                html_flag = False
+            if html_flag is None: 
+                continue
+            with open(path, "rb") as file:
+                contents = file.read()
+            
+            if html_flag:
+                # Should I account for not utf-8?
+                contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
+            else:
+                contents = relativize_stylesheet(contents, url)
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(contents)
+            self.db.execute(
+                """
+                UPDATE files
+                SET file_size = ?
+                WHERE snapshot_id = ? AND on_disk_path = ?
+                """,
+                (os.path.getsize(path), self.snap_id, path)
+            )
+        
 
     def write_resource_file(self, url, data, resource_type: str =None):
         """
