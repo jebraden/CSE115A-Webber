@@ -67,10 +67,10 @@ QScrollBar::handle:horizontal:pressed { background: #566446; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; border: none; }
 QAbstractScrollArea::corner { background: transparent; border: none; }
-QWidget#archiveTabsHost { background: #efefed; border-bottom: 1px solid #cececa; }
+QWidget#archiveTabsHost { background: #efefed; }
 QTabBar { background: transparent; qproperty-drawBase: 0; }
-QTabBar::tab { background: #f1f1ee; color: #737370; border: 1px solid #cececa; border-bottom: none; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 8px 12px 8px 0px; margin-right: 4px; min-height: 22px; min-width: 85px; max-width: 220px; }
-QTabBar::tab:selected { background: #e3e8d6; color: #435435; border-color: #b7c4a7; }
+QTabBar::tab { background: #f1f1ee; color: #737370; border: 1px solid #cececa; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 8px 12px 8px 0px; margin-right: 4px; min-height: 22px; min-width: 85px; max-width: 220px; }
+QTabBar::tab:selected { background: #f8f8f6; color: #292929; border-bottom-color: #f8f8f6; font-weight: 600; }
 QTabBar::tab:hover:!selected { background: #e9ecdf; }
 QTabBar::close-button { image: url(icons/close-light.svg); width: 14px; height: 14px; border: none; background: transparent; }
 QWidget#tabCloseHost { background: transparent; }
