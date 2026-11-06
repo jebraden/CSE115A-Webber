@@ -147,6 +147,10 @@ class TestBuildPattern:
         assert conds == []
         assert vals == []
 
+
+        urls = await scraper.gather_hyperlinks(page)
+        assert urls == set()
+
     def test_bad_regex_raises(self, test_conn):
         manager = RequestManager(test_conn)
         with pytest.raises(Exception):

@@ -5,6 +5,7 @@ from src.scraping.scraper import (
 import src
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from playwright.async_api import async_playwright
 
 
 import pytest
@@ -612,4 +613,93 @@ class TestRelativizeResources:
 
         assert path.read_text() == 'body { background: url("../image.png"); }'
     
+def mock_element(url):
+    element = MagicMock()
+    prop = MagicMock()
+    prop.json_value = AsyncMock(return_value=url)
+    element.get_property = AsyncMock(return_value=prop)
+
+    return element
+
+def mock_locator(elements):
+    locator = MagicMock()
+    locator.count = AsyncMock(return_value=len(elements))
+    locator.nth.side_effect = elements.__getitem__
+
+    return locator
+
+class TestHyperlinkCollection:
+    
+
+    @pytest.mark.asyncio
+    async def test_gather_hyperlinks(self):
+        scraper = PageScraper()
+        page = MagicMock()
+
+        elements = {
+            "a[href]": [
+                mock_element("https://example.com/about"),
+                mock_element("https://google.com")
+            ],
+            "area[href]": [
+                mock_element("https://example.com/contact")
+            ],
+            "form": [
+                mock_element("https://example.com/search")
+            ]
+        }
+
+        page.locator.side_effect = lambda selector: (
+            mock_locator(elements[selector])
+        )
+
+        urls = await scraper.gather_hyperlinks(page)
+
+        assert urls == {
+            "https://example.com/about",
+            "https://google.com",
+            "https://example.com/contact",
+            "https://example.com/search"
+        }
+
+    @pytest.mark.asyncio
+    async def test_gather_hyperlinks_empty(self):
+        scraper = PageScraper()
+        page = MagicMock()
+        page.locator.side_effect = lambda selector: mock_locator([])
+
+        urls = await scraper.gather_hyperlinks(page)
+        assert urls == set()
+
+class TestHyperlinkProcessing:
+
+    @pytest.mark.asyncio
+    async def test_process_hyperlinks(self, monkeypatch):
+        scraper = PageScraper(db_conn=MagicMock())
+        scraper.snap_id = "snap-1"
+
+        urls = [
+            "https://example.com/about",
+            "https://exmaple.com/contact"
+        ]
+
+        instances = []
+        class MockScraper:
+            def __init__(self, db_conn=None):
+                self.db = db_conn
+                self.archive_page = AsyncMock(return_value="snap-1")
+                instances.append(self)
+
+        monkeypatch.setattr("src.scraping.scraper.PageScraper", MockScraper)
+
+        processed = await scraper.process_hyperlinks(urls, headers=None, method="GET")
+        assert processed == set(urls)
+        assert len(instances) == 2
+
+        for instance, url in zip(instances, urls):
+            instance.archive_page.assert_awaited_once_with(
+                    url, None, "GET", "snap-1"
+            )
+
+
 
