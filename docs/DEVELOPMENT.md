@@ -182,3 +182,17 @@ Page / Raw HTML choice. Search filters the sidebar without closing tabs.
 Viewing preferences update all open tabs as well as detached windows. The
 standard Close shortcut closes the active tab. Separate-window actions remain
 available independently.
+
+
+## Central UI statistics integration (tasks 2.2.2 and 2.4.1)
+
+Run `python -m frontend.src` from the repository root. The Statistics navigation
+button opens the embedded statistics panel; choose a time period and click
+Generate to populate the table and graph. The current demo uses MockWebberAPI
+and labels its generated data as sample data. It does not report saved archive
+statistics from a live backend. MainWindow accepts a `statistics_api` argument
+for a real API adapter when backend integration is configured.
+
+The application uses QtAsyncio so the panel's asynchronous Generate and Cancel
+actions run within the main Qt event loop. Closing the window cancels generation.
+The standalone statistics driver remains available for isolated testing.

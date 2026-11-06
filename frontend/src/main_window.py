@@ -12,7 +12,7 @@ from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QLabel, QListWidgetItem,
-    QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect,
+    QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect, QVBoxLayout,
 )
 
 from .archive_list.service import SnapshotService
@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
     snapshot_requested = Signal(object)
     capture_requested = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo=False, settings=None):
+    def __init__(self, service: SnapshotService, *, demo=False, settings=None, statistics_api=None):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("Webber", "Webber")
         self._service = service
@@ -108,6 +108,23 @@ class MainWindow(QMainWindow):
             if obj.objectName()
         })
         u = self.ui
+        # Embed task 2.4.1 in the existing navigation instead of a separate window.
+        self.statistics_widget = None
+        statistics_layout = QVBoxLayout(u.statisticsPage)
+        demo_statistics = demo and statistics_api is None
+        if demo_statistics:
+            from .statistics.mock_api import MockWebberAPI
+            statistics_api = MockWebberAPI()
+        if demo_statistics:
+            demo_notice = QLabel("Demo statistics — sample data, not your saved archives.", u.statisticsPage)
+            demo_notice.setWordWrap(True)
+            statistics_layout.addWidget(demo_notice)
+        if statistics_api is not None:
+            from .statistics.statistics import StatisticsWidget
+            self.statistics_widget = StatisticsWidget(statistics_api, u.statisticsPage)
+            statistics_layout.addWidget(self.statistics_widget)
+        else:
+            statistics_layout.addWidget(QLabel("Statistics are unavailable until the backend is connected.", u.statisticsPage))
         self._light_stylesheet = self.styleSheet()
         self.setStyleSheet(stylesheet_for(self._light_stylesheet, "light"))
         self.viewer = ArchiveViewer(u.webViewHost)
@@ -524,6 +541,8 @@ class MainWindow(QMainWindow):
         window.show()
 
     def closeEvent(self, event):
+        if self.statistics_widget is not None:
+            self.statistics_widget._handle_cancel()
         for window in list(self._windows.values()):
             window.close()
         super().closeEvent(event)

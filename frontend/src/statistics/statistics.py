@@ -218,24 +218,17 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
 
     def _update_table(self, stats: UIStatisticsResponse):
         interval = Period(*map(Timespec.to_qdatetime, stats.overall.interval))
-        self.stats_table.setItem(
-            -1, 1, QTableWidgetItem(self._pprint_period(interval))
+        # Designer defines six labeled rows and one value column.
+        values = (
+            self._pprint_period(interval),
+            str(stats.overall.snapshots),
+            str(stats.overall.files),
+            self._pprint_bytes(stats.overall.size),
+            str(stats.overall.urls),
+            str(stats.overall.hosts),
         )
-        self.stats_table.setItem(
-            0, 1, QTableWidgetItem(str(stats.overall.snapshots))
-        )
-        self.stats_table.setItem(
-            1, 1, QTableWidgetItem(str(stats.overall.files))
-        )
-        self.stats_table.setItem(
-            2, 1, QTableWidgetItem(self._pprint_bytes(stats.overall.size))
-        )
-        self.stats_table.setItem(
-            3, 1, QTableWidgetItem(str(stats.overall.urls))
-        )
-        self.stats_table.setItem(
-            4, 1, QTableWidgetItem(str(stats.overall.hosts))
-        )
+        for row, value in enumerate(values):
+            self.stats_table.setItem(row, 0, QTableWidgetItem(value))
 
     async def _get_staistics(self) -> UIStatisticsResponse | None:
         "Return None if the database is empty."

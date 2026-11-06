@@ -48,10 +48,12 @@ def select(window, snapshot_id):
     raise AssertionError(snapshot_id)
 
 
-def test_navigation_keeps_statistics_empty(window):
+def test_navigation_embeds_statistics_panel(window):
     window.ui.statisticsButton.click()
     assert window.ui.mainStack.currentWidget() is window.ui.statisticsPage
-    assert window.ui.statisticsPage.findChildren(QWidget) == []
+    assert window.statistics_widget is not None
+    assert window.statistics_widget.parent() is window.ui.statisticsPage
+    assert window.statistics_widget.stacked_content.currentWidget() is window.statistics_widget.init_page
     window.ui.archivesButton.click()
     assert window.ui.mainStack.currentWidget() is window.ui.archivesPage
 
@@ -337,3 +339,24 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     button.click()
     assert window.tab_bar.count() == 1
     assert window._snapshot.id == "missing"
+
+
+@pytest.mark.asyncio
+async def test_embedded_statistics_generates_table_and_graph(window):
+    window.ui.statisticsButton.click()
+    panel = window.statistics_widget
+    panel.generate_button.click()
+    assert panel.task is not None
+    await panel.task
+    assert panel.stats is not None
+    assert panel.stacked_content.currentWidget() is panel.stats_page
+    assert panel.generate_button.isEnabled()
+    assert panel.graph._plot_data
+    assert panel.stats_table.item(0, 0).text()
+    for row, field in enumerate(("snapshots", "files", "size", "urls", "hosts"), start=1):
+        value = getattr(panel.stats.overall, field)
+        expected = panel._pprint_bytes(value) if field == "size" else str(value)
+        assert panel.stats_table.item(row, 0).text() == expected
+    window.ui.archivesButton.click()
+    window.ui.statisticsButton.click()
+    assert panel.stacked_content.currentWidget() is panel.stats_page
