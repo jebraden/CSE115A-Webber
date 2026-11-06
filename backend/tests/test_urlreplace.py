@@ -147,18 +147,18 @@ class TestURLRelativizer:
         self.assert_urls(
             "http://www.example.com/",
             [
-                ("http://example.com/", "../http%3A%2F%2Fexample.com/"),
+                ("http://example.com/", "../../http/example.com/"),
                 (
                     "https://www.example.com/",
-                    "../https%3A%2F%2Fwww.example.com/",
+                    "../../https/www.example.com/",
                 ),
                 (
                     "https://www.example.com/a/b.html",
-                    "../https%3A%2F%2Fwww.example.com/a/b.html",
+                    "../../https/www.example.com/a/b.html",
                 ),
                 (
                     "https://www.example.com/a/b.html?param1=val&param2=val#fragment",
-                    "../https%3A%2F%2Fwww.example.com/a/b.html?param1=val&param2=val#fragment",
+                    "../../https/www.example.com/a/b.html?param1=val&param2=val#fragment",
                 ),
             ],
         )
@@ -168,28 +168,28 @@ class TestURLRelativizer:
         self.assert_urls(
             "http://www.example.com/",
             [
-                ("//example.com/path", "../http%3A%2F%2Fexample.com/path"),
+                ("//example.com/path", "../../http/example.com/path"),
                 (
                     "//example.com:8080/path",
-                    "../http%3A%2F%2Fexample.com%3A8080/path",
+                    "../../http/example.com%3A8080/path",
                 ),
                 (
                     "//cdn.example.com/script.js",
-                    "../http%3A%2F%2Fcdn.example.com/script.js",
+                    "../../http/cdn.example.com/script.js",
                 ),
                 (
                     "//user:pass@example.com/file",
-                    "../http%3A%2F%2Fuser%3Apass%40example.com/file",
+                    "../../http/user%3Apass%40example.com/file",
                 ),
             ],
         )
         self.assert_urls(
             "https://www.example.com/",
             [
-                ("//example.com/path", "../https%3A%2F%2Fexample.com/path"),
+                ("//example.com/path", "../../https/example.com/path"),
                 (
                     "//example.com:8080/path",
-                    "../https%3A%2F%2Fexample.com%3A8080/path",
+                    "../../https/example.com%3A8080/path",
                 ),
             ],
         )
@@ -263,15 +263,15 @@ class TestURLRelativizer:
             [
                 (
                     "blob:http://example.com/uuid-1234",
-                    "../http%3A%2F%2Fexample.com/uuid-1234",
+                    "../../http/example.com/uuid-1234",
                 ),
                 (
                     "blob:https://example.com/uuid-5678",
-                    "../https%3A%2F%2Fexample.com/uuid-5678",
+                    "../../https/example.com/uuid-5678",
                 ),
                 (
                     "blob:http://localhost/8f34f9d6-385e-483b-9eff-fea4b9e9b9b6",
-                    "../http%3A%2F%2Flocalhost/8f34f9d6-385e-483b-9eff-fea4b9e9b9b6",
+                    "../../http/localhost/8f34f9d6-385e-483b-9eff-fea4b9e9b9b6",
                 ),
             ],
         )
@@ -311,7 +311,7 @@ class TestURLRelativizer:
                 ),
                 (
                     "https://example.com/api?format=json&type=html",
-                    "../https%3A%2F%2Fexample.com/api?format=json&type=html",
+                    "../../https/example.com/api?format=json&type=html",
                 ),
             ],
         )
@@ -335,23 +335,23 @@ class TestURLRelativizer:
             [
                 (
                     "http://example.com:8080/path",
-                    "../http%3A%2F%2Fexample.com%3A8080/path",
+                    "../../http/example.com%3A8080/path",
                 ),
                 (
                     "https://example.com:443/path",
-                    "../https%3A%2F%2Fexample.com/path",
+                    "../../https/example.com/path",
                 ),
                 (
                     "https://example.com:444/path",
-                    "../https%3A%2F%2Fexample.com%3A444/path",
+                    "../../https/example.com%3A444/path",
                 ),
                 (
                     "//example.com:8080/path",
-                    "../http%3A%2F%2Fexample.com%3A8080/path",
+                    "../../http/example.com%3A8080/path",
                 ),
                 (
                     "//example.com:80/path",
-                    "../http%3A%2F%2Fexample.com/path",
+                    "../../http/example.com/path",
                 ),
             ],
         )
@@ -363,15 +363,15 @@ class TestURLRelativizer:
             [
                 (
                     "http://user:pass@example.com/",
-                    "../http%3A%2F%2Fuser%3Apass%40example.com/",
+                    "../../http/user%3Apass%40example.com/",
                 ),
                 (
                     "https://user@example.com/",
-                    "../https%3A%2F%2Fuser%40example.com/",
+                    "../../https/user%40example.com/",
                 ),
                 (
                     "//user:pass@example.com/file",
-                    "../http%3A%2F%2Fuser%3Apass%40example.com/file",
+                    "../../http/user%3Apass%40example.com/file",
                 ),
             ],
         )
@@ -384,11 +384,11 @@ class TestURLRelativizer:
                 ("path#section", "path#section"),
                 (
                     "https://example.com/page#fragment",
-                    "../https%3A%2F%2Fexample.com/page#fragment",
+                    "../../https/example.com/page#fragment",
                 ),
                 (
                     "https://example.com/page?query=1#frag",
-                    "../https%3A%2F%2Fexample.com/page?query=1#frag",
+                    "../../https/example.com/page?query=1#frag",
                 ),
                 ("#fragment", "#fragment"),  # Fragment only
             ],
@@ -402,7 +402,7 @@ class TestURLRelativizer:
                 ("", ""),
                 ("   ", ""),
                 ("\t\n", ""),
-                ("  http://example.com  ", "../../http%3A%2F%2Fexample.com"),
+                ("  http://example.com  ", "../../../http/example.com"),
             ],
         )
         self.assert_urls(
@@ -411,7 +411,7 @@ class TestURLRelativizer:
                 ("", ""),
                 ("   ", ""),
                 ("\t\n", ""),
-                ("  http://example.com  ", "../http%3A%2F%2Fexample.com"),
+                ("  http://example.com  ", "../../http/example.com"),
             ],
         )
 
@@ -422,15 +422,15 @@ class TestURLRelativizer:
             [
                 (
                     "https://user:pass@example.com:8080/path?query=1#frag",
-                    "../https%3A%2F%2Fuser%3Apass%40example.com%3A8080/path?query=1#frag",
+                    "../../https/user%3Apass%40example.com%3A8080/path?query=1#frag",
                 ),
                 (
                     "//user:pass@example.com:8080/path",
-                    "../http%3A%2F%2Fuser%3Apass%40example.com%3A8080/path",
+                    "../../http/user%3Apass%40example.com%3A8080/path",
                 ),
                 (
                     "https://example.com/path/to/file?param1=val&param2=val#section",
-                    "../https%3A%2F%2Fexample.com/path/to/file?param1=val&param2=val#section",
+                    "../../https/example.com/path/to/file?param1=val&param2=val#section",
                 ),
             ],
         )
@@ -463,11 +463,11 @@ class TestURLRelativizer:
             [
                 (
                     "HTTP://EXAMPLE.COM/PATH",
-                    "../http%3A%2F%2FEXAMPLE.COM/PATH",
+                    "../../http/EXAMPLE.COM/PATH",
                 ),
                 (
                     "https://Example.Com/Path",
-                    "../https%3A%2F%2FExample.Com/Path",
+                    "../../https/Example.Com/Path",
                 ),
             ],
         )
@@ -479,11 +479,11 @@ class TestURLRelativizer:
             [
                 (
                     "https://example.com/文件",
-                    "../https%3A%2F%2Fexample.com/文件",
+                    "../../https/example.com/文件",
                 ),
                 (
                     "https://example.com/файл",
-                    "../https%3A%2F%2Fexample.com/файл",
+                    "../../https/example.com/файл",
                 ),
             ],
         )
@@ -507,17 +507,17 @@ class TestURLRelativizer:
         # At root, use 1 '../' to get to snapshot root, then encoded host
         rewriter = URLRelativizer("http://www.example.com/index.html")
         result = rewriter.rewrite("http://other.com/file.css")
-        assert result == "../http%3A%2F%2Fother.com/file.css"
+        assert result == "../../http/other.com/file.css"
 
         # At depth 1, use 2 '../'s
         rewriter = URLRelativizer("http://www.example.com/page/index.html")
         result = rewriter.rewrite("http://other.com/file.css")
-        assert result == "../../http%3A%2F%2Fother.com/file.css"
+        assert result == "../../../http/other.com/file.css"
 
         # At depth 2, use 3 '../'s
         rewriter = URLRelativizer("http://www.example.com/a/b/index.html")
         result = rewriter.rewrite("http://other.com/file.css")
-        assert result == "../../../http%3A%2F%2Fother.com/file.css"
+        assert result == "../../../../http/other.com/file.css"
 
     def test_hostless_urls_use_depth(self):
         """Test that hostless URLs use correct depth for root-relative."""
@@ -554,17 +554,17 @@ class TestPathTraversalSafety:
 
         # Normal URL - should use 2 levels of ../ (depth + 1)
         result = rewriter.rewrite("http://other.com/file.txt")
-        assert result.startswith("../../")
-        assert not result.startswith("../../../")
+        assert result.startswith("../../../")
+        assert not result.startswith("../../../../")
 
         # Malicious URL with 100 levels of .. in path
         malicious = "http://other.com/" + "../" * 100 + "etc/passwd"
         result = rewriter.rewrite(malicious)
 
-        # Should still use exactly 2 levels of ../ (depth + 1)
+        # Should still use exactly 3 levels of ../ (depth + 2)
         # The path is normalized, so all '..' are removed
-        assert result.startswith("../../")
-        assert not result.startswith("../../../")
+        assert result.startswith("../../../")
+        assert not result.startswith("../../../../")
 
         # The encoded host should be present
         assert "other.com" in result
@@ -615,10 +615,10 @@ class TestPathTraversalSafety:
         """
         rewriter = URLRelativizer("http://www.example.com/a/b/c/index.html")
 
-        # Hostful - should use exactly 4 levels of ../ (depth + 1)
+        # Hostful - should use exactly 5 levels of ../ (depth + 2)
         result = rewriter.rewrite("http://other.com/file.txt")
-        assert result.startswith("../../../../")
-        assert not result.startswith("../../../../../")
+        assert result.startswith("../../../../../")
+        assert not result.startswith("../../../../../../")
 
         # Hostless absolute - should use exactly 3 levels of ../
         result = rewriter.rewrite("/" + "../" * 100 + "file.txt")
@@ -662,7 +662,7 @@ class TestPathTraversalSafety:
                     levels_up += 1
                     temp = temp[3:]
 
-                assert levels_up == depth + hostful
+                assert levels_up == depth + (2 * hostful)
 
 
 class TestRelativizeHTML:
@@ -672,32 +672,32 @@ class TestRelativizeHTML:
         """Test href rewriting in anchor tags."""
         html = '<a href="http://example.com/page">Link</a>'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/page" in result
+        assert "../http/example.com/page" in result
 
     def test_image_sources(self):
         """Test src rewriting in img tags."""
         html = '<img src="http://example.com/image.png">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/image.png" in result
+        assert "../http/example.com/image.png" in result
 
     def test_script_sources(self):
         """Test src rewriting in script tags."""
         html = '<script src="http://example.com/script.js"></script>'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/script.js" in result
+        assert "../http/example.com/script.js" in result
 
     def test_link_stylesheets(self):
         """Test href rewriting in link tags."""
         html = '<link rel="stylesheet" href="http://example.com/style.css">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/style.css" in result
+        assert "../http/example.com/style.css" in result
 
     def test_srcset_attribute(self):
         """Test srcset rewriting with multiple URLs."""
         html = '<img srcset="http://example.com/a.png 1x, http://example.com/b.png 2x">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/a.png" in result
-        assert "http%3A%2F%2Fexample.com/b.png" in result
+        assert "../http/example.com/a.png" in result
+        assert "../http/example.com/b.png" in result
         assert "1x" in result
         assert "2x" in result
 
@@ -726,32 +726,32 @@ class TestRelativizeHTML:
         html = '<link rel="stylesheet" href="http://example.com/style.css">'
         result = relativize_html(html, "http://www.example.com/")
         assert "stylesheet" in result
-        assert "http%3A%2F%2Fexample.com/style.css" in result
+        assert "../http/example.com/style.css" in result
 
     def test_form_actions(self):
         """Test form action rewriting."""
         html = '<form action="http://example.com/submit">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/submit" in result
+        assert "../http/example.com/submit" in result
 
     def test_video_sources(self):
         """Test video src and poster rewriting."""
         html = '<video src="http://example.com/video.mp4" poster="http://example.com/poster.jpg">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/video.mp4" in result
-        assert "http%3A%2F%2Fexample.com/poster.jpg" in result
+        assert "../http/example.com/video.mp4" in result
+        assert "../http/example.com/poster.jpg" in result
 
     def test_iframe_sources(self):
         """Test iframe src rewriting."""
         html = '<iframe src="http://example.com/frame.html">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/frame.html" in result
+        assert "../http/example.com/frame.html" in result
 
     def test_svg_images(self):
         """Test SVG image href rewriting."""
         html = '<image href="http://example.com/image.png">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/image.png" in result
+        assert "../http/example.com/image.png" in result
 
     def test_mixed_content(self):
         """Test relativization of mixed content."""
@@ -776,7 +776,7 @@ class TestRelativizeHTML:
         # Prefetch removed
         assert "prefetch" not in result
         # Regular links rewritten
-        assert "http%3A%2F%2Fexample.com" in result
+        assert "../http/example.com" in result
         # Root-relative rewritten
         assert "../style.css" in result or "style.css" in result
 
@@ -788,7 +788,7 @@ class TestRelativizeCSS:
         """Test absolute URLs in url() functions."""
         css = "background: url(http://example.com/bg.png);"
         result = relativize_css_rule_list(css, "http://www.example.com/page/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
         assert "http://example.com" not in result
 
     def test_url_function_root_relative(self):
@@ -816,8 +816,8 @@ class TestRelativizeCSS:
         .second { background: url(http://example.com/b.png); }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/a.png" in result
-        assert "http%3A%2F%2Fexample.com/b.png" in result
+        assert "../http/example.com/a.png" in result
+        assert "../http/example.com/b.png" in result
 
     def test_quoted_urls(self):
         """Test URLs with quotes in url() functions."""
@@ -826,8 +826,8 @@ class TestRelativizeCSS:
         .double { background: url("http://example.com/b.png"); }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/a.png" in result
-        assert "http%3A%2F%2Fexample.com/b.png" in result
+        assert "../http/example.com/a.png" in result
+        assert "../http/example.com/b.png" in result
 
     def test_data_uri_preserved(self):
         """Test that data URIs are preserved unchanged."""
@@ -851,7 +851,7 @@ class TestRelativizeCSS:
         """Test @import URL rewriting."""
         css = "@import url(http://example.com/import.css);"
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/import.css" in result
+        assert "../http/example.com/import.css" in result
 
     def test_multiple_imports(self):
         """Test multiple @import statements."""
@@ -860,8 +860,8 @@ class TestRelativizeCSS:
         @import url(http://example.com/two.css);
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/one.css" in result
-        assert "http%3A%2F%2Fexample.com/two.css" in result
+        assert "../http/example.com/one.css" in result
+        assert "../http/example.com/two.css" in result
 
     def test_url_with_spaces(self):
         """Test URLs with spaces (encoded)."""
@@ -891,13 +891,13 @@ class TestRelativizeCSS:
         """Test protocol-relative URLs."""
         css = "background: url(//example.com/bg.png);"
         result = relativize_css_rule_list(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_https_url(self):
         """Test HTTPS URLs."""
         css = "background: url(https://example.com/bg.png);"
         result = relativize_css_rule_list(css, "http://www.example.com/")
-        assert "https%3A%2F%2Fexample.com/bg.png" in result
+        assert "../https/example.com/bg.png" in result
 
     def test_css_variable_urls(self):
         """Test URLs in CSS custom properties."""
@@ -910,7 +910,7 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_media_queries(self):
         """Test URLs inside media queries."""
@@ -927,8 +927,8 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/large.png" in result
-        assert "http%3A%2F%2Fexample.com/small.png" in result
+        assert "../http/example.com/large.png" in result
+        assert "../http/example.com/small.png" in result
 
     def test_keyframes(self):
         """Test URLs inside @keyframes."""
@@ -939,8 +939,8 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/start.png" in result
-        assert "http%3A%2F%2Fexample.com/end.png" in result
+        assert "../http/example.com/start.png" in result
+        assert "../http/example.com/end.png" in result
 
     def test_font_face(self):
         """Test URLs in @font-face."""
@@ -951,7 +951,7 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/font.woff2" in result
+        assert "../http/example.com/font.woff2" in result
 
     def test_multiple_properties(self):
         """Test CSS with multiple URL properties."""
@@ -963,16 +963,16 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
-        assert "http%3A%2F%2Fexample.com/border.png" in result
-        assert "http%3A%2F%2Fexample.com/mask.png" in result
+        assert "../http/example.com/bg.png" in result
+        assert "../http/example.com/border.png" in result
+        assert "../http/example.com/mask.png" in result
 
     def test_bytes_input(self):
         """Test that bytes input is handled correctly."""
         css = b".test { background: url(http://example.com/bg.png); }"
         result = relativize_stylesheet(css, "http://www.example.com/")
         assert isinstance(result, str)
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_invalid_input_type(self):
         """Test that invalid input types raise TypeError."""
@@ -1000,7 +1000,7 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/icon.png" in result
+        assert "../http/example.com/icon.png" in result
 
     def test_url_with_port(self):
         """Test URLs with ports."""
@@ -1032,7 +1032,7 @@ class TestRelativizeCSS:
         css = "background: url(http://example.com/bg.png);"
         result = relativize_css_rule_list(css, "http://www.example.com/page/")
         # Should have 2 levels of ../ (depth + 1)
-        assert "../../http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../../../http/example.com/bg.png" in result
 
     def test_root_relative_depth(self):
         """Test root-relative URLs with depth."""
@@ -1051,7 +1051,7 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/absolute.png" in result
+        assert "../http/example.com/absolute.png" in result
         assert "root/relative.png" in result
         assert "dot/relative.png" in result
 
@@ -1065,11 +1065,11 @@ class TestRelativizeCSS:
         """Test that whitespace around URLs is handled."""
         css = "background: url(  http://example.com/bg.png  );"
         result = relativize_css_rule_list(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_encoded_url(self):
         """Test already encoded URLs."""
-        css = "background: url(http%3A%2F%2Fexample.com%2Fbg.png);"
+        css = "background: url(../http/example.com%2Fbg.png);"
         result = relativize_css_rule_list(css, "http://www.example.com/")
         assert "example.com" in result
 
@@ -1107,13 +1107,13 @@ class TestRelativizeCSS:
         result = relativize_stylesheet(css, "http://www.example.com/")
 
         # All URLs should be relativized
-        assert "http%3A%2F%2Ffonts.example.com/font.css" in result
-        assert "http%3A%2F%2Ffonts.example.com/font.woff2" in result
-        assert "http%3A%2F%2Fcdn.example.com/bg.png" in result
-        assert "http%3A%2F%2Fcdn.example.com/bg-responsive.png" in result
-        assert "http%3A%2F%2Fcdn.example.com/bg-mobile.png" in result
-        assert "http%3A%2F%2Ficons.example.com/icon.svg" in result
-        assert "http%3A%2F%2Fcdn.example.com/hero.jpg" in result
+        assert "../http/fonts.example.com/font.css" in result
+        assert "../http/fonts.example.com/font.woff2" in result
+        assert "../http/cdn.example.com/bg.png" in result
+        assert "../http/cdn.example.com/bg-responsive.png" in result
+        assert "../http/cdn.example.com/bg-mobile.png" in result
+        assert "../http/icons.example.com/icon.svg" in result
+        assert "../http/cdn.example.com/hero.jpg" in result
 
         # Original URLs should not appear
         assert "http://fonts.example.com" not in result
@@ -1131,9 +1131,9 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/a.png" in result
-        assert "http%3A%2F%2Fexample.com/b.png" in result
-        assert "http%3A%2F%2Fexample.com/c.png" in result
+        assert "../http/example.com/a.png" in result
+        assert "../http/example.com/b.png" in result
+        assert "../http/example.com/c.png" in result
 
     def test_path_with_query_and_fragment(self):
         """Test URLs with both query string and fragment."""
@@ -1152,9 +1152,9 @@ class TestRelativizeCSS:
         }
         """
         result = relativize_stylesheet(css, "http://www.example.com/")
-        assert "http%3A%2F%2Ffonts.example.com/font.woff" in result
-        assert "http%3A%2F%2Fimages.example.com/bg.jpg" in result
-        assert "http%3A%2F%2Fborders.example.com/border.png" in result
+        assert "../http/fonts.example.com/font.woff" in result
+        assert "../http/images.example.com/bg.jpg" in result
+        assert "../http/borders.example.com/border.png" in result
 
 
 class TestIframeSrcdoc:
@@ -1170,7 +1170,7 @@ class TestIframeSrcdoc:
         """
         result = relativize_html(html, "http://www.example.com/")
         # The srcdoc content should have relativized URLs
-        assert "http%3A%2F%2Fexample.com/page" in result
+        assert "../http/example.com/page" in result
 
     def test_srcdoc_relative_urls(self):
         """Test that relative URLs in srcdoc are resolved correctly."""
@@ -1188,7 +1188,7 @@ class TestIframeSrcdoc:
         ></iframe>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/image.png" in result
+        assert "../http/example.com/image.png" in result
 
     def test_srcdoc_with_scripts(self):
         """Test script sources in srcdoc."""
@@ -1197,7 +1197,7 @@ class TestIframeSrcdoc:
         ></iframe>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/script.js" in result
+        assert "../http/example.com/script.js" in result
 
     def test_srcdoc_with_styles(self):
         """Test style tags in srcdoc."""
@@ -1206,7 +1206,7 @@ class TestIframeSrcdoc:
         ></iframe>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_nested_iframes(self):
         """Test iframes inside iframes."""
@@ -1220,7 +1220,7 @@ class TestIframeSrcdoc:
         outer.insert(0, inner)
         html = str(outer)
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/deep" in result
+        assert "../http/example.com/deep" in result
 
     def test_srcdoc_special_schemes(self):
         """Test special schemes in srcdoc are preserved."""
@@ -1253,8 +1253,8 @@ class TestSVG:
         </svg>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/symbols.svg" in result
-        assert "http%3A%2F%2Fexample.com/symbols2.svg" in result
+        assert "../http/example.com/symbols.svg" in result
+        assert "../http/example.com/symbols2.svg" in result
 
     def test_svg_pattern_href(self):
         """Test SVG <pattern> with href."""
@@ -1264,7 +1264,7 @@ class TestSVG:
         </svg>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/pattern.svg" in result
+        assert "../http/example.com/pattern.svg" in result
 
     def test_svg_gradient_links(self):
         """Test SVG gradient elements (rare but possible)."""
@@ -1274,7 +1274,7 @@ class TestSVG:
         </svg>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/gradient.svg" in result
+        assert "../http/example.com/gradient.svg" in result
 
 
 class TestDataUriSVGAndHTML:
@@ -1297,7 +1297,7 @@ class TestDataUriSVGAndHTML:
             .encode()
         )
         svg_data = base64.b64decode(b64_data).decode()
-        assert "../http%3A%2F%2Fexample.com/bg.png" in svg_data
+        assert "../../http/example.com/bg.png" in svg_data
 
     def test_svg_data_uri_plain(self):
         """Test plain SVG data URI without encoding."""
@@ -1305,7 +1305,7 @@ class TestDataUriSVGAndHTML:
         html = f"<img src='data:image/svg+xml,{svg}'>"
         result = relativize_html(html, "http://www.example.com/")
         assert "data:image/svg+xml" in result
-        assert "../http%3A%2F%2Fexample.com/image.png" in result
+        assert "../../http/example.com/image.png" in result
 
     def test_data_html_base64(self):
         """Test base64 encoded HTML data URI."""
@@ -1322,7 +1322,7 @@ class TestDataUriSVGAndHTML:
             .encode()
         )
         data = base64.b64decode(b64_data).decode()
-        assert "../http%3A%2F%2Fexample.com/page" in data
+        assert "../../http/example.com/page" in data
 
     def test_svg_data_uri_with_params(self):
         """Test plain SVG data URI with extra parameters."""
@@ -1330,7 +1330,7 @@ class TestDataUriSVGAndHTML:
         html = f"<img src='data:image/svg+xml;charset=UTF-8;my-cool-param=1,{svg}'>"
         result = relativize_html(html, "http://www.example.com/")
         assert "data:image/svg+xml" in result
-        assert "../http%3A%2F%2Fexample.com/image.png" in result
+        assert "../../http/example.com/image.png" in result
         assert "charset=UTF-8" in result
         assert "my-cool-param=1" in result
 
@@ -1340,7 +1340,7 @@ class TestDataUriSVGAndHTML:
         html = f'<link rel="stylesheet" href="data:text/css,{css_content}">'
         result = relativize_html(html, "http://www.example.com/")
         assert "data:text/css" in result
-        assert "../http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../../http/example.com/bg.png" in result
 
     def test_css_data_uri_base64(self):
         """Test a base64n CSS data URI containing URL references."""
@@ -1356,7 +1356,7 @@ class TestDataUriSVGAndHTML:
             .encode()
         )
         svg_data = base64.b64decode(b64_data).decode()
-        assert "../http%3A%2F%2Fexample.com/bg.png" in svg_data
+        assert "../../http/example.com/bg.png" in svg_data
 
     def test_data_html_plain(self):
         """Test that data URIs with internal links are handled."""
@@ -1365,7 +1365,7 @@ class TestDataUriSVGAndHTML:
         """
         result = relativize_html(html, "http://www.example.com/")
         assert "data:text/html" in result
-        assert "../https%3A%2F%2Fexample.com/page" in result
+        assert "../../https/example.com/page" in result
 
     def test_data_uri_not_modified(self):
         """Test that data URIs are not modified by URL relativization."""
@@ -1389,7 +1389,7 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
     def test_style_import(self):
         """Test @import in style tags."""
@@ -1399,7 +1399,7 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/import.css" in result
+        assert "../http/example.com/import.css" in result
 
     def test_style_font_face(self):
         """Test @font-face in style tags."""
@@ -1412,7 +1412,7 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/font.woff2" in result
+        assert "../http/example.com/font.woff2" in result
 
     def test_style_media_queries(self):
         """Test URLs in media queries inside style tags."""
@@ -1424,7 +1424,7 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/large.png" in result
+        assert "../http/example.com/large.png" in result
 
     def test_style_keyframes(self):
         """Test URLs in keyframes inside style tags."""
@@ -1437,8 +1437,8 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/start.png" in result
-        assert "http%3A%2F%2Fexample.com/end.png" in result
+        assert "../http/example.com/start.png" in result
+        assert "../http/example.com/end.png" in result
 
     def test_style_multiple_urls(self):
         """Test multiple URLs in style tags."""
@@ -1452,8 +1452,8 @@ class TestInlineStyles:
         </style>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/a.png" in result
-        assert "http%3A%2F%2Fexample.com/b.png" in result
+        assert "../http/example.com/a.png" in result
+        assert "../http/example.com/b.png" in result
 
     def test_style_preserves_other(self):
         """Test that non-URL CSS in style tags is preserved."""
@@ -1481,19 +1481,19 @@ class TestObjectEmbed:
         """Test object data attribute."""
         html = '<object data="http://example.com/document.pdf"></object>'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/document.pdf" in result
+        assert "../http/example.com/document.pdf" in result
 
     def test_embed_src_url(self):
         """Test embed src attribute."""
         html = '<embed src="http://example.com/plugin.swf" type="application/x-shockwave-flash">'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/plugin.swf" in result
+        assert "../http/example.com/plugin.swf" in result
 
     def test_object_codebase(self):
         """Test object codebase attribute."""
         html = '<object codebase="http://example.com/base/"></object>'
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/base/" in result
+        assert "../http/example.com/base/" in result
 
 
 class TestShadowDOM:
@@ -1513,8 +1513,8 @@ class TestShadowDOM:
         """
         result = relativize_html(html, "http://www.example.com/")
         # Shadow root content should be relativized too
-        assert "http%3A%2F%2Fexample.com/link" in result
-        assert "http%3A%2F%2Fexample.com/image.png" in result
+        assert "../http/example.com/link" in result
+        assert "../http/example.com/image.png" in result
 
     def test_shadowroot_styles(self):
         """Test styles in shadowroot."""
@@ -1526,7 +1526,7 @@ class TestShadowDOM:
         </template>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
+        assert "../http/example.com/bg.png" in result
 
 
 class TestNestedDocuments:
@@ -1542,9 +1542,9 @@ class TestNestedDocuments:
         </picture>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/large.webp" in result
-        assert "http%3A%2F%2Fexample.com/large.jpg" in result
-        assert "http%3A%2F%2Fexample.com/fallback.jpg" in result
+        assert "../http/example.com/large.webp" in result
+        assert "../http/example.com/large.jpg" in result
+        assert "../http/example.com/fallback.jpg" in result
 
     def test_video_sources(self):
         """Test <video> with multiple source elements."""
@@ -1556,10 +1556,10 @@ class TestNestedDocuments:
         </video>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/poster.jpg" in result
-        assert "http%3A%2F%2Fexample.com/video.mp4" in result
-        assert "http%3A%2F%2Fexample.com/video.webm" in result
-        assert "http%3A%2F%2Fexample.com/captions.vtt" in result
+        assert "../http/example.com/poster.jpg" in result
+        assert "../http/example.com/video.mp4" in result
+        assert "../http/example.com/video.webm" in result
+        assert "../http/example.com/captions.vtt" in result
 
     def test_audio_sources(self):
         """Test <audio> with multiple sources."""
@@ -1570,8 +1570,8 @@ class TestNestedDocuments:
         </audio>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/audio.mp3" in result
-        assert "http%3A%2F%2Fexample.com/audio.ogg" in result
+        assert "../http/example.com/audio.mp3" in result
+        assert "../http/example.com/audio.ogg" in result
 
     def test_map_areas(self):
         """Test image map areas."""
@@ -1583,9 +1583,9 @@ class TestNestedDocuments:
         </map>
         """
         result = relativize_html(html, "http://www.example.com/")
-        assert "http%3A%2F%2Fexample.com/region1" in result
-        assert "http%3A%2F%2Fexample.com/region2" in result
-        assert "http%3A%2F%2Fexample.com/region3" in result
+        assert "../http/example.com/region1" in result
+        assert "../http/example.com/region2" in result
+        assert "../http/example.com/region3" in result
 
 
 class TestComplexIntegration:
@@ -1623,16 +1623,16 @@ class TestComplexIntegration:
         result = relativize_html(html, "http://www.example.com/")
 
         # All URLs should be relativized
-        assert "http%3A%2F%2Ffonts.example.com/font.css" in result
-        assert "http%3A%2F%2Fcdn.example.com/bg.png" in result
-        assert "http%3A%2F%2Ffonts.example.com/font.woff2" in result
-        assert "http%3A%2F%2Fimages.example.com/image.png" in result
-        assert "http%3A%2F%2Fsvg.example.com/svg-image.png" in result
-        assert "http%3A%2F%2Fsvg.example.com/use.svg" in result
-        assert "http%3A%2F%2Fiframe.example.com/link" in result
-        assert "http%3A%2F%2Fobject.example.com/data.pdf" in result
-        assert "http%3A%2F%2Fpic.example.com/large.webp" in result
-        assert "http%3A%2F%2Fpic.example.com/fallback.jpg" in result
+        assert "../http/fonts.example.com/font.css" in result
+        assert "../http/cdn.example.com/bg.png" in result
+        assert "../http/fonts.example.com/font.woff2" in result
+        assert "../http/images.example.com/image.png" in result
+        assert "../http/svg.example.com/svg-image.png" in result
+        assert "../http/svg.example.com/use.svg" in result
+        assert "../http/iframe.example.com/link" in result
+        assert "../http/object.example.com/data.pdf" in result
+        assert "../http/pic.example.com/large.webp" in result
+        assert "../http/pic.example.com/fallback.jpg" in result
 
         # Original URLs should not appear
         assert "http://fonts.example.com" not in result
@@ -1655,5 +1655,5 @@ class TestComplexIntegration:
         """
         result = relativize_html(html, "http://www.example.com/page/")
 
-        assert "http%3A%2F%2Fexample.com/bg.png" in result
-        assert "http%3A%2F%2Fexample.com/inner.png" in result
+        assert "../http/example.com/bg.png" in result
+        assert "../http/example.com/inner.png" in result
