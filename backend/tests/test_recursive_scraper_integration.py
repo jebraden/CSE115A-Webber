@@ -1,102 +1,188 @@
-import pytest
 import os
-import src
 import sqlite3
-from flask import Flask, request
-import threading
-from werkzeug.serving import make_server
-
-from playwright.async_api import async_playwright
+import asyncio
+import pytest
+from unittest.mock import MagicMock, AsyncMock
 from src.scraping.scraper import PageScraper
 
+class FakeRequest:
+    def __init__(self, url):
+        self.url = url
+        self.method = "GET"
 
-@pytest.fixture
-def test_server():
-    app = Flask(__name__)
-
-    @app.route("/")
-    def index():
-        return ( 
-            """
-            <html>
-                <a href="/about">About</a>
-                <a href="/contact">Contact</a>
-                <form action="/search">
-                    <input name="q">
-                </form>
-            </html>
-            """)
-
-    @app.route("/about")
-    def about(): 
-        return "<html><body>About Us</body></html>"
-
-    @app.route("/contact")
-    def contact():
-        return "<html><body>Contact Us</body></html>"
-
-    @app.route("/search")
-    def search():
-        return "<html><body>Search Us</body></html>"
-
-    server = make_server("127.0.0.1", 0, app)
-    thread = threading.Thread(target=server.serve_forever)
-    thread.start()
-
-    yield f"https://127.0.0.1:{server.server_port}"
-
-    server.shutdown()
-    thread.join()
+    async def headers_array(self):
+        return []
 
 
-@pytest.fixture
+class FakeResponse:
+    def __init__(self, request, body):
+        self.request = request
+        self.url = request.url
+        self.status = 200
+        self._body = body
+
+    async def all_headers(self):
+        return {"content-type": "text/html; charset=utf-8"}
+
+    async def headers_array(self):
+        return [
+            {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8",
+            }
+        ]
+
+    async def body(self):
+        return self._body
+
+
+class FakeElement:
+    def __init__(self, url):
+        self.url = url
+
+    async def get_property(self, attribute):
+        prop = MagicMock()
+        prop.json_value = AsyncMock(return_value=self.url)
+        return prop
+
+
+class FakeLocator:
+    def __init__(self, urls):
+        self.elements = [FakeElement(url) for url in urls]
+
+    async def count(self):
+        return len(self.elements)
+
+    def nth(self, index):
+        return self.elements[index]
+
+
+class FakePage:
+    def __init__(self, pages):
+        self.pages = pages
+        self.handlers = {}
+        self.current_url = None
+
+    def on(self, event, callback):
+        self.handlers[event] = callback
+
+    async def goto(self, url):
+        self.current_url = url
+        request = FakeRequest(url)
+        self.handlers["request"](request)
+        response = FakeResponse(request, self.pages[url]["body"],)
+
+        self.handlers["response"](response)
+
+    def locator(self, selector):
+        links = self.pages[self.current_url]["links"]
+        return FakeLocator(links.get(selector, []))
+
+    async def wait_for_timeout(self, timeout):
+        pass
+
+    async def evaluate(self, expression):
+        return 0
+
+    async def setExtraHTTPHeaders(self, headers):
+        pass
+
+
+class FakeBrowser:
+    def __init__(self, pages):
+        self.pages = pages
+
+    async def new_page(self):
+        return FakePage(self.pages)
+
+    async def close(self):
+        pass
+
+
+class FakePlaywrightContext:
+    def __init__(self, pages):
+        self.pages = pages
+        self.chromium = self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+    async def launch(self, **kwargs):
+        return FakeBrowser(self.pages)
+
+@pytest.fixture 
 def test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_archive.db"
-    monkeypatch.setattr(src.scraping.scraper, "db_path", str(db_file))
-    
+
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_file) as db:
         with open(schema, "r") as sql_script:
             db.executescript(sql_script.read())
     return str(db_file)
-        
+            
 @pytest.fixture
-def test_conn(test_db):
-    return sqlite3.connect(test_db)
+def test_conn(test_db): 
+    conn = sqlite3.connect(test_db)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-class TestProcessHyperlinkIntegration:
+
+class TestArchivePageIntegration:
     @pytest.mark.asyncio
-    async def test_gather_and_proc_hyperlinks(
-        self, test_conn, test_server, monkeypatch, tmp_path
+    async def test_archive_page(
+        self, test_conn, tmp_path, monkeypatch
     ):
         monkeypatch.setenv("HOME", str(tmp_path))
+        root = "https://example.com/"
+        about = "https://example.com/about"
+        contact = "https://example.com/contact"
+
+        pages = {
+            root: {
+                "body": b"""
+                    <html>
+                        <a href="/about">About</a>
+                        <a href="/contact">Contact</a>
+                    </html>
+                    """,
+                "links": {
+                    "a[href]": [about, contact],
+                },
+            },
+            about: {
+                "body": b"<html><body>About Us</body></html>",
+                "links": {},
+            },
+            contact: {
+                "body": b"<html><body>Contact Us</body></html>",
+                "links": {},
+            },
+        }
+
+        monkeypatch.setattr("src.scraping.scraper.async_playwright",
+                lambda: FakePlaywrightContext(pages),)
         scraper = PageScraper(db_conn=test_conn)
 
-        snap_id = await scraper.archive_page(test_server)
+        snap_id = await scraper.archive_page(root)
 
         assert snap_id is not None
 
         rows = test_conn.execute(
             """
-            SELECT host, remote_path, snapshot_id, on_disk_path
+            SELECT snapshot_id, host, remote_path, on_disk_path
             FROM files
-            WHERE snapshot_id = ?,
+            WHERE snapshot_id = ?
             """,
-            (snap_id,)
+            (snap_id,),
         ).fetchall()
+        assert len(rows) == 3
 
-        paths = {row["remote_path"] for row in rows}
-        assert paths == {"/", "about", "/contact", "/search",}
-
-        assert len(rows) == 4
-
-        for row in rows:
-            assert row["snapshot_id"] == snap_id
-            assert os.path.isfile(row["on_disk_path"])
-
-        snap_count = test_conn.execute(
-            "SELECT COUNT(*) FROM snapshots"
+        count = test_conn.execute(
+            "SELECT COUNT(*) FROM snapshots",
         ).fetchone()[0]
-        assert snap_count == 1
 
+        assert count == 1

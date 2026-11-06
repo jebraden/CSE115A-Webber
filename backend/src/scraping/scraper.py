@@ -43,13 +43,15 @@ class PageScraper():
         self.debug = debug
         self.db = db_conn
 
-    async def archive_page(self, url: str, headers: dict=None, method: str="GET", snap_id: str=None):
+    async def archive_page(self, url: str, headers: dict=None, method: str="GET", snap_id: str=None, saved_urls: list=None):
         """
             The function to call to start an archival job
             If snap_id is not null, it is assumed that it is already in the DB.
 
             A non-null snap_id also means the snapshots table will not be modified
             by this function.
+
+            Please only supply a non-null saved_urls value if snap_id was also not null
         """
         if self.working: return None
 
@@ -60,7 +62,7 @@ class PageScraper():
         
        
         try:
-            snap_id = await self._download_page(url, headers, method, snap_id)
+            snap_id = await self._download_page(url, headers, method, snap_id, saved_urls)
         finally:
             self.working = False
         return snap_id
@@ -198,11 +200,13 @@ class PageScraper():
             values,
         )
 
-    async def _download_page(self, url: str, headers: dict=None, method:str="GET", snap_id: str=None):
+    async def _download_page(self, url: str, headers: dict=None, method:str="GET", snap_id: str=None, saved_urls: set=None):
         if self.working: return None
         self.working = True
         self.tasks = []
         self.saved_urls = set()
+        if saved_urls is not None:
+            self.saved_urls.update(saved_urls)
 
         self.saved_resources = dict()
 
@@ -210,7 +214,6 @@ class PageScraper():
         update_db = snap_id is None
         if update_db:
             self.snap_id = str(uuid.uuid4())
-            self.set_origin_url(url)
             self.db.execute(
                 """
                 INSERT INTO snapshots (id, url, start_time, end_time)
@@ -219,6 +222,8 @@ class PageScraper():
                 (self.snap_id, url, self.time, self.time)
             )
         else: self.snap_id = snap_id
+
+        self.set_origin_url(url)
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
@@ -254,6 +259,10 @@ class PageScraper():
 
             # Rewrite files where needed
             self.rewrite_resource_paths()
+
+            hyperlinks = await self.gather_hyperlinks(page)
+
+            processed = await self.process_hyperlinks(hyperlinks, headers, method)
 
             end_time = time.time()
             await browser.close()
