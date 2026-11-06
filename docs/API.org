@@ -12,63 +12,8 @@
    #+end_src
 
 * Potential Database Schema
-  The internals of the database are likely to change over the course this
-  project. Also, as long as the "backend" is following this API properly, we
-  should be able to change the schema without issue. With that said, as people
-  kept asking about the schema, I have come up with an example of one
-  here. Please read the rest of the document (or just ask Alexander) if you want
-  to know why I recommend this.
-
-  The schema has two tables, one for snapshots, and one for files.
-  #+begin_src sql
-    -- Allow multiple concurrent reads during a write
-    PRAGMA journal_mode=WAL;
-
-    CREATE TABLE snapshots (
-    -- can also use integer primary key, but the limited to signed 8byte integer
-    -- limit on number of row
-    id TEXT PRIMARY KEY,
-    url TEXT NOT NULL,
-    start_time REAL NOT NULL,
-    end_time REAL NOT NULL,
-    ) WITHOUT ROWID;
-
-    CREATE TABLE files (
-    -- same comments as above about integer primary keys
-    id TEXT PRIMARY KEY,
-    snapshot_id TEXT,
-    -- not strictly nessessary depending on how we choose to organize files on
-    -- disk, but might be helpful for future storage changes
-    on_disk_path TEXT NOT NULL,
-    protocol TEXT NOT NULL,
-    port INTEGER NOT NULL,
-    host TEXT NOT NULL,
-    -- path of file on (above) remote host
-    remote_path TEXT NOT NULL,
-    request_sent_time REAL NOT NULL,
-    request_method TEXT NOT NULL,
-    -- jsonb object mapping request headers to their values
-    -- (see `/files/{FILE_ID}` for format)
-    request_headers BLOB NOT NULL,
-    -- jsonb object mapping request parameters to their values
-    -- (see `/files/{FILE_ID}` for format)
-    request_parameters BLOB NOT NULL,
-    response_recieved_time REAL NOT NULL,
-    response_code INTEGER NOT NULL,
-    -- jsonb object mapping request parameters to their values
-    -- (see `/files/{FILE_ID}` for format)
-    response_headers BLOB NOT NULL,
-
-    FOREIGN KEY (snapshot_id) REFERENCES snapshots (id)
-        ON UPDATE SET NULL,
-        ON DELETE SET NULL,
-    ) WITHOUT ROWID;
-
-    -- Speed up searches in the form of
-    -- `SELECT * FROM files WHERE snapshot_id = '...';`
-    CREATE INDEX idx_files_snapshot ON files(snapshot_id);
-  #+end_src
-
+  So as not to duplicate information, this has been moved to
+  =backend/db/001_init.sql=.
 * Common Error Responses
   Note that all API routes described below have the following additional error
   responses.
@@ -263,8 +208,8 @@
           },
           // (object) information about the response
           "response": {
-              // (timespec) time the response was recieved
-              "recieved_time": { ... },
+              // (timespec) time the response was received
+              "received_time": { ... },
               // (integer) code the server responded with when serving this file
               "code": 200,
               // (object of arrays) response headers
@@ -421,6 +366,88 @@
               "file_id": "...",
           }
       ]
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.
+** QUERY =/statistics=
+*** Types
+**** =interval=
+     Represents an interval of time. If =start= > =end=, the server should
+     return a 400 status code.
+
+     When matched against a snapshot, this is the snapshots =start_time= field.
+
+     #+begin_src json-ts
+       {
+           // Note that start is inclusive, but end is exclusive. That is, the
+           // interval is [start, end).
+
+           // (timespec or null) start time of the interval
+           // a value of `null` means -infinity
+           "start": {...},
+           // (timespec or null) end time of the interval
+           // a value of `null` means infinity
+           "end": {...}
+       }
+     #+end_src
+**** =statistics=
+     Represents statistics over an interval.
+     #+begin_src json-ts
+       {
+           // (interval) interval over which these statistics were taken
+           "interval": {...},
+           // (integer) number of snapshots started during this interval
+           "snapshots": 0,
+           // (integer) number of files belonging to snapshots during this
+           // interval
+           "files": 0,
+           // (integer) sum of logical file sizes (in bytes) of files belonging
+           // to snapshots over this interval
+           "size": 0,
+           // (integer) number of distinct URLs used to start snapshots in this
+           // interval
+           "urls": 0,
+           // (integer) number of distinct files.hosts represented in snapshots
+           // over this interval
+           "hosts": 0
+       }
+     #+end_src
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (array of intervals) intervals over which to return statistics
+          "intervals": [...]
+      }
+    #+end_src
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (array of statistics) statistics over the requested intervals
+          // the order of this is the same as the request
+          // if the request array was empty, this should just be an empty aray
+          "statistics": [...]
+      }
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.
+** GET =/statistics/limits=
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // If not snapshots have been taken, these values shall both be `null`
+
+          // (timespec) the timespec of the first (oldest) snapshot taken
+          "first_snapshot": {...},
+          // (timespec) the timespec of the last (most recent) snapshot taken
+          "last_snapshot": {...}
+      }
     #+end_src
 *** Error Response
     Only the global error responses defined above apply.
