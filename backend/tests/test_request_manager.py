@@ -140,7 +140,7 @@ class TestBuildPattern:
         assert vals == [r"example\.com$"]
 
 
-     def test_omit_empty_pattern(self, test_conn): 
+    def test_omit_empty_pattern(self, test_conn):
         manager = RequestManager(test_conn)
         conds = []
         vals = []
