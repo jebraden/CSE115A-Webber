@@ -486,7 +486,6 @@ class TestQueryFiles:
 
         res, status = manager.query_files(request)
     
-        print(res["content"])
         assert status == 200
         assert res["content"] ==[
             {"snapshot_id": "snap-1", "file_id": "file-1"}
