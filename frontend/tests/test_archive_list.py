@@ -4,11 +4,22 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+import time
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from frontend.src.archive_list.service import MockSnapshotService
 from frontend.src.archive_list.window import ArchiveWindow
+
+
+def wait_until(predicate, timeout=3):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        if predicate():
+            return
+        QTest.qWait(5)
+    raise AssertionError("Timed out waiting for background search")
 
 
 class ServiceTests(unittest.TestCase):
@@ -33,7 +44,7 @@ class WindowTests(unittest.TestCase):
     def setUp(self):
         self.window = ArchiveWindow(MockSnapshotService(), demo=True)
         self.window.show()
-        self.app.processEvents()
+        wait_until(lambda: self.window.table.rowCount() == 4)
 
     def tearDown(self):
         self.window.close()
@@ -51,17 +62,21 @@ class WindowTests(unittest.TestCase):
     def test_live_search_no_results_and_clear(self):
         w = self.window
         QTest.keyClicks(w.search_input, "UCSC")
+        wait_until(lambda: w.table.rowCount() == 2)
         self.assertEqual(w.table.rowCount(), 2)
         w.search_input.setText("missing.invalid")
         self.assertEqual(w.table.rowCount(), 0)
+        wait_until(lambda: "No snapshots match" in w.status.text())
         self.assertIn("No snapshots match", w.status.text())
         QTest.mouseClick(w.clear_button, Qt.MouseButton.LeftButton)
         self.assertEqual(w.search_input.text(), "")
+        wait_until(lambda: w.table.rowCount() == 4)
         self.assertEqual(w.table.rowCount(), 4)
 
     def test_click_emits_correct_filtered_snapshot(self):
         w = self.window
         w.search_input.setText("python.org")
+        wait_until(lambda: w.table.rowCount() == 1)
         emitted = []
         w.snapshot_requested.connect(emitted.append)
         cell = w.table.visualItemRect(w.table.item(0, 0)).center()
@@ -83,15 +98,18 @@ class WindowTests(unittest.TestCase):
         self.window._service = service
         with self.assertLogs("frontend.src.archive_list.window", level="ERROR"):
             self.window.clear_button.click()
+            wait_until(lambda: "Could not load" in self.window.status.text())
         self.assertEqual(self.window.table.rowCount(), 0)
         self.assertIn("Could not load", self.window.status.text())
         service.fails = False
         self.window.clear_button.click()
+        wait_until(lambda: self.window.table.rowCount() == 4)
         self.assertEqual(self.window.table.rowCount(), 4)
 
     def test_empty_archive_message(self):
         window = ArchiveWindow(MockSnapshotService([]))
         self.assertEqual(window.table.rowCount(), 0)
+        wait_until(lambda: window.status.text() == "No archived webpages yet.")
         self.assertEqual(window.status.text(), "No archived webpages yet.")
         window.close()
 
