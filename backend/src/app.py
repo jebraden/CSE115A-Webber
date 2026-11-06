@@ -7,11 +7,14 @@ from argparse import ArgumentParser
 import sys
 import os
 import sqlite3
+from pathlib import Path
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager 
+from flask import Flask, jsonify, Response, request, g
+from .request_manager import RequestManager
+from .urlreplace import relativize_html, relativize_stylesheet
 
 
 
@@ -30,6 +33,10 @@ def _setup_die_with_parent(ppid: int | None):
         from .platforms import linux
 
         linux.die_with_parent(signal.SIGTERM, ppid)
+    elif system in ("Darwin", "FreeBSD"):
+        from .platforms import bsd
+
+        bsd.die_with_parent(signal.SIGTERM, ppid)
     else:
         logger.warn(
             'The os "%s" does not support `die_with_parent=True`.', system
@@ -40,6 +47,7 @@ def create_app(
     die_with_parent: Optional[bool] = False,
     ppid: Optional[int] = None,
     log_level: int = logging.WARN,
+    data_dir: str | None = None,
 ) -> Flask:
     """Create an return a WSGI object to start the server with.
 
@@ -60,15 +68,30 @@ def create_app(
     app = Flask(__name__)
     app.logger.setLevel(log_level)
 
-    snapshot_conn = sqlite3.connect(db_path)
+    database = str(Path(data_dir).expanduser() / "archive.db") if data_dir else db_path
+    archive_dir = str(Path(database).resolve().parent)
+    Path(archive_dir).mkdir(parents=True, exist_ok=True)
+    schema = Path(__file__).resolve().parent.parent / "db" / "001_init.sql"
+    with sqlite3.connect(database) as db:
+        db.executescript(schema.read_text())
 
-    query_conn = sqlite3.connect(db_path)
+    def manager():
+        # Flask/Waitress requests run on different threads. Connections belong
+        # to the request that creates them; readers can proceed during a scrape.
+        if "db" not in g:
+            g.db = sqlite3.connect(database, timeout=10)
+            g.db.execute("PRAGMA foreign_keys = ON")
+        return RequestManager(g.db, archive_dir=archive_dir)
 
-    schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
-    with sqlite3.connect(db_path) as db:
-        with open(schema, "r") as sql_script:
-            snapshot_conn.executescript(sql_script.read())
-            query_conn.executescript(sql_script.read())
+    @app.teardown_appcontext
+    def close_database(error=None):
+        db = g.pop("db", None)
+        if db is not None:
+            db.close()
+
+    @app.errorhandler(500)
+    def server_error(error):
+        return jsonify({"message": "The archive service could not complete the request."}), 500
 
     @app.route("/health")
     def health():
@@ -77,33 +100,30 @@ def create_app(
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
         error = None
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.create_snapshot(request)
+        resp = manager().create_snapshot(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        manager = RequestManager(db_conn=query_conn)
+        handler = manager()
         resp = None
         if request.method == "GET":
-            resp = manager.get_snapshot(snapshot_id)
+            resp = handler.get_snapshot(snapshot_id)
         if request.method == "DELETE":
-            resp = manager.delete_snapshot(snapshot_id)
+            resp = handler.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
 
     @app.route("/files/<string:file_id>", methods=["GET"])
     def get_file_info(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_info(file_id)
+        resp = manager().get_file_info(file_id)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file(file_id)
+        resp = manager().get_file(file_id)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -116,23 +136,42 @@ def create_app(
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_by_url(snapshot_id, url_path, request)
+        resp = manager().get_file_by_url(snapshot_id, url_path, request)
 
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
-        return Response(
-            data["body"],
-            status=data["status"],
-            content_type=data["content_type"]
+        # Reuse the team's URL rewriter at the serving boundary. Raw file-data
+        # endpoints and the stored originals remain byte-for-byte unchanged.
+        original_url = unquote(url_path)
+        if request.query_string:
+            original_url += "?" + request.query_string.decode("ascii")
+        content_type = data["content_type"]
+        body = data["body"]
+        media_type = content_type.split(";", 1)[0].strip().lower()
+        if media_type in ("text/html", "text/css"):
+            import re
+            charset = re.search(r"charset\s*=\s*[\"']?([^;\s\"']+)", content_type, re.I)
+            encoding = charset.group(1) if charset else "utf-8"
+            try:
+                text = body.decode(encoding, errors="replace")
+            except LookupError:
+                text = body.decode("utf-8", errors="replace")
+            body = (relativize_html(text, original_url) if media_type == "text/html"
+                    else relativize_stylesheet(text, original_url)).encode("utf-8")
+            content_type = media_type + "; charset=utf-8"
+        response = Response(body, status=data["status"], content_type=content_type)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' data: blob:; script-src 'none'; "
+            "style-src 'self' 'unsafe-inline' data:; connect-src 'none'; "
+            "base-uri 'none'; form-action 'none'"
         )
+        return response
 
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_snapshots(request)
+        resp = manager().query_snapshots(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -141,8 +180,7 @@ def create_app(
     @app.route("/search/files", methods=["QUERY"])
     def query_files():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_files(request) 
+        resp = manager().query_files(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -151,15 +189,13 @@ def create_app(
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_statistics(request)
+        resp = manager().query_statistics(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/statistics/limits", methods=["GET"])
     def get_limits():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_limits()
+        resp = manager().get_limits()
         return jsonify(resp[0]), resp[1]
 
     return app
@@ -193,6 +229,10 @@ def _handle_options() -> dict[str, Any]:
         default="warning",
     )
 
+    parser.add_argument(
+        "--data-dir", help="directory containing archive.db and saved snapshots",
+        default=None,
+    )
     parser.add_argument(
         "--production",
         help="use the production web server waitress",
@@ -243,6 +283,7 @@ def _handle_options() -> dict[str, Any]:
             "die_with_parent": result.die_with_parent,
             "ppid": result.ppid,
             "log_level": getattr(logging, result.log_level.upper()),
+            "data_dir": result.data_dir,
         },
     }
 

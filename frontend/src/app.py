@@ -1,108 +1,58 @@
+"""Compose the central UI, shared API, and owned local backend."""
+import argparse
+from pathlib import Path
 import sys
-import socket
-import signal
-from . import __version__
-from .archive_list.service import MockSnapshotService
-from .archive_list.window import ArchiveWindow
-from .archive_viewer import ArchiveViewer
-from PySide6.QtCore import Signal, qInfo
+
 from PySide6.QtWidgets import QApplication
-from PySide6.QtNetwork import QAbstractSocket
+
+from . import __version__
+from .api import WebberAPI
+from .archive_list.service import MockSnapshotService, UI_DEMO_SNAPSHOTS
+from .archive_service import ArchiveService
+from .main_window import MainWindow
+from .platforms import make_signal_handler
+from .runtime import BackendRuntime
 
 
-# Credit: https://stackoverflow.com/a/37229299
-class SignalHandler(QAbstractSocket):
-    """Cause the Python interpreter to run every time the process receives a
-    signal. Because some signals (e.g. SIGINT) just cause the Python
-    interpreter to set a flag and then continue until the next bytecode
-    instruction is executed, signals are never handled if we are just stuck in
-    the Qt event loop. This causes a python function to run on every singal.
-    """
-
-    signal_recieved = Signal(int)
-
-    def __init__(self, parent=None):
-        super().__init__(QAbstractSocket.SocketType.TcpSocket, parent)
-
-        self._old_fd = None
-
-        self._write_sock, self._read_sock = socket.socketpair(
-            type=socket.SOCK_STREAM
-        )
-        self._write_sock.setblocking(False)
-
-        # Need two, one to trigger the signal, one to read the data/emit the
-        # event
-        self.readyRead.connect(lambda: None)
-        self.readyRead.connect(self._ready_read)
-        self.setSocketDescriptor(self._read_sock.fileno())
-
-    def _ready_read(self):
-        # Will not trigger again until we read this...
-        signum = self.readData(1)[0]
-        self.signal_recieved.emit(signum)
-
-    def install(self):
-        if self._old_fd is not None:
-            self.uninstall()
-        self._old_fd = signal.set_wakeup_fd(self._write_sock.fileno())
-
-    def uninstall(self):
-        if self._old_fd is not None:
-            signal.set_wakeup_fd(self._old_fd)
-            self._old_fd = None
-
-    def __del__(self):
-        self.uninstall()
-
-
-def main():
-    """Main frontend entrypoint."""
-
-    app = QApplication(sys.argv)
-
-    signal_handler = SignalHandler(app)
-    signal_handler.install()
-
-    signal_handler.signal_recieved.connect(
-        lambda signum: app.exit(128 + signum)
-    )
-
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["--"]:
+        args.pop(0)
+    parser = argparse.ArgumentParser(description="Webber local webpage archive")
+    parser.add_argument("--demo", action="store_true", help="show bundled sample archives")
+    parser.add_argument("--data-dir", type=Path, help="directory for the managed backend's archive database and files")
+    parser.add_argument("--backend-url", help="connect to an existing backend instead of launching one")
+    options = parser.parse_args(args)
+    if options.demo and options.backend_url:
+        parser.error("--demo and --backend-url cannot be combined")
+    app = QApplication([sys.argv[0]])
     app.setApplicationName("Webber")
     app.setApplicationVersion(__version__)
-
-    qInfo(f"Webber {__version__} frontend starting")
-
-    window = ArchiveWindow(MockSnapshotService(), demo=True)
-
-    viewer = ArchiveViewer()
-    viewer.setWindowTitle("Webber — Archive Viewer")
-    viewer.resize(1000, 700)
-
-    def open_selected_snapshot(snapshot):
-        """
-        Open the selected snapshot in the viewer, or hide it and show a message
-        if the local HTML file is missing or unavailable.
-        """
-        if snapshot.local_path is None:
-            window.status.setText("No local HTML file available for this snapshot.")
-            viewer.hide()
-            return
-
-        try:
-            viewer.open_archive(str(snapshot.local_path))
-        except (OSError, ValueError):
-            window.status.setText("Could not open this snapshot's HTML file.")
-            viewer.hide()
-            return
-
-        viewer.show()
-        viewer.raise_()
-        window.status.setText(f"Viewing snapshot {snapshot.id}")
-
-    window.snapshot_requested.connect(open_selected_snapshot)
-    app.aboutToQuit.connect(viewer.close)
-
+    signals = make_signal_handler(app)
+    signals.install()
+    signals.signal_recieved.connect(lambda signum: app.exit(128 + signum))
+    runtime = None
+    if options.demo:
+        service = MockSnapshotService(UI_DEMO_SNAPSHOTS)
+        create = None
+    else:
+        if options.backend_url:
+            base_url = options.backend_url
+        else:
+            runtime = BackendRuntime(options.data_dir)
+            runtime.start()
+            app.aboutToQuit.connect(runtime.stop_async)
+            base_url = runtime.base_url
+        service = ArchiveService(
+            WebberAPI(base_url), wait_ready=runtime.wait_ready if runtime else None,
+        )
+        create = service.create_snapshot
+    window = MainWindow(service, create_snapshot=create, demo=options.demo)
     window.show()
-
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        window.close()
+        signals.uninstall()
+        if runtime:
+            runtime.stop_async()

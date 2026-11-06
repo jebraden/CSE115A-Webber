@@ -779,7 +779,7 @@ class TestGetFileInfo:
             }
         }
         assert resp["response"] == {
-            "recieved_time": {"sec": 101, "nsec": 0},
+            "received_time": {"sec": 101, "nsec": 0},
             "code": 200,
             "headers": {
                 "Content-Type": ["text/html"],

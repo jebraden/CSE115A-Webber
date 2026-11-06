@@ -1,0 +1,344 @@
+"""Central-shell interaction tests; Chromium itself is tested by a GUI smoke run."""
+from datetime import datetime, timezone
+from pathlib import Path
+import pytest
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings
+from PySide6.QtWidgets import QApplication, QWidget
+from frontend.src.archive_list.service import MockSnapshotService, Snapshot
+from frontend.src import main_window
+from .test_tasks import until
+
+
+class ViewerDouble(QWidget):
+    def apply_viewing_preferences(self, preferences):
+        self.viewing_preferences = dict(preferences)
+
+    def open_archive(self, path):
+        self.path = path
+
+    def setHtml(self, html):
+        self.html = html
+
+
+@pytest.fixture(scope="session")
+def app():
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def window(app, monkeypatch, tmp_path):
+    monkeypatch.setattr(main_window, "ArchiveViewer", ViewerDouble)
+    html = tmp_path / "page.html"
+    html.write_text("<h1>Saved page</h1>")
+    snapshots = [
+        Snapshot("valid", "https://example.org/", datetime.now(timezone.utc), html),
+        Snapshot("missing", "https://missing.example/", datetime.now(timezone.utc)),
+    ]
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    win = main_window.MainWindow(MockSnapshotService(snapshots), demo=True, settings=settings)
+    until(app, lambda: win._search_request is None)
+    yield win
+    win.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def select(window, snapshot_id):
+    for i, snapshot in enumerate(window._snapshots):
+        if snapshot.id == snapshot_id:
+            window.ui.snapshotList.setCurrentRow(i)
+            until(QApplication.instance(), lambda: not window._tabs[snapshot_id].get("loading"))
+            return
+    raise AssertionError(snapshot_id)
+
+
+def test_navigation_keeps_statistics_empty(window):
+    window.ui.statisticsButton.click()
+    assert window.ui.mainStack.currentWidget() is window.ui.statisticsPage
+    assert window.ui.statisticsPage.findChildren(QWidget) == []
+    window.ui.archivesButton.click()
+    assert window.ui.mainStack.currentWidget() is window.ui.archivesPage
+
+
+def test_selection_opens_embedded_tab_and_raw_html(window):
+    select(window, "valid")
+    assert window.tab_bar.count() == 1
+    assert window.ui.viewerStack.currentWidget() is window.ui.webPage
+    assert "<h1>Saved page</h1>" == window.ui.rawHtml.toPlainText()
+    window.ui.rawButton.click()
+    assert window.ui.viewerStack.currentWidget() is window.ui.rawPage
+    window.ui.pageButton.click()
+    assert window.ui.viewerStack.currentWidget() is window.ui.webPage
+
+
+def test_missing_file_clears_previous_content(window):
+    select(window, "valid")
+    select(window, "missing")
+    assert window.ui.viewerStack.currentWidget() is window.ui.emptyPage
+    assert not window.ui.openWindowButton.isEnabled()
+    assert window.ui.rawHtml.toPlainText() == ""
+    assert window.viewer.html == ""
+
+
+def test_search_keeps_open_tab_and_filters(window):
+    select(window, "valid")
+    window.ui.searchInput.setText("missing.example")
+    until(QApplication.instance(), lambda: window.ui.snapshotList.count() == 1)
+    assert window.ui.snapshotList.count() == 1
+    assert window._snapshot.id == "valid"
+    assert window.ui.openWindowButton.isEnabled()
+    window.ui.searchInput.setText("no-match")
+    until(QApplication.instance(), lambda: window.ui.snapshotList.count() == 0)
+    assert window.ui.snapshotList.count() == 0
+    assert window._snapshot.id == "valid"
+    assert window.ui.viewerStack.currentWidget() is window.ui.webPage
+
+
+def test_popout_keeps_embedded_selection_and_reuses_window(window):
+    select(window, "valid")
+    selected = window._snapshot
+    window.open_in_window(selected)
+    popup = window._windows["valid"]
+    assert popup.centralWidget().path == str(selected.local_path.resolve())
+    window.open_in_window(selected)
+    assert len(window._windows) == 1
+    assert window._snapshot is selected
+    popup.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert window._windows == {}
+
+
+def test_capture_emits_only_valid_urls_without_false_success(window):
+    requests = []
+    window.capture_requested.connect(requests.append)
+    window.ui.urlInput.setText("bad link")
+    window.ui.captureButton.click()
+    assert requests == []
+    window.ui.urlInput.setText("https://example.org/")
+    window.ui.captureButton.click()
+    assert requests == ["https://example.org/"]
+    assert window.ui.captureStatus.text() == "Saving is unavailable."
+
+
+def test_appearance_changes_persist_without_losing_archive(window):
+    select(window, "valid")
+    window.ui.rawButton.click()
+    html = window.ui.rawHtml.toPlainText()
+    window.ui.settingsButton.click()
+    assert window.ui.mainStack.currentWidget() is window.ui.settingsPage
+    window.ui.darkModeButton.click()
+    assert window.theme == "dark"
+    assert window.settings.value("appearance/theme") == "dark"
+    assert window.ui.darkModeButton.isChecked()
+    assert not window.ui.lightModeButton.isChecked()
+    assert window._snapshot.id == "valid"
+    assert window.ui.rawHtml.toPlainText() == html
+    window.ui.archivesButton.click()
+    assert window.ui.viewerStack.currentWidget() is window.ui.rawPage
+    restored = main_window.MainWindow(MockSnapshotService([]), settings=window.settings)
+    try:
+        assert restored.theme == "dark"
+        restored.ui.lightModeButton.click()
+        assert restored.theme == "light"
+        assert window.settings.value("appearance/theme") == "light"
+    finally:
+        restored.close()
+
+
+def test_all_ui_demo_snapshots_have_local_html_and_assets():
+    from html.parser import HTMLParser
+    from urllib.parse import urlsplit, unquote
+    from frontend.src.archive_list.service import UI_DEMO_SNAPSHOTS
+
+    class LocalAssets(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            for name, value in attrs:
+                if name in ("src", "href") and value:
+                    url = urlsplit(value)
+                    if not url.scheme and url.path:
+                        assert (self.base / unquote(url.path)).is_file(), value
+
+    assert len(UI_DEMO_SNAPSHOTS) == 9
+    for snapshot in UI_DEMO_SNAPSHOTS:
+        assert snapshot.local_path.is_file()
+        parser = LocalAssets()
+        parser.base = snapshot.local_path.parent
+        parser.feed(snapshot.local_path.read_text())
+
+
+def test_viewing_settings_reach_current_and_new_windows_and_restore(window):
+    select(window, "valid")
+    original = window.ui.rawHtml.toPlainText()
+    window.ui.pageZoomInput.setValue(125)
+    window.ui.textSizeInput.setValue(18)
+    window.ui.fontCombo.setCurrentText("Serif")
+    window.open_in_window(window._snapshot)
+    popup = window._windows["valid"]
+    assert popup.centralWidget().viewing_preferences == window.viewing_preferences
+    window.ui.lineSpacingCombo.setCurrentText("Comfortable")
+    assert popup.centralWidget().viewing_preferences["spacing"] == "Comfortable"
+    assert window.viewer.viewing_preferences["text_size"] == "18 pt"
+    assert window.ui.rawHtml.toPlainText() == original
+    assert window._snapshot.local_path.read_text() == original
+    restored = main_window.MainWindow(MockSnapshotService([]), settings=window.settings)
+    try:
+        assert restored.ui.pageZoomInput.value() == 125
+        assert restored.ui.fontCombo.currentText() == "Serif"
+        restored.ui.resetSettingsButton.click()
+        from frontend.src.viewing import DEFAULTS
+        assert restored.viewer.viewing_preferences == DEFAULTS
+    finally:
+        restored.close()
+
+
+def test_corrupt_viewing_settings_fall_back_to_defaults():
+    from frontend.src.viewing import normalize_preferences, DEFAULTS
+    assert normalize_preferences({"zoom": "bad", "font": "unknown", "text_size": -1}) == DEFAULTS
+
+
+def test_numeric_point_size_is_saved_and_reset(window):
+    spin = window.ui.textSizeInput
+    assert spin.value() == 12
+    assert spin.suffix() == " pt"
+    spin.setValue(13)
+    assert window.settings.value("viewing/text_size") == "13 pt"
+    assert window.viewer.viewing_preferences["text_size"] == "13 pt"
+    window.ui.resetSettingsButton.click()
+    assert spin.value() == 12
+
+
+def test_reset_all_settings_restores_theme_and_viewing_in_existing_windows(window):
+    select(window, "valid")
+    window.open_in_window(window._snapshot)
+    window.ui.darkModeButton.click()
+    window.ui.textSizeInput.setValue(24)
+    window.ui.fontCombo.setCurrentText("Monospace")
+    window.ui.pageZoomInput.setValue(175)
+    window.ui.lineSpacingCombo.setCurrentText("Comfortable")
+    window.ui.resetSettingsButton.click()
+    from frontend.src.viewing import DEFAULTS
+    assert window.theme == "light"
+    assert window.settings.value("appearance/theme") == "light"
+    assert window.viewing_preferences == DEFAULTS
+    assert window._windows["valid"].centralWidget().viewing_preferences == DEFAULTS
+    assert window._snapshot.id == "valid"
+    for combo in (window.ui.fontCombo, window.ui.lineSpacingCombo):
+        assert "Original" not in [combo.itemText(i) for i in range(combo.count())]
+
+
+def test_numeric_steppers_and_limits(window):
+    window.show()
+    window.ui.settingsButton.click()
+    QApplication.instance().processEvents()
+    assert window.ui.pageZoomInput.lineEdit().width() > 30
+    assert window.ui.textSizeInput.lineEdit().width() > 30
+    window.set_theme("dark")
+    QApplication.instance().processEvents()
+    assert window.ui.pageZoomInput.lineEdit().width() > 30
+    window.set_theme("light")
+    QApplication.instance().processEvents()
+    assert window.ui.textSizeInput.lineEdit().width() > 30
+    u = window.ui
+    u.zoomIncrease.click()
+    assert u.pageZoomInput.value() == 105
+    u.zoomDecrease.click()
+    assert u.pageZoomInput.value() == 100
+    u.textSizeIncrease.click()
+    assert u.textSizeInput.value() == 13
+    u.textSizeDecrease.click()
+    assert u.textSizeInput.value() == 12
+    u.pageZoomInput.setValue(103)
+    assert window.viewing_preferences["zoom"] == "103%"
+    u.textSizeInput.setValue(32)
+    assert not u.textSizeIncrease.isEnabled()
+    u.textSizeInput.setValue(10)
+    assert not u.textSizeDecrease.isEnabled()
+    u.pageZoomInput.setValue(200)
+    assert not u.zoomIncrease.isEnabled()
+    u.pageZoomInput.setValue(75)
+    assert not u.zoomDecrease.isEnabled()
+    u.resetSettingsButton.click()
+    assert u.zoomDecrease.isEnabled() and u.zoomIncrease.isEnabled()
+    assert u.textSizeDecrease.isEnabled() and u.textSizeIncrease.isEnabled()
+
+
+def test_sidebar_toggle_preserves_archive_and_restores_width(window):
+    window.show()
+    QApplication.instance().processEvents()
+    select(window, "valid")
+    window.ui.workspaceSplitter.setSizes([310, 810])
+    before = window.ui.workspaceSplitter.sizes()[0]
+    source = window.ui.rawHtml.toPlainText()
+    window.ui.sidebarToggle.click()
+    QApplication.instance().processEvents()
+    assert window.ui.archivePanel.isHidden()
+    assert window.ui.sidebarToggle.isVisible()
+    assert window._snapshot.id == "valid"
+    assert window.ui.rawHtml.toPlainText() == source
+    assert window.ui.viewerStack.currentWidget() is window.ui.webPage
+    window.ui.sidebarToggle.click()
+    QApplication.instance().processEvents()
+    assert not window.ui.archivePanel.isHidden()
+    assert abs(window.ui.workspaceSplitter.sizes()[0] - before) < 3
+    assert window.ui.snapshotList.currentRow() >= 0
+
+
+def test_tabs_keep_independent_viewers_and_content_modes(window):
+    select(window, "valid")
+    first = window.viewer
+    window.ui.rawButton.click()
+    select(window, "missing")
+    assert window.tab_bar.count() == 2
+    assert window.viewer is not first
+    assert window.ui.viewerStack.currentWidget() is window.ui.emptyPage
+    window.tab_bar.setCurrentIndex(0)
+    assert window.viewer is first
+    assert window._snapshot.id == "valid"
+    assert window.ui.viewerStack.currentWidget() is window.ui.rawPage
+    assert window.ui.rawHtml.toPlainText() == "<h1>Saved page</h1>"
+    window.open_in_tab(window._snapshot)
+    assert window.tab_bar.count() == 2
+    window.ui.textSizeInput.setValue(18)
+    assert all(tab["viewer"].viewing_preferences["text_size"] == "18 pt" for tab in window._tabs.values())
+
+
+def test_tab_closing_and_reordering_preserve_identity(window):
+    select(window, "valid")
+    select(window, "missing")
+    window.tab_bar.moveTab(0, 1)
+    window.tab_bar.setCurrentIndex(1)
+    assert window._snapshot.id == "valid"
+    window.close_tab(1)
+    assert window.tab_bar.count() == 1
+    assert window._snapshot.id == "missing"
+    window.close_tab(0)
+    assert window.tab_bar.count() == 0
+    assert window._snapshot is None
+    assert not window.ui.openWindowButton.isEnabled()
+    assert window.ui.viewerStack.currentWidget() is window.ui.emptyPage
+    select(window, "valid")
+    assert window.tab_bar.count() == 1
+    assert window._snapshot.id == "valid"
+
+
+def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
+    from frontend.src.main_window import _TabCloseButton
+    from PySide6.QtWidgets import QTabBar
+    from PySide6.QtCore import QEvent
+    window.show()
+    select(window, "valid")
+    select(window, "missing")
+    QApplication.instance().processEvents()
+    host = window.tab_bar.tabButton(0, QTabBar.ButtonPosition.LeftSide)
+    button = host.findChild(_TabCloseButton)
+    assert abs(button.geometry().center().x() - host.rect().center().x()) <= 1
+    assert abs(button.geometry().center().y() - host.rect().center().y()) <= 1
+    from PySide6.QtGui import QEnterEvent
+    from PySide6.QtCore import QPointF
+    button.enterEvent(QEnterEvent(QPointF(), QPointF(), QPointF()))
+    assert button.graphicsEffect().isEnabled()
+    button.leaveEvent(QEvent(QEvent.Type.Leave))
+    assert not button.graphicsEffect().isEnabled()
+    window.tab_bar.moveTab(0, 1)
+    button.click()
+    assert window.tab_bar.count() == 1
+    assert window._snapshot.id == "missing"
