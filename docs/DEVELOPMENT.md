@@ -182,3 +182,8 @@ Page / Raw HTML choice. Search filters the sidebar without closing tabs.
 Viewing preferences update all open tabs as well as detached windows. The
 standard Close shortcut closes the active tab. Separate-window actions remain
 available independently.
+
+## GUI background tasks
+
+See [GUI_TASKS.md](GUI_TASKS.md) for Sprint 2.2.4 worker integration, the slow
+search demo, tests and cancellation limits.
