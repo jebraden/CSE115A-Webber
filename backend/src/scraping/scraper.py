@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import tinycss2
 import sqlite3
+import logging
 
 from datetime import datetime
 from playwright.async_api import async_playwright
@@ -16,6 +17,7 @@ from playwright.async_api import async_playwright
 from urllib.parse import urlparse, urljoin, parse_qs
 
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
+logger = logging.getLogger(__name__)
 
 class PageScraper():
     saved_urls: set[str] 
@@ -37,14 +39,23 @@ class PageScraper():
         self.debug = debug
         self.db = db_conn
 
-    async def archive_page(self, url: str, headers: dict=None, method: str="GET"):
+    async def archive_page(self, url: str, headers: dict=None, method: str="GET", snap_id: str=None):
+        """
+            The function to call to start an archival job
+            If snap_id is not null, it is assumed that it is already in the DB.
+
+            A non-null snap_id also means the snapshots table will not be modified
+            by this function.
+        """
+        if self.working: return None
+
         if self.db is None:
             self.db = sqlite3.connect(db_path)
             self.db.execute("PRAGMA foreign_keys = ON")
             self.req_metadata = dict()
 
         try:
-            snap_id = await self._download_page(url, headers, method)
+            snap_id = await self._download_page(url, headers, method, snap_id)
         finally:
             self.working = False
         return snap_id
@@ -165,37 +176,34 @@ class PageScraper():
             values,
         )
 
-    async def _download_page(self, url: str, headers: dict=None, method:str="GET"):
+    async def _download_page(self, url: str, headers: dict=None, method:str="GET", snap_id: str=None):
         if self.working: return None
+        self.working = True
         self.tasks = []
         self.saved_urls = set()
-        self.snap_id = str(uuid.uuid4())
-        self.working = True
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                    headless=True,
-            )
-            self.time = time.time()
-            page = await browser.new_page()
-            
-            parsed = urlparse(url)
-            self.url = url
 
-
-            if headers is not None:
-                await page.setExtraHTTPHeaders(headers)
-
-            self.origin = parsed.netloc
-            self.origin_host = parsed.hostname
-            self.base_dir = self.get_base_dir(url)
-
+        self.time = time.time()
+        update_db = snap_id is None
+        if update_db:
+            self.snap_id = str(uuid.uuid4())
+            self.set_origin_url(url)
             self.db.execute(
                 """
                 INSERT INTO snapshots (id, url, start_time, end_time)
                 VALUES (?, ?, ?, ?)
                 """,
-                (self.snap_id, url, self.time, self.time),
+                (self.snap_id, url, self.time, self.time)
             )
+        else: self.snap_id = snap_id
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                    headless=True,
+            )
+            page = await browser.new_page()
+            
+            if headers is not None:
+                await page.setExtraHTTPHeaders(headers)
 
             page.on("request", self.handle_requests)
             page.on("response", self.on_response)
@@ -222,15 +230,22 @@ class PageScraper():
 
             end_time = time.time()
             await browser.close()
-        self.db.execute(
-            """
-            UPDATE snapshots SET end_time = ? WHERE id = ?
-            """,
-            (end_time, self.snap_id),
-        )
+        
+        if update_db:
+            # conditional update because if snapshot exists, we probably have a parent process running that 
+            # returns the true end time. Avoid over-updating.
+            self.db.execute(
+                """
+                UPDATE snapshots SET end_time = ? WHERE id = ?
+                """,
+                (end_time, self.snap_id),
+            )
+
+        # unconditional commit since we still write files
         self.db.commit()
         self.working = False
         return self.snap_id
+
 
 
     async def _drain_tasks(self):
@@ -253,6 +268,46 @@ class PageScraper():
                 if isinstance(res, BaseException):
                     if self.debug:
                         print(f"Task Failed: {res!r}")
+
+    async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> list[str]:
+        """
+        Takes a list of urls (presumably from PageScraper#gather_hyperlinks) and downloads the pages, 
+        Recursively PageScraping)
+
+        urls    - the list of urls to start scraping processes for
+        headers - the headers we want to make the request with, Generally should follow what the root call to
+                  archive_page was.
+        method  - the HTTP method to make the request with. Currently only GET is supported explicitly
+
+        Returns a list of the urls that were successively scraped. Urls scraped here have the contents stored
+        in the same snapshot directory as the original archive_page caller.
+        """
+        processed = set()
+        for url in urls:
+            scraper = PageScraper(db_conn=self.db)
+            res = await scraper.archive_page(url, headers, method, self.snap_id)
+            if res is None: 
+                logger.warning("Skipping url: {url}. Failed to download page content") 
+                continue
+            processed.add(url)
+        return processed
+
+
+    async def gather_hyperlinks(self, page) -> list[str]:
+        search_targets = [("a[href]", "href"), ("area[href]", "href"), ("form", "action")]
+        urls = set()
+
+        for selector, attr in search_targets:
+            elements = page.locator(selector)
+            elem_count = await elements.count()
+            for i in range(elem_count):
+                element = elements.nth(i)
+                url = await ( await element.get_property(attr)).json_value()
+                urls.add(url)
+
+        return urls
+
+        
 
 
     def get_base_dir(self, url: str):
@@ -349,6 +404,14 @@ class PageScraper():
                 print(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
+
+    def set_origin_url(self, url: str):
+        parsed = urlparse(url)
+        self.url = url
+        self.origin = parsed.netloc
+        self.origin_host = parsed.hostname
+        self.base_dir = self.get_base_dir(url)
+
     
 
 # Use to run a manual test
