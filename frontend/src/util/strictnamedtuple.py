@@ -171,8 +171,20 @@ def _check_list(
             return False
     return True
 
+def _check_dict(
+    val: object, cls: GenericAlias, rec: Callable[[object, type], bool]
+) -> bool:
+    assert len(cls.__args__) == 2
+    if not isinstance(val, dict):
+        return False
+    for thing in val:
+        if not rec(thing, cls.__args__):
+            return False
+    return True
+
 
 define_parameterized_checker(list, _check_list)
+define_parameterized_checker(dict, _check_dict)
 
 
 class StrictNamedTuple[*T](tuple[*T], metaclass=_StrictNamedTupleMeta):
