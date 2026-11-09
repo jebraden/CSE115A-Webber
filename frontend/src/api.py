@@ -10,6 +10,7 @@ from collections.abc import Callable
 from functools import total_ordering
 import json
 import httpx
+from PySide6.QtCore import QDateTime
 from .util.strictnamedtuple import StrictNamedTuple
 from .util.convpath import convert_object
 from copy import deepcopy
@@ -35,7 +36,6 @@ def _to_json(obj: Any) -> str:
 ################
 # Global types #
 ################
-@total_ordering
 @total_ordering
 class Timespec(StrictNamedTuple):
     """Class representing an instant in time or an interval."""
@@ -334,13 +334,13 @@ class FileQueryResponse(StrictNamedTuple):
 class Interval(StrictNamedTuple):
     """Represents a span of time.
 
-    The start and end are inclusive.
+    The start is inclusive, but the end is exclusive.
     """
 
     # the start of the interval (inclusive)
     start: Timespec | None
 
-    # the end of the interval (inclusive)
+    # the end of the interval (exclusive)
     end: Timespec | None
 
     def __contains__(self, time: object) -> bool:
@@ -349,11 +349,11 @@ class Interval(StrictNamedTuple):
                 f"Cannot check if a {type(time)} falls in the interval"
             )
         if self.start is not None and self.end is not None:
-            return self.start <= time <= self.end
+            return self.start <= time < self.end
         elif self.start is not None:
             return self.start <= time
         elif self.end is not None:
-            return time <= self.end
+            return time < self.end
         else:
             return True
 
@@ -611,7 +611,7 @@ class WebberAPI:
             )
             body = self._body_json(resp, 200)
             try:
-                return convert_object(
+                obj = convert_object(
                     [
                         ("-[].interval.start**", Timespec),
                         ("-[].interval.end**", Timespec),
@@ -621,6 +621,9 @@ class WebberAPI:
                     ],
                     body["statistics"],
                 )
+                if len(intervals) != len(obj.statistics):
+                    raise ValueError("Output length differs from input length")
+                return obj
             except Exception as e:
                 raise BadResponseError(resp.text) from e           
 
