@@ -12,6 +12,16 @@ from PySide6.QtWidgets import QGraphicsView, QGraphicsScene
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtSvg import QSvgRenderer
 from typing import override, Any, NamedTuple
+from ..themes import (
+    OFF_WHITE,
+    NEAR_BLACK,
+    CHARCOAL,
+    PALE_GRAY,
+    WARM_GRAY_BORDER,
+    DARK_GRAY_BORDER,
+    OLIVE,
+    LIGHT_GREEN,
+)
 from collections.abc import Iterable
 from io import BytesIO
 
@@ -36,9 +46,7 @@ class LineChart(QGraphicsView):
         super().__init__(*args, **kwargs)
 
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.setTransformationAnchor(
-            QGraphicsView.ViewportAnchor.AnchorUnderMouse
-        )
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
 
         self.setScene(QGraphicsScene())
@@ -48,6 +56,17 @@ class LineChart(QGraphicsView):
         self.x_label: str = ""
         self.y_label: str = ""
         self._plot_data: list[PlotData] = []
+        self._theme = "light"
+
+    def set_theme(self, mode: str):
+        self._theme = mode
+        if self._item is not None:
+            self.update_graph()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._item is not None:
+            self.fitInView(self._item, Qt.AspectRatioMode.KeepAspectRatio)
 
     def clear_data(self):
         """Clear this plots data.
@@ -56,9 +75,7 @@ class LineChart(QGraphicsView):
         """
         self._plot_data = []
 
-    def add_data(
-        self, label: str, x_data: list[Any], y_data: list[Any], color: str
-    ):
+    def add_data(self, label: str, x_data: list[Any], y_data: list[Any], color: str):
         """Add a new axis to the plot.
 
         Make sure to call `update_graph` to actually redraw the data.
@@ -75,13 +92,25 @@ class LineChart(QGraphicsView):
 
         This regenerates the actual graph image.
         """
-        fig, ax = plt.subplots()
+        dark = self._theme == "dark"
+        background = NEAR_BLACK if dark else OFF_WHITE
+        foreground = PALE_GRAY if dark else CHARCOAL
+        border = DARK_GRAY_BORDER if dark else WARM_GRAY_BORDER
+        accent = LIGHT_GREEN if dark else OLIVE
+        fig, ax = plt.subplots(layout="constrained")
+        fig.patch.set_facecolor(background)
+        ax.set_facecolor(background)
+        ax.tick_params(colors=foreground)
+        ax.xaxis.label.set_color(foreground)
+        ax.yaxis.label.set_color(foreground)
+        for spine in ax.spines.values():
+            spine.set_color(border)
         try:
             ax.set_title("")
             ax.set_xlabel(self.x_label)
             ax.set_ylabel(self.y_label)
             for label, x_data, y_data, color in self._plot_data:
-                ax.plot(x_data, y_data, color=color, label=label)
+                ax.plot(x_data, y_data, color=accent, label=label)
             # if self._plot_data:
             #     ax.legend()
 
@@ -98,6 +127,7 @@ class LineChart(QGraphicsView):
         self._item = QGraphicsSvgItem()
         self._item.setSharedRenderer(self._render)
         self.scene().addItem(self._item)
+        self.scene().setSceneRect(self._item.boundingRect())
         self.fitInView(self._item, Qt.AspectRatioMode.KeepAspectRatio)
 
     @override

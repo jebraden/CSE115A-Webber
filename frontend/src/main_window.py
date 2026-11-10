@@ -3,25 +3,176 @@
 The shell reuses the snapshot service and local archive viewer. Backend capture
 integration can connect capture_requested without changing the Designer layout.
 """
+
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QFile, QDir, QEvent, QIODevice, QSize, Qt, Signal, QSettings, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor
+from PySide6.QtCore import (
+    QFile,
+    QDir,
+    QEvent,
+    QIODevice,
+    QSize,
+    Qt,
+    Signal,
+    QSettings,
+    QTimer,
+    QPointF,
+)
+from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor, QFont
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QLabel, QListWidgetItem,
-    QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect, QVBoxLayout,
+    QAbstractItemView,
+    QButtonGroup,
+    QLabel,
+    QListWidgetItem,
+    QApplication,
+    QMainWindow,
+    QToolButton,
+    QWidget,
+    QSpinBox,
+    QTabBar,
+    QStackedWidget,
+    QGraphicsDropShadowEffect,
+    QVBoxLayout,
+    QLineEdit,
+    QComboBox,
+    QListView,
+    QStyleFactory,
+    QProxyStyle,
+    QStyle,
+    QFrame,
+    QFontDialog,
+    QDialog,
+    QDialogButtonBox,
 )
 
 from .archive_list.service import SnapshotService
 from .archive_viewer import ArchiveViewer
 from .themes import (
-    BUTTON_CHARCOAL, BUTTON_GRAY_BORDER, DARK_SAGE, LIGHT_GREEN, LIGHT_MOSS,
-    OFF_WHITE, OLIVE, PALE_SAGE, SAGE, WARM_GRAY_BORDER, stylesheet_for,
+    BUTTON_CHARCOAL,
+    BUTTON_GRAY_BORDER,
+    DARK_SAGE,
+    LIGHT_GREEN,
+    LIGHT_MOSS,
+    OFF_WHITE,
+    OLIVE,
+    PALE_SAGE,
+    SAGE,
+    WARM_GRAY_BORDER,
+    stylesheet_for,
 )
 from .viewing import DEFAULTS, normalize_preferences
+from .fonts import FontLibrary
+
+
+class _CompositionLineEdit(QLineEdit):
+    """Keep IME pre-edit native and filter only after a candidate is committed."""
+
+    compositionFinished = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.is_composing = False
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
+        self.setInputMethodHints(Qt.InputMethodHint.ImhNone)
+
+    def inputMethodEvent(self, event):
+        was_composing = self.is_composing
+        self.is_composing = bool(event.preeditString()) or bool(event.commitString())
+        super().inputMethodEvent(event)
+        self.is_composing = bool(event.preeditString())
+        if was_composing or event.commitString():
+            if not self.is_composing:
+                self.compositionFinished.emit()
+
+
+class _OptionsStyle(QProxyStyle):
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_ComboBox_Popup:
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
+
+
+class _SettingsComboBox(QComboBox):
+    """Use a single painted popup surface, independent of native Qt themes."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._options_style = _OptionsStyle(QStyleFactory.create("Fusion"))
+        self._options_style.setParent(self)
+        self.setStyle(self._options_style)
+        view = QListView(self)
+        view.setFrameShape(QFrame.Shape.NoFrame)
+        view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.setView(view)
+        self.view().window().setObjectName("settingsOptionsPopup")
+
+
+class _TabStyle(QProxyStyle):
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_Widget_Animate:
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
+
+
+class _ArchiveTabBar(QTabBar):
+    """Keep a dragged tab inside the tab strip instead of clipping it outside."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._drag_offset = None
+        self._drag_width = 0
+        self._drag_start = None
+        self._tab_style = _TabStyle(QStyleFactory.create("Fusion"))
+        self._tab_style.setParent(self)
+        self.setStyle(self._tab_style)
+
+    def mousePressEvent(self, event):
+        index = self.tabAt(event.position().toPoint())
+        if event.button() == Qt.MouseButton.LeftButton and index >= 0:
+            rect = self.tabRect(index)
+            self._drag_offset = event.position().x() - rect.left()
+            self._drag_width = rect.width()
+            self._drag_start = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self._drag_offset is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and self.count()
+        ):
+            # Native tab sliding animates the painted border separately from
+            # the label/child widgets on some styles. Reorder the complete tab
+            # synchronously instead of entering that native animation path.
+            if (
+                event.position().toPoint() - self._drag_start
+            ).manhattanLength() < QApplication.startDragDistance():
+                event.accept()
+                return
+            left = max(0, self.tabRect(0).left())
+            right = min(self.width(), self.tabRect(self.count() - 1).right() + 1)
+            x = min(max(event.position().x(), left), right - 1)
+            y = min(max(event.position().y(), 0), self.height() - 1)
+            target = self.tabAt(QPointF(x, y).toPoint())
+            current = self.currentIndex()
+            if target >= 0 and target != current:
+                center = self.tabRect(target).center().x()
+                if (target > current and x >= center) or (
+                    target < current and x <= center
+                ):
+                    self.moveTab(current, target)
+                    self.setCurrentIndex(target)
+                    self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self._drag_offset = None
 
 
 class _NumericInput(QSpinBox):
@@ -36,7 +187,12 @@ class _NumericInput(QSpinBox):
 
     def event(self, event):
         result = super().event(event)
-        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.Show, QEvent.Type.PolishRequest, QEvent.Type.LayoutRequest):
+        if event.type() in (
+            QEvent.Type.StyleChange,
+            QEvent.Type.Show,
+            QEvent.Type.PolishRequest,
+            QEvent.Type.LayoutRequest,
+        ):
             QTimer.singleShot(0, self._fit_editor)
             QTimer.singleShot(50, self._fit_editor)
         return result
@@ -74,6 +230,12 @@ class _WindowLoader(QUiLoader):
         if parent is None and class_name == "QMainWindow":
             self.window.setObjectName(name)
             return self.window
+        if class_name in ("QLineEdit", "QComboBox"):
+            widget = (
+                _CompositionLineEdit if class_name == "QLineEdit" else _SettingsComboBox
+            )(parent)
+            widget.setObjectName(name)
+            return widget
         if class_name == "QSpinBox":
             widget = _NumericInput(parent)
             widget.setObjectName(name)
@@ -85,9 +247,18 @@ class MainWindow(QMainWindow):
     snapshot_requested = Signal(object)
     capture_requested = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo=False, settings=None, statistics_api=None):
+    def __init__(
+        self,
+        service: SnapshotService,
+        *,
+        demo=False,
+        settings=None,
+        statistics_api=None,
+    ):
         super().__init__()
-        self.settings = settings if settings is not None else QSettings("Webber", "Webber")
+        self.settings = (
+            settings if settings is not None else QSettings("Webber", "Webber")
+        )
         self._service = service
         self._snapshot = None
         self._snapshots = []
@@ -103,28 +274,36 @@ class MainWindow(QMainWindow):
                 raise RuntimeError(loader.errorString())
         finally:
             source.close()
-        self.ui = SimpleNamespace(**{
-            obj.objectName(): obj for obj in self.findChildren(QWidget)
-            if obj.objectName()
-        })
+        self.ui = SimpleNamespace(
+            **{
+                obj.objectName(): obj
+                for obj in self.findChildren(QWidget)
+                if obj.objectName()
+            }
+        )
         u = self.ui
         # Embed task 2.4.1 in the existing navigation instead of a separate window.
         self.statistics_widget = None
         statistics_layout = QVBoxLayout(u.statisticsPage)
+        statistics_layout.setContentsMargins(28, 28, 28, 28)
+        statistics_layout.setSpacing(12)
         demo_statistics = demo and statistics_api is None
         if demo_statistics:
             from .statistics.mock_api import MockWebberAPI
+
             statistics_api = MockWebberAPI()
-        if demo_statistics:
-            demo_notice = QLabel("Demo statistics — sample data, not your saved archives.", u.statisticsPage)
-            demo_notice.setWordWrap(True)
-            statistics_layout.addWidget(demo_notice)
         if statistics_api is not None:
             from .statistics.statistics import StatisticsWidget
+
             self.statistics_widget = StatisticsWidget(statistics_api, u.statisticsPage)
             statistics_layout.addWidget(self.statistics_widget)
         else:
-            statistics_layout.addWidget(QLabel("Statistics are unavailable until the backend is connected.", u.statisticsPage))
+            statistics_layout.addWidget(
+                QLabel(
+                    "Statistics are unavailable until the backend is connected.",
+                    u.statisticsPage,
+                )
+            )
         self._light_stylesheet = self.styleSheet()
         self.setStyleSheet(stylesheet_for(self._light_stylesheet, "light"))
         self.viewer = ArchiveViewer(u.webViewHost)
@@ -136,7 +315,7 @@ class MainWindow(QMainWindow):
         self._browser_pages.addWidget(self._idle_viewer)
         self._tabs = {}
         self._active_tab_id = None
-        self.tab_bar = QTabBar(u.archiveTabsHost)
+        self.tab_bar = _ArchiveTabBar(u.archiveTabsHost)
         self.tab_bar.setAccessibleName("Open archives")
         self.tab_bar.setTabsClosable(False)
         self.tab_bar.setMovable(True)
@@ -145,17 +324,29 @@ class MainWindow(QMainWindow):
         self.tab_bar.setUsesScrollButtons(True)
         self.tab_bar.setMinimumWidth(0)
         u.archiveTabsHost.layout().addWidget(self.tab_bar)
-        u.archiveTabsHost.layout().setAlignment(self.tab_bar, Qt.AlignmentFlag.AlignLeft)
+        u.archiveTabsHost.layout().setAlignment(
+            self.tab_bar, Qt.AlignmentFlag.AlignLeft
+        )
         self.tab_bar.currentChanged.connect(self._activate_tab)
         self.tab_bar.tabCloseRequested.connect(self.close_tab)
-        self._close_tab_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Close), self)
-        self._close_tab_shortcut.activated.connect(lambda: self.close_tab(self.tab_bar.currentIndex()))
+        self._close_tab_shortcut = QShortcut(
+            QKeySequence(QKeySequence.StandardKey.Close), self
+        )
+        self._close_tab_shortcut.activated.connect(
+            lambda: self.close_tab(self.tab_bar.currentIndex())
+        )
         self._sidebar_sizes = [285, 835]
         u.workspaceSplitter.setSizes(self._sidebar_sizes)
         u.sidebarToggle.toggled.connect(self.set_sidebar_visible)
         u.workspaceSplitter.setStretchFactor(0, 0)
         u.workspaceSplitter.setStretchFactor(1, 1)
         u.snapshotList.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        u.snapshotList.setVerticalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        u.snapshotList.setHorizontalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
         self._navigation = QButtonGroup(self)
         self._navigation.setExclusive(True)
         self._navigation.addButton(u.archivesButton)
@@ -167,18 +358,27 @@ class MainWindow(QMainWindow):
         self._themes.addButton(u.darkModeButton)
         u.lightModeButton.clicked.connect(lambda: self.set_theme("light"))
         u.darkModeButton.clicked.connect(lambda: self.set_theme("dark"))
-        u.settingsButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.settingsPage))
+        u.settingsButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.settingsPage)
+        )
         self._content_modes = QButtonGroup(self)
         self._content_modes.setExclusive(True)
         self._content_modes.addButton(u.pageButton)
         self._content_modes.addButton(u.rawButton)
-        u.archivesButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.archivesPage))
-        u.statisticsButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.statisticsPage))
+        u.archivesButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.archivesPage)
+        )
+        u.statisticsButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.statisticsPage)
+        )
         u.savePageButton.toggled.connect(self._focus_capture)
-        u.cancelCaptureButton.clicked.connect(lambda: u.savePageButton.setChecked(False))
+        u.cancelCaptureButton.clicked.connect(
+            lambda: u.savePageButton.setChecked(False)
+        )
         u.captureButton.clicked.connect(self.request_capture)
         u.urlInput.returnPressed.connect(self.request_capture)
         u.searchInput.textChanged.connect(self.search)
+        u.searchInput.compositionFinished.connect(self.search)
         u.snapshotList.currentItemChanged.connect(self._select_item)
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
@@ -193,27 +393,54 @@ class MainWindow(QMainWindow):
         u.snapshotList.itemEntered.connect(self._position_popout)
         u.snapshotList.viewport().installEventFilter(self)
         u.snapshotList.installEventFilter(self)
-        u.snapshotList.verticalScrollBar().valueChanged.connect(lambda: self.popout.hide())
+        u.snapshotList.verticalScrollBar().valueChanged.connect(
+            lambda: self.popout.hide()
+        )
         self._popout_shortcut = QShortcut(QKeySequence("Ctrl+Shift+O"), self)
-        self._popout_shortcut.activated.connect(lambda: self.open_in_window(self._snapshot))
+        self._popout_shortcut.activated.connect(
+            lambda: self.open_in_window(self._snapshot)
+        )
         u.previewLabel = QLabel("Sample archives" if demo else "Local archives")
         u.previewLabel.setObjectName("previewLabel")
         self.statusBar().addPermanentWidget(u.previewLabel)
         self.set_theme(self.settings.value("appearance/theme", "light"), persist=False)
-        self._viewing_controls = {"zoom": u.pageZoomInput, "text_size": u.textSizeInput,
-                                  "font": u.fontCombo, "spacing": u.lineSpacingCombo}
-        saved = normalize_preferences({key: self.settings.value("viewing/" + key, default)
-                                       for key, default in DEFAULTS.items()})
+        self._viewing_controls = {
+            "zoom": u.pageZoomInput,
+            "text_size": u.textSizeInput,
+            "font": u.fontCombo,
+            "spacing": u.lineSpacingCombo,
+        }
+        self._font_library = FontLibrary(self.settings)
+        for family in self._font_library.families():
+            if u.fontCombo.findText(family) < 0:
+                u.fontCombo.addItem(family)
+        self._font_details = self.settings.value("viewing/font_details", "")
+        saved = normalize_preferences(
+            {
+                key: self.settings.value("viewing/" + key, default)
+                for key, default in DEFAULTS.items()
+            }
+        )
+        if u.fontCombo.findText(saved["font"]) < 0:
+            u.fontCombo.addItem(saved["font"])
         for key, combo in self._viewing_controls.items():
             self._set_control_value(combo, saved[key])
-            signal = combo.valueChanged if isinstance(combo, QSpinBox) else combo.currentTextChanged
+            signal = (
+                combo.valueChanged
+                if isinstance(combo, QSpinBox)
+                else combo.currentTextChanged
+            )
             signal.connect(self.update_viewing_preferences)
-        for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+        for spin, decrease, increase in (
+            (u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
+            (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+        ):
             decrease.clicked.connect(spin.stepDown)
             increase.clicked.connect(spin.stepUp)
             spin.valueChanged.connect(self._update_stepper_buttons)
         self._update_stepper_buttons()
+        u.addFontButton.clicked.connect(self.choose_reading_font)
+        u.fontCombo.currentTextChanged.connect(self._clear_font_details)
         u.resetSettingsButton.clicked.connect(self.reset_all_settings)
         self.update_viewing_preferences(persist=False)
         self.search()
@@ -233,7 +460,11 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _control_value(control):
-        return f"{control.value()}{control.suffix()}" if isinstance(control, QSpinBox) else control.currentText()
+        return (
+            f"{control.value()}{control.suffix()}"
+            if isinstance(control, QSpinBox)
+            else control.currentText()
+        )
 
     @staticmethod
     def _set_control_value(control, value):
@@ -244,14 +475,70 @@ class MainWindow(QMainWindow):
 
     def _update_stepper_buttons(self, *_args):
         u = self.ui
-        for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+        for spin, decrease, increase in (
+            (u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
+            (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+        ):
             decrease.setEnabled(spin.value() > spin.minimum())
             increase.setEnabled(spin.value() < spin.maximum())
 
+    def _clear_font_details(self):
+        self._font_details = ""
+        self.settings.remove("viewing/font_details")
+        self.update_viewing_preferences()
+
+    def choose_reading_font(self):
+        current = QFont()
+        if not self._font_details or not current.fromString(self._font_details):
+            generic = {
+                "Sans serif": "sans-serif",
+                "Serif": "serif",
+                "Monospace": "monospace",
+            }
+            current.setFamily(
+                generic.get(
+                    self.ui.fontCombo.currentText(), self.ui.fontCombo.currentText()
+                )
+            )
+        current.setPointSize(self.ui.textSizeInput.value())
+        dialog = QFontDialog(current, self)
+        # macOS's native font panel has no accept button. Use Qt's complete
+        # dialog so adding a saved dropdown entry is an explicit action.
+        dialog.setOption(QFontDialog.FontDialogOption.DontUseNativeDialog, True)
+        dialog.setWindowTitle("Add font to Webber")
+        buttons = dialog.findChild(QDialogButtonBox)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Add font")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            dialog.deleteLater()
+            return
+        font = dialog.selectedFont()
+        dialog.deleteLater()
+        size = min(
+            max(font.pointSize(), self.ui.textSizeInput.minimum()),
+            self.ui.textSizeInput.maximum(),
+        )
+        font.setPointSize(size)
+        self.ui.fontCombo.blockSignals(True)
+        if self.ui.fontCombo.findText(font.family()) < 0:
+            self.ui.fontCombo.addItem(font.family())
+        self.ui.fontCombo.setCurrentText(font.family())
+        self.ui.fontCombo.blockSignals(False)
+        self.ui.textSizeInput.blockSignals(True)
+        self.ui.textSizeInput.setValue(size)
+        self.ui.textSizeInput.blockSignals(False)
+        self._font_library.remember(font.family())
+        self._font_details = font.toString()
+        self._update_stepper_buttons()
+        self.update_viewing_preferences()
+
     def update_viewing_preferences(self, *_args, persist=True):
-        self.viewing_preferences = normalize_preferences({key: self._control_value(combo)
-                                  for key, combo in self._viewing_controls.items()})
+        values = {
+            key: self._control_value(combo)
+            for key, combo in self._viewing_controls.items()
+        }
+        if self._font_details:
+            values["font_details"] = self._font_details
+        self.viewing_preferences = normalize_preferences(values)
         self._idle_viewer.apply_viewing_preferences(self.viewing_preferences)
         for tab in self._tabs.values():
             tab["viewer"].apply_viewing_preferences(self.viewing_preferences)
@@ -263,6 +550,8 @@ class MainWindow(QMainWindow):
             self.settings.sync()
 
     def reset_viewing_preferences(self):
+        self._font_details = ""
+        self.settings.remove("viewing/font_details")
         for key, combo in self._viewing_controls.items():
             combo.blockSignals(True)
             self._set_control_value(combo, DEFAULTS[key])
@@ -279,14 +568,21 @@ class MainWindow(QMainWindow):
         """Apply shell colors without touching the archived HTML or selection."""
         mode = mode if mode in ("light", "dark") else "light"
         self.theme = mode
-        self.ui.sidebarToggle.setIcon(QIcon(str(Path(__file__).with_name("ui") / "icons" / f"sidebar-{mode}.svg")))
+        self.ui.sidebarToggle.setIcon(
+            QIcon(str(Path(__file__).with_name("ui") / "icons" / f"sidebar-{mode}.svg"))
+        )
         self.setStyleSheet(stylesheet_for(self._light_stylesheet, mode))
-        close_icon = QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg"))
+        if self.statistics_widget is not None:
+            self.statistics_widget.graph.set_theme(mode)
+        close_icon = QIcon(
+            str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg")
+        )
         for button in self.findChildren(_TabCloseButton):
             button.setIcon(close_icon)
         foreground, background, border = (
             (LIGHT_GREEN, BUTTON_CHARCOAL, BUTTON_GRAY_BORDER)
-            if mode == "dark" else (OLIVE, OFF_WHITE, WARM_GRAY_BORDER)
+            if mode == "dark"
+            else (OLIVE, OFF_WHITE, WARM_GRAY_BORDER)
         )
         hover, focus = (DARK_SAGE, LIGHT_MOSS) if mode == "dark" else (PALE_SAGE, SAGE)
         self.popout.setStyleSheet(
@@ -304,6 +600,8 @@ class MainWindow(QMainWindow):
             self.ui.urlInput.setFocus()
 
     def request_capture(self):
+        if self.ui.urlInput.is_composing:
+            return
         url = self.ui.urlInput.text().strip()
         try:
             parts = urlsplit(url)
@@ -320,13 +618,17 @@ class MainWindow(QMainWindow):
         self.ui.captureStatus.setText("Saving is unavailable.")
 
     def search(self, *_):
+        if self.ui.searchInput.is_composing:
+            return
         u = self.ui
         self._hover_item = None
         self.popout.hide()
         u.snapshotList.blockSignals(True)
         u.snapshotList.clear()
         try:
-            self._snapshots = list(self._service.search_snapshots(u.searchInput.text().strip()))
+            self._snapshots = list(
+                self._service.search_snapshots(u.searchInput.text().strip())
+            )
         except Exception:
             self._snapshots = []
             u.snapshotList.blockSignals(False)
@@ -349,7 +651,15 @@ class MainWindow(QMainWindow):
             self._sync_list_selection()
         else:
             self._clear_reader()
-            u.emptyMessage.setText("No archive open." if count else "No matching archives." if u.searchInput.text() else "No archived webpages yet.")
+            u.emptyMessage.setText(
+                "No archive open."
+                if count
+                else (
+                    "No matching archives."
+                    if u.searchInput.text()
+                    else "No archived webpages yet."
+                )
+            )
         self.statusBar().clearMessage()
 
     def _select_item(self, item, _previous):
@@ -375,11 +685,18 @@ class MainWindow(QMainWindow):
             available = True
         except (OSError, ValueError):
             pass
-        self._tabs[snapshot.id] = {"snapshot": snapshot, "viewer": viewer,
-                                   "source": source, "available": available,
-                                   "raw": False, "raw_scroll": 0}
+        self._tabs[snapshot.id] = {
+            "snapshot": snapshot,
+            "viewer": viewer,
+            "source": source,
+            "available": available,
+            "raw": False,
+            "raw_scroll": 0,
+        }
         parts = urlsplit(snapshot.url)
-        title = (parts.path.rstrip("/").rsplit("/", 1)[-1] or parts.hostname or snapshot.url)
+        title = (
+            parts.path.rstrip("/").rsplit("/", 1)[-1] or parts.hostname or snapshot.url
+        )
         self.tab_bar.blockSignals(True)
         index = self.tab_bar.addTab(title)
         self.tab_bar.setTabData(index, snapshot.id)
@@ -389,10 +706,23 @@ class MainWindow(QMainWindow):
         close_button = _TabCloseButton(close_host)
         close_button.move(4, 0)
         close_button.setAccessibleName(f"Close {snapshot.url}")
-        close_button.setIcon(QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{self.theme}.svg")))
-        close_button.clicked.connect(lambda _checked=False, key=snapshot.id: self._close_tab_id(key))
+        close_button.setIcon(
+            QIcon(
+                str(
+                    Path(__file__).with_name("ui") / "icons" / f"close-{self.theme}.svg"
+                )
+            )
+        )
+        close_button.clicked.connect(
+            lambda _checked=False, key=snapshot.id: self._close_tab_id(key)
+        )
         self.tab_bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, close_host)
-        self.tab_bar.setTabToolTip(index, snapshot.url + "\n" + snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p"))
+        self.tab_bar.setTabToolTip(
+            index,
+            snapshot.url
+            + "\n"
+            + snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p"),
+        )
         self.tab_bar.blockSignals(False)
         self.tab_bar.setCurrentIndex(index)
         self._activate_tab(index)
@@ -421,7 +751,10 @@ class MainWindow(QMainWindow):
         self._browser_pages.setCurrentWidget(self.viewer)
         self.ui.pageTitle.setText(self.tab_bar.tabText(index))
         self.ui.currentUrl.setText(self._snapshot.url)
-        self.ui.snapshotDate.setText("Saved " + self._snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p"))
+        self.ui.snapshotDate.setText(
+            "Saved "
+            + self._snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p")
+        )
         self.ui.rawHtml.setPlainText(state["source"])
         self.ui.rawHtml.verticalScrollBar().setValue(state["raw_scroll"])
         self.ui.rawButton.setChecked(state["raw"])
@@ -492,13 +825,17 @@ class MainWindow(QMainWindow):
         if self._active_tab_id in self._tabs:
             self._tabs[self._active_tab_id]["raw"] = self.ui.rawButton.isChecked()
         if self.ui.openWindowButton.isEnabled():
-            self.ui.viewerStack.setCurrentWidget(self.ui.rawPage if self.ui.rawButton.isChecked() else self.ui.webPage)
+            self.ui.viewerStack.setCurrentWidget(
+                self.ui.rawPage if self.ui.rawButton.isChecked() else self.ui.webPage
+            )
 
     def _position_popout(self, item):
         self._hover_item = item
         rect = self.ui.snapshotList.visualItemRect(item)
         if rect.isValid():
-            self.popout.move(self.ui.snapshotList.viewport().width() - 36, rect.top() + 12)
+            self.popout.move(
+                self.ui.snapshotList.viewport().width() - 36, rect.top() + 12
+            )
             self.popout.show()
             self.popout.raise_()
 
@@ -537,7 +874,9 @@ class MainWindow(QMainWindow):
         viewer.open_archive(str(path))
         window.setCentralWidget(viewer)
         self._windows[snapshot.id] = window
-        window.destroyed.connect(lambda _obj=None, key=snapshot.id: self._windows.pop(key, None))
+        window.destroyed.connect(
+            lambda _obj=None, key=snapshot.id: self._windows.pop(key, None)
+        )
         window.show()
 
     def closeEvent(self, event):

@@ -11,10 +11,14 @@ populated with random data from a mock backend.
 """
 
 from typing import Any
-from PySide6.QtCore import QDateTime, QDate, QTime, qWarning
+from PySide6.QtCore import QDateTime, QDate, QTime, qWarning, QEvent, Qt
 from PySide6.QtWidgets import (
     QWidget,
+    QApplication,
+    QLabel,
+    QSizePolicy,
     QAbstractButton,
+    QAbstractItemView,
     QTableWidgetItem,
     QHeaderView,
     QVBoxLayout,
@@ -69,6 +73,52 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
         self.api = api
 
         self.setupUi(self)
+        self.setProperty("keyboardNavigation", False)
+        self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout_2.setSpacing(18)
+        self.gridLayout.setContentsMargins(16, 16, 16, 16)
+        self.gridLayout.setHorizontalSpacing(12)
+        self.gridLayout.setVerticalSpacing(12)
+        self.horizontalLayout_2.setContentsMargins(12, 12, 12, 12)
+        self.horizontalLayout_2.setSpacing(10)
+        for box in (self.graph_box, self.numbers_box):
+            box.layout().setContentsMargins(16, 16, 16, 16)
+        self.horizontalLayout_3.setContentsMargins(0, 0, 0, 0)
+
+        # Real headings above the cards avoid group-box titles cutting the border.
+        def section_wrapper(box):
+            wrapper = QWidget()
+            layout = QVBoxLayout(wrapper)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(10)
+            heading = QLabel(box.title(), wrapper)
+            heading.setObjectName("statisticsSectionHeading")
+            layout.addWidget(heading)
+            box.setAccessibleName(box.title())
+            box.setTitle("")
+            return wrapper, layout
+
+        period_section, period_layout = section_wrapper(self.range_box)
+        self.verticalLayout_2.replaceWidget(self.range_box, period_section)
+        period_layout.addWidget(self.range_box)
+        # Use a plain row with spacing, rather than a visible splitter handle.
+        self.horizontalLayout_3.removeWidget(self.splitter)
+        self.horizontalLayout_3.setSpacing(20)
+        for box, stretch in ((self.graph_box, 3), (self.numbers_box, 2)):
+            box.setParent(self.stats_page)
+            section, layout = section_wrapper(box)
+            box.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            layout.addWidget(box, 1)
+            self.horizontalLayout_3.addWidget(section, stretch)
+        self.splitter.hide()
+        self.stats_table.setVerticalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self.stats_table.setHorizontalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
         self.stats_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -77,6 +127,10 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
         graph_layout = QVBoxLayout()
         self.graph_wrapper.setLayout(graph_layout)
         graph_layout.addWidget(self.graph)
+        # Filter only existing statistics widgets. An application-wide Python
+        # filter can re-enter Shiboken while WebEngine constructs internal objects.
+        for widget in (self, *self.findChildren(QWidget)):
+            widget.installEventFilter(self)
 
         self.period_type: PeriodType = PeriodType.TODAY
         self.graph_type: GraphType = GraphType.SNAPSHOTS
@@ -90,12 +144,39 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
         self.generate_button.clicked.connect(self._handle_start_generate)
         self.cancel_button.clicked.connect(self._handle_cancel)
 
-        self.period_buttons.buttonToggled.connect(
-            self._handle_period_button_toggle
-        )
-        self.graph_buttons.buttonToggled.connect(
-            self._handle_graph_button_toggle
-        )
+        self.period_buttons.buttonToggled.connect(self._handle_period_button_toggle)
+        self.graph_buttons.buttonToggled.connect(self._handle_graph_button_toggle)
+
+    def eventFilter(self, watched, event):
+        keyboard = None
+        if event.type() in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.Wheel,
+        ):
+            keyboard = False
+        elif (
+            event.type() == QEvent.Type.KeyPress
+            and isinstance(watched, QWidget)
+            and (watched is self or self.isAncestorOf(watched))
+            and event.key()
+            in (
+                Qt.Key.Key_Tab,
+                Qt.Key.Key_Backtab,
+                Qt.Key.Key_Left,
+                Qt.Key.Key_Right,
+                Qt.Key.Key_Up,
+                Qt.Key.Key_Down,
+            )
+        ):
+            keyboard = True
+        if keyboard is not None and keyboard != self.property("keyboardNavigation"):
+            self.setProperty("keyboardNavigation", keyboard)
+            for button in self.findChildren(QAbstractButton):
+                button.style().unpolish(button)
+                button.style().polish(button)
+                button.update()
+        return super().eventFilter(watched, event)
 
     def _handle_cancel(self):
         if self.task is not None:
@@ -235,9 +316,7 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
         dx, intervals = await self._get_dx_and_intervals()
         if dx is None or intervals is None:
             return None
-        resp: list[Statistics] = (
-            await self.api.statistics(intervals)
-        ).statistics
+        resp: list[Statistics] = (await self.api.statistics(intervals)).statistics
         return UIStatisticsResponse(dx, resp[0], resp[1:])
 
     async def _get_dx_and_intervals(
@@ -337,13 +416,9 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
                 low_date = low_date.addDays(-29)
             case PeriodType.YEAR:
                 low_date = low_date.addDays(-364)
-        return Period(
-            QDateTime(low_date, low_time), QDateTime(high_date, high_time)
-        )
+        return Period(QDateTime(low_date, low_time), QDateTime(high_date, high_time))
 
-    def _handle_period_button_toggle(
-        self, button: QAbstractButton, checked: bool
-    ):
+    def _handle_period_button_toggle(self, button: QAbstractButton, checked: bool):
         if not checked:
             return
         match button:
@@ -362,9 +437,7 @@ class StatisticsWidget(QWidget, Ui_StatisticsWidget):
             case self.custom_radio:
                 self.period_type = PeriodType.CUSTOM
 
-    def _handle_graph_button_toggle(
-        self, button: QAbstractButton, checked: bool
-    ):
+    def _handle_graph_button_toggle(self, button: QAbstractButton, checked: bool):
         match button:
             case self.snapshots_graph_radio:
                 self.graph_type = GraphType.SNAPSHOTS

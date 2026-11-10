@@ -1,160 +1,1771 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>WebberWindow</class>
- <widget class="QMainWindow" name="WebberWindow">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>1120</width><height>760</height></rect></property>
-  <property name="minimumSize"><size><width>760</width><height>520</height></size></property>
-  <property name="windowTitle"><string>Webber</string></property>
-  <property name="styleSheet"><string notr="true">
-QWidget { background: #f8f8f6; color: #292929; font-size: 13px; }
-QLabel { background: transparent; }
-QWidget#navigationBar, QWidget#capturePanel { background: #efefed; border-bottom: 1px solid #cececa; }
-QLabel#brandLabel { background: transparent; color: #566446; font-size: 22px; font-weight: 600; padding: 0 8px 0 0; }
-QPushButton { min-height: 18px; padding: 8px 12px; border: 1px solid #cececa; border-radius: 8px; background: #f1f1ee; }
-QPushButton#sidebarToggle { padding: 5px; border: none; background: transparent; }
-QPushButton#sidebarToggle:hover { background: #e9ecdf; }
-QPushButton:hover { background: #e9ecdf; }
-QPushButton:checked { background: #e3e8d6; color: #435435; border-color: #b7c4a7; }
-QPushButton:focus { border-color: #879b76; }
-QPushButton#savePageButton, QPushButton#captureButton { background: #566446; color: #ffffff; border-color: #566446; }
-QPushButton#savePageButton:hover, QPushButton#captureButton:hover { background: #4b5a3d; border-color: #4b5a3d; }
-QPushButton#savePageButton:pressed, QPushButton#captureButton:pressed { background: #414f35; border-color: #414f35; }
-QPushButton:disabled { color: #92928e; }
-QLineEdit { background: #f1f1ee; border: 1px solid #cececa; border-radius: 8px; padding: 8px 12px; selection-background-color: #d7dfc8; }
-QWidget#archivePanel { background: #f4f4f1; }
-QLabel#archiveHeading { background: transparent; font-size: 18px; font-weight: 500; }
-QLabel#archiveCount, QLabel#snapshotDate, QLabel#offlineLabel, QLabel#previewLabel { background: transparent; color: #737370; font-size: 11px; }
-QListWidget { border: none; background: #f4f4f1; padding: 3px; outline: 0; }
-QListWidget::item { border: 1px solid transparent; border-bottom-color: #dededb; border-radius: 8px; padding: 12px 40px 12px 12px; margin: 3px 0; }
-QListWidget::item:selected { background: #e3e8d6; color: #36442b; border-color: #b7c4a7; }
-QListWidget::item:hover:!selected { background: #e9ecdf; }
-QWidget#readerBar, QWidget#addressBar { border-bottom: 1px solid #e3e3df; }
-QLabel#currentUrl { color: #737370; font-size: 12px; }
-QLabel#emptyMessage { color: #737370; font-size: 15px; }
-QPlainTextEdit { border: none; padding: 16px; background: #f8f8f6; color: #41413e; font-family: monospace; }
-QSplitter::handle { background: #cececa; width: 1px; }
-QSplitter::handle:hover { background: #879b76; }
-QStatusBar { background: #efefed; color: #737370; border-top: 1px solid #cececa; }
-QStatusBar::item { border: none; }
-QLabel#settingsHeading { font-size: 22px; font-weight: 500; }
-QLabel#webpageHeading { font-size: 15px; margin-top: 20px; }
-QLabel#viewingDescription { color: #737370; font-size: 12px; }
-QSpinBox { min-height: 18px; background: #f1f1ee; color: #292929; padding: 8px 12px; border: 1px solid #cececa; border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
-QPushButton#zoomDecrease, QPushButton#textSizeDecrease { background: #f1f1ee; border-radius: 0; border-left: none; padding: 6px; font-size: 19px; }
-QPushButton#zoomIncrease, QPushButton#textSizeIncrease { background: #f1f1ee; border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-left: none; padding: 6px; font-size: 19px; }
-QPushButton#zoomDecrease:hover, QPushButton#zoomIncrease:hover, QPushButton#textSizeDecrease:hover, QPushButton#textSizeIncrease:hover { background: #e9ecdf; }
-QSpinBox QLineEdit { padding: 0; border: none; background: transparent; color: #292929; border-radius: 0; }
-QSpinBox:focus, QLineEdit:focus, QComboBox:focus { border-color: #879b76; }
-QComboBox { min-height: 18px; background: #f1f1ee; color: #292929; padding: 8px 12px; border: 1px solid #cececa; border-radius: 8px; min-width: 150px; padding-right: 34px; }
-QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: none; background: transparent; border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
-QComboBox::down-arrow { image: url(icons/chevron-light.svg); width: 14px; height: 14px; }
-QComboBox:hover { border-color: #566446; }
-QPushButton:pressed { background: #e3e8d6; }
-QComboBox QAbstractItemView { border: 1px solid #cececa; border-radius: 8px; padding: 4px; outline: none; background: #f8f8f6; color: #292929; selection-background-color: #e3e8d6; selection-color: #435435; }
-QLabel#appearanceLabel { font-size: 15px; margin-top: 20px; }
-QLabel#appearanceDescription, QLabel#themeStatus { color: #737370; }
+  <class>WebberWindow</class>
+  <widget class="QMainWindow" name="WebberWindow">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1120</width>
+        <height>760</height>
+      </rect>
+    </property>
+    <property name="minimumSize">
+      <size>
+        <width>760</width>
+        <height>520</height>
+      </size>
+    </property>
+    <property name="windowTitle">
+      <string>Webber</string>
+    </property>
+    <property name="styleSheet">
+      <string notr="true">
+QWidget {
+    background: #f8f8f6;
+    color: #292929;
+    font-size: 13px;
+}
 
-QScrollBar:vertical { background: transparent; width: 12px; margin: 3px 2px; border: none; }
-QScrollBar::handle:vertical { background: #cececa; min-height: 34px; border: none; border-radius: 4px; }
-QScrollBar::handle:vertical:hover { background: #92928e; }
-QScrollBar::handle:vertical:pressed { background: #566446; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; background: transparent; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; border: none; }
-QScrollBar:horizontal { background: transparent; height: 12px; margin: 2px 3px; border: none; }
-QScrollBar::handle:horizontal { background: #cececa; min-width: 34px; border: none; border-radius: 4px; }
-QScrollBar::handle:horizontal:hover { background: #92928e; }
-QScrollBar::handle:horizontal:pressed { background: #566446; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; background: transparent; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; border: none; }
-QAbstractScrollArea::corner { background: transparent; border: none; }
-QWidget#archiveTabsHost { background: #efefed; }
-QTabBar { background: transparent; qproperty-drawBase: 0; }
-QTabBar::tab { background: #f1f1ee; color: #737370; border: 1px solid #cececa; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 8px 12px 8px 0px; margin-right: 4px; min-height: 22px; min-width: 85px; max-width: 220px; }
-QTabBar::tab:selected { background: #f8f8f6; color: #292929; border-bottom-color: #f8f8f6; font-weight: 600; }
-QTabBar::tab:hover:!selected { background: #e9ecdf; }
-QTabBar::close-button { image: url(icons/close-light.svg); width: 14px; height: 14px; border: none; background: transparent; }
-QWidget#tabCloseHost { background: transparent; }
-QToolButton#tabCloseButton { background: transparent; border: none; border-radius: 6px; padding: 4px; }
-QToolButton#tabCloseButton:hover { background: #e9ecdf; }
-QToolButton#tabCloseButton:pressed { background: #e3e8d6; }
-QToolButton#tabCloseButton:focus { border: 1px solid #879b76; }
-QTabBar QToolButton { background: #f1f1ee; color: #292929; border: none; border-radius: 5px; }
-QToolTip { background: #f8f8f6; color: #292929; border: 1px solid #cececa; border-radius: 6px; padding: 6px 8px; }
-  </string></property>
-  <widget class="QWidget" name="centralWidget">
-   <layout class="QVBoxLayout" name="rootLayout">
-    <property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-    <item><widget class="QWidget" name="navigationBar"><layout class="QHBoxLayout" name="navigationLayout">
-     <property name="leftMargin"><number>20</number></property><property name="topMargin"><number>12</number></property><property name="rightMargin"><number>20</number></property><property name="bottomMargin"><number>12</number></property>
-     <property name="spacing"><number>8</number></property><item><widget class="QLabel" name="brandLabel"><property name="text"><string>WEBBER</string></property></widget></item>
-     <item><spacer name="brandSpacer"><property name="sizeType"><enum>QSizePolicy::Fixed</enum></property><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>18</width><height>20</height></size></property></spacer></item>
-     <item><widget class="QPushButton" name="archivesButton"><property name="text"><string>Archives</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property></widget></item>
-     <item><widget class="QPushButton" name="statisticsButton"><property name="text"><string>Statistics</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-     <item><widget class="QPushButton" name="settingsButton"><property name="text"><string>Settings</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-     <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>300</width><height>20</height></size></property></spacer></item>
-     <item><widget class="QPushButton" name="savePageButton"><property name="text"><string>+  Save a page</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-    </layout></widget></item>
-    <item><widget class="QWidget" name="capturePanel"><property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="captureLayout">
-     <property name="leftMargin"><number>20</number></property><property name="rightMargin"><number>20</number></property>
-     <property name="spacing"><number>8</number></property><property name="topMargin"><number>16</number></property><property name="bottomMargin"><number>16</number></property><item><widget class="QLabel" name="captureLabel"><property name="text"><string>Page URL</string></property><property name="buddy"><cstring>urlInput</cstring></property></widget></item>
-     <item><layout class="QHBoxLayout" name="captureRow"><property name="spacing"><number>8</number></property><item><widget class="QLineEdit" name="urlInput"><property name="placeholderText"><string>https://example.com</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="captureButton"><property name="text"><string>Save page</string></property></widget></item><item><widget class="QPushButton" name="cancelCaptureButton"><property name="text"><string>Cancel</string></property></widget></item></layout></item>
-     <item><widget class="QLabel" name="captureStatus"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-    </layout></widget></item>
-    <item><widget class="QStackedWidget" name="mainStack"><property name="currentIndex"><number>0</number></property>
-     <widget class="QWidget" name="archivesPage"><layout class="QVBoxLayout" name="archivesPageLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-      <item><widget class="QSplitter" name="workspaceSplitter"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="childrenCollapsible"><bool>false</bool></property>
-       <widget class="QWidget" name="archivePanel"><property name="minimumSize"><size><width>240</width><height>0</height></size></property><layout class="QVBoxLayout" name="archiveLayout"><property name="leftMargin"><number>16</number></property><property name="topMargin"><number>20</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>12</number></property>
-        <property name="spacing"><number>8</number></property><item><widget class="QLabel" name="archiveHeading"><property name="text"><string>Archives</string></property></widget></item>
-        <item><widget class="QLabel" name="archiveCount"><property name="text"><string>0 snapshots</string></property></widget></item>
-        <item><widget class="QLineEdit" name="searchInput"><property name="placeholderText"><string>Search by URL…</string></property><property name="clearButtonEnabled"><bool>true</bool></property><property name="accessibleName"><string>Search snapshots by URL</string></property></widget></item>
-        <item><widget class="QListWidget" name="snapshotList"><property name="mouseTracking"><bool>true</bool></property><property name="accessibleName"><string>Archived snapshots</string></property></widget></item>
-       </layout></widget>
-       <widget class="QWidget" name="readerPanel"><layout class="QVBoxLayout" name="readerLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-        <item><widget class="QWidget" name="archiveTabsHost"><layout class="QVBoxLayout" name="archiveTabsLayout"><property name="leftMargin"><number>8</number></property><property name="topMargin"><number>6</number></property><property name="rightMargin"><number>8</number></property><property name="bottomMargin"><number>0</number></property></layout></widget></item>
-        <item><widget class="QWidget" name="readerBar"><layout class="QHBoxLayout" name="readerBarLayout"><property name="leftMargin"><number>20</number></property><property name="topMargin"><number>12</number></property><property name="rightMargin"><number>20</number></property><property name="bottomMargin"><number>12</number></property>
-         <property name="spacing"><number>12</number></property><item><widget class="QPushButton" name="sidebarToggle"><property name="text"><string/></property><property name="minimumSize"><size><width>36</width><height>34</height></size></property><property name="maximumSize"><size><width>36</width><height>34</height></size></property><property name="icon"><iconset><normaloff>icons/sidebar-light.svg</normaloff>icons/sidebar-light.svg</iconset></property><property name="iconSize"><size><width>22</width><height>22</height></size></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property><property name="toolTip"><string>Hide sidebar</string></property><property name="accessibleName"><string>Archive sidebar</string></property></widget></item>
-         <item><widget class="QLabel" name="pageTitle"><property name="text"><string>Archive</string></property></widget></item><item><spacer name="readerSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>100</width><height>20</height></size></property></spacer></item>
-         <item><widget class="QPushButton" name="pageButton"><property name="text"><string>Page</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="rawButton"><property name="text"><string>Raw HTML</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-        </layout></widget></item>
-        <item><widget class="QWidget" name="addressBar"><layout class="QHBoxLayout" name="addressLayout"><property name="leftMargin"><number>20</number></property><property name="rightMargin"><number>20</number></property><property name="spacing"><number>12</number></property><property name="topMargin"><number>8</number></property><property name="bottomMargin"><number>8</number></property><item><widget class="QLabel" name="currentUrl"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item><item><widget class="QPushButton" name="openWindowButton"><property name="minimumSize"><size><width>34</width><height>30</height></size></property><property name="maximumSize"><size><width>34</width><height>36</height></size></property><property name="text"><string>↗</string></property><property name="toolTip"><string>Open in new window</string></property><property name="accessibleName"><string>Open archive in new window</string></property><property name="enabled"><bool>false</bool></property></widget></item></layout></widget></item>
-        <item><layout class="QHBoxLayout" name="metadataLayout"><property name="leftMargin"><number>20</number></property><property name="topMargin"><number>10</number></property><property name="rightMargin"><number>20</number></property><property name="bottomMargin"><number>10</number></property><property name="spacing"><number>12</number></property><item><widget class="QLabel" name="snapshotDate"><property name="text"><string/></property></widget></item><item><widget class="QLabel" name="offlineLabel"><property name="text"><string>Offline copy</string></property><property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property></widget></item></layout></item>
-        <item><widget class="QStackedWidget" name="viewerStack"><property name="currentIndex"><number>0</number></property>
-         <widget class="QWidget" name="emptyPage"><layout class="QVBoxLayout" name="emptyLayout"><item><widget class="QLabel" name="emptyMessage"><property name="text"><string>No archive open.</string></property><property name="alignment"><set>Qt::AlignCenter</set></property><property name="wordWrap"><bool>true</bool></property></widget></item></layout></widget>
-         <widget class="QWidget" name="webPage"><layout class="QVBoxLayout" name="webLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QWidget" name="webViewHost"><layout class="QVBoxLayout" name="webViewLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="designerViewerPlaceholder"><property name="text"><string>Webpage</string></property><property name="alignment"><set>Qt::AlignCenter</set></property></widget></item></layout></widget></item></layout></widget>
-         <widget class="QWidget" name="rawPage"><layout class="QVBoxLayout" name="rawLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QPlainTextEdit" name="rawHtml"><property name="readOnly"><bool>true</bool></property><property name="placeholderText"><string>Raw HTML</string></property></widget></item></layout></widget>
-        </widget></item>
-       </layout></widget>
-      </widget></item>
-     </layout></widget>
-     <widget class="QWidget" name="statisticsPage"/>
-     <widget class="QWidget" name="settingsPage"><layout class="QVBoxLayout" name="settingsPageLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QScrollArea" name="settingsScrollArea"><property name="frameShape"><enum>QFrame::NoFrame</enum></property><property name="widgetResizable"><bool>true</bool></property><widget class="QWidget" name="settingsContents"><layout class="QVBoxLayout" name="settingsLayout">
-      <property name="leftMargin"><number>28</number></property><property name="topMargin"><number>28</number></property><property name="rightMargin"><number>28</number></property><property name="bottomMargin"><number>28</number></property>
-      <property name="spacing"><number>12</number></property><item><widget class="QLabel" name="settingsHeading"><property name="text"><string>Settings</string></property></widget></item>
-      <item><widget class="QLabel" name="appearanceLabel"><property name="text"><string>Appearance</string></property></widget></item>
-      <item><layout class="QHBoxLayout" name="themeControls"><property name="spacing"><number>8</number></property><item><widget class="QPushButton" name="lightModeButton"><property name="text"><string>Light</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="darkModeButton"><property name="text"><string>Dark</string></property><property name="checkable"><bool>true</bool></property></widget></item><item><spacer name="themeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>400</width><height>20</height></size></property></spacer></item></layout></item>
-      <item><widget class="QLabel" name="webpageHeading"><property name="text"><string>Webpage viewing</string></property></widget></item>
-      <item><layout class="QFormLayout" name="viewingForm"><property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property><property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property><property name="horizontalSpacing"><number>24</number></property><property name="verticalSpacing"><number>12</number></property><property name="fieldGrowthPolicy"><enum>QFormLayout::FieldsStayAtSizeHint</enum></property>
-       <item row="0" column="0"><widget class="QLabel" name="pageZoomLabel"><property name="text"><string>Page zoom</string></property><property name="buddy"><cstring>pageZoomInput</cstring></property></widget></item>
-       <item row="0" column="1"><widget class="QWidget" name="zoomStepper"><property name="maximumSize"><size><width>220</width><height>36</height></size></property><property name="minimumSize"><size><width>220</width><height>36</height></size></property><layout class="QHBoxLayout" name="zoomStepperLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QSpinBox" name="pageZoomInput"><property name="minimumSize"><size><width>115</width><height>36</height></size></property><property name="buttonSymbols"><enum>QAbstractSpinBox::NoButtons</enum></property><property name="keyboardTracking"><bool>false</bool></property><property name="suffix"><string>%</string></property><property name="minimum"><number>75</number></property><property name="maximum"><number>200</number></property><property name="singleStep"><number>5</number></property><property name="value"><number>100</number></property></widget></item><item><widget class="QPushButton" name="zoomDecrease"><property name="text"><string>−</string></property><property name="accessibleName"><string>Decrease page zoom</string></property><property name="minimumSize"><size><width>42</width><height>36</height></size></property><property name="maximumSize"><size><width>42</width><height>42</height></size></property></widget></item><item><widget class="QPushButton" name="zoomIncrease"><property name="text"><string>+</string></property><property name="accessibleName"><string>Increase page zoom</string></property><property name="minimumSize"><size><width>42</width><height>36</height></size></property><property name="maximumSize"><size><width>42</width><height>42</height></size></property></widget></item></layout></widget></item>
-       <item row="1" column="0"><widget class="QLabel" name="textSizeLabel"><property name="text"><string>Text size</string></property><property name="buddy"><cstring>textSizeInput</cstring></property></widget></item>
-       <item row="1" column="1"><widget class="QWidget" name="textSizeStepper"><property name="maximumSize"><size><width>220</width><height>36</height></size></property><property name="minimumSize"><size><width>220</width><height>36</height></size></property><layout class="QHBoxLayout" name="textSizeStepperLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QSpinBox" name="textSizeInput"><property name="minimumSize"><size><width>115</width><height>36</height></size></property><property name="buttonSymbols"><enum>QAbstractSpinBox::NoButtons</enum></property><property name="keyboardTracking"><bool>false</bool></property><property name="suffix"><string> pt</string></property><property name="minimum"><number>10</number></property><property name="maximum"><number>32</number></property><property name="singleStep"><number>1</number></property><property name="value"><number>12</number></property></widget></item><item><widget class="QPushButton" name="textSizeDecrease"><property name="text"><string>−</string></property><property name="accessibleName"><string>Decrease text size</string></property><property name="minimumSize"><size><width>42</width><height>36</height></size></property><property name="maximumSize"><size><width>42</width><height>42</height></size></property></widget></item><item><widget class="QPushButton" name="textSizeIncrease"><property name="text"><string>+</string></property><property name="accessibleName"><string>Increase text size</string></property><property name="minimumSize"><size><width>42</width><height>36</height></size></property><property name="maximumSize"><size><width>42</width><height>42</height></size></property></widget></item></layout></widget></item>
-       <item row="2" column="0"><widget class="QLabel" name="fontLabel"><property name="text"><string>Font</string></property><property name="buddy"><cstring>fontCombo</cstring></property></widget></item>
-       <item row="2" column="1"><widget class="QComboBox" name="fontCombo"><property name="minimumSize"><size><width>220</width><height>36</height></size></property><property name="maximumSize"><size><width>220</width><height>36</height></size></property><item><property name="text"><string>Sans serif</string></property></item><item><property name="text"><string>Serif</string></property></item><item><property name="text"><string>Monospace</string></property></item></widget></item>
-       <item row="3" column="0"><widget class="QLabel" name="spacingLabel"><property name="text"><string>Line spacing</string></property><property name="buddy"><cstring>lineSpacingCombo</cstring></property></widget></item>
-       <item row="3" column="1"><widget class="QComboBox" name="lineSpacingCombo"><property name="minimumSize"><size><width>220</width><height>36</height></size></property><property name="maximumSize"><size><width>220</width><height>36</height></size></property><item><property name="text"><string>Normal</string></property></item><item><property name="text"><string>Comfortable</string></property></item></widget></item>
-      </layout></item>
-      <item><layout class="QHBoxLayout" name="resetRow"><property name="spacing"><number>8</number></property><item><widget class="QPushButton" name="resetSettingsButton"><property name="text"><string>Reset all settings</string></property></widget></item><item><spacer name="resetSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>400</width><height>20</height></size></property></spacer></item></layout></item>
-      <item><spacer name="settingsVerticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>12</height></size></property></spacer></item>
-     </layout></widget></widget></item></layout></widget>
+QLabel {
+    background: transparent;
+}
 
-    </widget></item>
-   </layout>
+QWidget#navigationBar,
+QWidget#capturePanel {
+    background: #efefed;
+    border-bottom: 1px solid #cececa;
+}
+
+QLabel#brandLabel {
+    background: transparent;
+    color: #566446;
+    font-size: 22px;
+    font-weight: 600;
+    padding: 0 8px 0 0;
+}
+
+QPushButton {
+    min-height: 18px;
+    padding: 8px 12px;
+    border: 1px solid #cececa;
+    border-radius: 8px;
+    background: #f1f1ee;
+}
+
+QPushButton#sidebarToggle {
+    padding: 5px;
+    border: none;
+    background: transparent;
+}
+
+QPushButton#sidebarToggle:hover {
+    background: #e9ecdf;
+}
+
+QPushButton:hover {
+    background: #e9ecdf;
+}
+
+QPushButton:checked {
+    background: #e3e8d6;
+    color: #435435;
+    border-color: #b7c4a7;
+}
+
+QPushButton:focus {
+    border-color: #879b76;
+}
+
+QPushButton#savePageButton,
+QPushButton#captureButton {
+    background: #566446;
+    color: #ffffff;
+    border-color: #566446;
+}
+
+QPushButton#savePageButton:hover,
+QPushButton#captureButton:hover {
+    background: #4b5a3d;
+    border-color: #4b5a3d;
+}
+
+QPushButton#savePageButton:pressed,
+QPushButton#captureButton:pressed {
+    background: #414f35;
+    border-color: #414f35;
+}
+
+QPushButton:disabled {
+    color: #92928e;
+}
+
+QLineEdit {
+    background: #f1f1ee;
+    border: 1px solid #cececa;
+    border-radius: 8px;
+    padding: 8px 12px;
+    selection-background-color: #d7dfc8;
+}
+
+QWidget#archivePanel {
+    background: #f4f4f1;
+}
+
+QLabel#archiveHeading {
+    background: transparent;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+QLabel#archiveCount,
+QLabel#snapshotDate,
+QLabel#offlineLabel,
+QLabel#previewLabel {
+    background: transparent;
+    color: #737370;
+    font-size: 11px;
+}
+
+QListWidget {
+    border: none;
+    background: #f4f4f1;
+    padding: 3px;
+    outline: 0;
+}
+
+QListWidget::item {
+    border: 1px solid transparent;
+    border-bottom-color: #dededb;
+    border-radius: 8px;
+    padding: 12px 40px 12px 12px;
+    margin: 3px 0;
+}
+
+QListWidget::item:selected {
+    background: #e3e8d6;
+    color: #36442b;
+    border-color: #b7c4a7;
+}
+
+QListWidget::item:hover:!selected {
+    background: #e9ecdf;
+}
+
+QWidget#readerBar,
+QWidget#addressBar {
+    border-bottom: 1px solid #e3e3df;
+}
+
+QLabel#currentUrl {
+    color: #737370;
+    font-size: 12px;
+}
+
+QLabel#emptyMessage {
+    color: #737370;
+    font-size: 15px;
+}
+
+QPlainTextEdit {
+    border: none;
+    padding: 16px;
+    background: #f8f8f6;
+    color: #41413e;
+    font-family: monospace;
+}
+
+QSplitter::handle {
+    background: #cececa;
+    width: 1px;
+}
+
+QSplitter::handle:hover {
+    background: #879b76;
+}
+
+QStatusBar {
+    background: #efefed;
+    color: #737370;
+    border-top: 1px solid #cececa;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+QLabel#settingsHeading {
+    font-size: 22px;
+    font-weight: 500;
+}
+
+QLabel#webpageHeading {
+    font-size: 15px;
+    margin-top: 20px;
+}
+
+QLabel#viewingDescription {
+    color: #737370;
+    font-size: 12px;
+}
+
+QSpinBox {
+    min-height: 18px;
+    background: #f1f1ee;
+    color: #292929;
+    padding: 8px 12px;
+    border: 1px solid #cececa;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+QPushButton#zoomDecrease,
+QPushButton#textSizeDecrease {
+    background: #f1f1ee;
+    border-radius: 0;
+    border-left: none;
+    padding: 6px;
+    font-size: 19px;
+}
+
+QPushButton#zoomIncrease,
+QPushButton#textSizeIncrease {
+    background: #f1f1ee;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    border-left: none;
+    padding: 6px;
+    font-size: 19px;
+}
+
+QPushButton#zoomDecrease:hover,
+QPushButton#zoomIncrease:hover,
+QPushButton#textSizeDecrease:hover,
+QPushButton#textSizeIncrease:hover {
+    background: #e9ecdf;
+}
+
+QSpinBox QLineEdit {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #292929;
+    border-radius: 0;
+}
+
+QSpinBox:focus,
+QLineEdit:focus,
+QComboBox:focus {
+    border-color: #879b76;
+}
+
+QComboBox {
+    min-height: 18px;
+    background: #f1f1ee;
+    color: #292929;
+    padding: 8px 12px;
+    border: 1px solid #cececa;
+    border-radius: 8px;
+    min-width: 150px;
+    padding-right: 34px;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border: none;
+    background: transparent;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+QComboBox::down-arrow {
+    image: url(icons/chevron-light.svg);
+    width: 14px;
+    height: 14px;
+}
+
+QComboBox:hover {
+    border-color: #566446;
+}
+
+QPushButton:pressed {
+    background: #e3e8d6;
+}
+
+QFrame#settingsOptionsPopup {
+    background: #f8f8f6;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+QComboBox QAbstractItemView {
+    border: none;
+    border-radius: 0;
+    padding: 4px;
+    outline: none;
+    background: #f8f8f6;
+    color: #292929;
+    selection-background-color: #e3e8d6;
+    selection-color: #435435;
+}
+
+QComboBox QAbstractItemView::item {
+    border: none;
+    padding: 6px 10px;
+}
+
+QComboBox QAbstractItemView::item:focus {
+    border: none;
+    outline: none;
+}
+
+QLabel#appearanceLabel {
+    font-size: 15px;
+    margin-top: 20px;
+}
+
+QLabel#appearanceDescription,
+QLabel#themeStatus {
+    color: #737370;
+}
+
+QAbstractScrollArea::corner {
+    background: transparent;
+    border: none;
+}
+
+QWidget#archiveTabsHost {
+    background: #efefed;
+}
+
+QTabBar {
+    background: transparent;
+    qproperty-drawBase: 0;
+}
+
+QTabBar::tab {
+    background: #f1f1ee;
+    color: #737370;
+    border: 1px solid #cececa;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 8px 12px 8px 0px;
+    margin-right: 4px;
+    min-height: 22px;
+    min-width: 85px;
+    max-width: 220px;
+}
+
+QTabBar::tab:selected {
+    background: #f8f8f6;
+    color: #292929;
+    border-bottom-color: #f8f8f6;
+    font-weight: 600;
+}
+
+QTabBar::tab:hover:!selected {
+    background: #e9ecdf;
+}
+
+QTabBar::close-button {
+    image: url(icons/close-light.svg);
+    width: 14px;
+    height: 14px;
+    border: none;
+    background: transparent;
+}
+
+QWidget#tabCloseHost {
+    background: transparent;
+}
+
+QToolButton#tabCloseButton {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QToolButton#tabCloseButton:hover {
+    background: #e9ecdf;
+}
+
+QToolButton#tabCloseButton:pressed {
+    background: #e3e8d6;
+}
+
+QToolButton#tabCloseButton:focus {
+    border: 1px solid #879b76;
+}
+
+QTabBar QToolButton {
+    background: #f1f1ee;
+    color: #292929;
+    border: none;
+    border-radius: 5px;
+}
+
+QToolTip {
+    background: #f8f8f6;
+    color: #292929;
+    border: 1px solid #cececa;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+QWidget#StatisticsWidget QSpinBox::up-arrow,
+QWidget#StatisticsWidget QDateTimeEdit::up-arrow {
+    image: url(icons/step-up-light.svg);
+    width: 12px;
+    height: 12px;
+}
+
+QWidget#StatisticsWidget QSpinBox::down-arrow,
+QWidget#StatisticsWidget QDateTimeEdit::down-arrow {
+    image: url(icons/chevron-light.svg);
+    width: 12px;
+    height: 12px;
+}
+
+/* Statistics uses the same neutral surfaces and green focus as Settings. */
+QWidget#StatisticsWidget QWidget {
+    background: transparent;
+}
+
+QWidget#StatisticsWidget QGroupBox {
+    background: #f4f4f1;
+    border: 1px solid #cececa;
+    border-radius: 12px;
+    margin-top: 0;
+    padding: 0;
+}
+
+QWidget#StatisticsWidget QLabel#statisticsSectionHeading {
+    font-size: 17px;
+    font-weight: 500;
+    padding: 0;
+    border: none;
+}
+
+QWidget#StatisticsWidget QSplitter::handle,
+QWidget#StatisticsWidget QSplitter::handle:hover {
+    background: transparent;
+    border: none;
+    width: 20px;
+}
+
+QWidget#StatisticsWidget QLabel,
+QWidget#StatisticsWidget QRadioButton,
+QWidget#StatisticsWidget QCheckBox {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+}
+
+QWidget#StatisticsWidget QRadioButton,
+QWidget#StatisticsWidget QCheckBox {
+    spacing: 8px;
+    padding: 6px 4px;
+}
+
+QWidget#StatisticsWidget[keyboardNavigation="true"] QRadioButton:focus,
+QWidget#StatisticsWidget[keyboardNavigation="true"] QCheckBox:focus {
+    border-color: #879b76;
+}
+
+QWidget#StatisticsWidget QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #92928e;
+    border-radius: 8px;
+    background: #f8f8f6;
+}
+
+QWidget#StatisticsWidget QRadioButton::indicator:checked {
+    background: #566446;
+    border: 4px solid #d7dfc8;
+    width: 8px;
+    height: 8px;
+}
+
+QWidget#StatisticsWidget QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #92928e;
+    border-radius: 4px;
+    background: #f8f8f6;
+}
+
+QWidget#StatisticsWidget QCheckBox::indicator:checked {
+    background: #566446;
+    border-color: #566446;
+}
+
+QWidget#StatisticsWidget QWidget#custom_period_box {
+    background: #f1f1ee;
+    border-radius: 8px;
+}
+
+QWidget#StatisticsWidget QDateTimeEdit,
+QWidget#StatisticsWidget QSpinBox {
+    min-height: 20px;
+    background: #f8f8f6;
+    color: #292929;
+    padding: 8px 28px 8px 10px;
+    border: 1px solid #cececa;
+    border-radius: 8px;
+}
+
+QWidget#StatisticsWidget QDateTimeEdit QLineEdit,
+QWidget#StatisticsWidget QSpinBox QLineEdit {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+QWidget#StatisticsWidget QDateTimeEdit:focus,
+QWidget#StatisticsWidget QSpinBox:focus {
+    border-color: #879b76;
+}
+
+QWidget#StatisticsWidget QDateTimeEdit:disabled,
+QWidget#StatisticsWidget QSpinBox:disabled {
+    color: #92928e;
+    background: #efefed;
+}
+
+QWidget#StatisticsWidget QCheckBox:disabled,
+QWidget#StatisticsWidget QLabel:disabled {
+    color: #92928e;
+}
+
+QWidget#StatisticsWidget QSpinBox::up-button,
+QWidget#StatisticsWidget QDateTimeEdit::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 24px;
+    border: none;
+    background: transparent;
+}
+
+QWidget#StatisticsWidget QSpinBox::down-button,
+QWidget#StatisticsWidget QDateTimeEdit::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 24px;
+    border: none;
+    background: transparent;
+}
+
+QWidget#StatisticsWidget QPushButton#generate_button {
+    background: #566446;
+    color: #ffffff;
+    border-color: #566446;
+    padding: 9px 18px;
+}
+
+QWidget#StatisticsWidget QPushButton#generate_button:hover {
+    background: #4b5a3d;
+}
+
+QWidget#StatisticsWidget QPushButton#generate_button:pressed {
+    background: #414f35;
+}
+
+QWidget#StatisticsWidget QTableWidget {
+    background: #f8f8f6;
+    border: 1px solid #cececa;
+    border-radius: 8px;
+    gridline-color: #e3e3df;
+}
+
+QWidget#StatisticsWidget QHeaderView::section {
+    background: #f1f1ee;
+    color: #292929;
+    border: none;
+    padding: 8px;
+}
+
+QWidget#StatisticsWidget QGraphicsView {
+    border: none;
+    background: transparent;
+}
+</string>
+    </property>
+    <widget class="QWidget" name="centralWidget">
+      <layout class="QVBoxLayout" name="rootLayout">
+        <property name="spacing">
+          <number>0</number>
+        </property>
+        <property name="leftMargin">
+          <number>0</number>
+        </property>
+        <property name="topMargin">
+          <number>0</number>
+        </property>
+        <property name="rightMargin">
+          <number>0</number>
+        </property>
+        <property name="bottomMargin">
+          <number>0</number>
+        </property>
+        <item>
+          <widget class="QWidget" name="navigationBar">
+            <layout class="QHBoxLayout" name="navigationLayout">
+              <property name="leftMargin">
+                <number>20</number>
+              </property>
+              <property name="topMargin">
+                <number>12</number>
+              </property>
+              <property name="rightMargin">
+                <number>20</number>
+              </property>
+              <property name="bottomMargin">
+                <number>12</number>
+              </property>
+              <property name="spacing">
+                <number>8</number>
+              </property>
+              <item>
+                <widget class="QLabel" name="brandLabel">
+                  <property name="text">
+                    <string>WEBBER</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <spacer name="brandSpacer">
+                  <property name="sizeType">
+                    <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                    <size>
+                      <width>18</width>
+                      <height>20</height>
+                    </size>
+                  </property>
+                </spacer>
+              </item>
+              <item>
+                <widget class="QPushButton" name="archivesButton">
+                  <property name="text">
+                    <string>Archives</string>
+                  </property>
+                  <property name="checkable">
+                    <bool>true</bool>
+                  </property>
+                  <property name="checked">
+                    <bool>true</bool>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QPushButton" name="statisticsButton">
+                  <property name="text">
+                    <string>Statistics</string>
+                  </property>
+                  <property name="checkable">
+                    <bool>true</bool>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QPushButton" name="settingsButton">
+                  <property name="text">
+                    <string>Settings</string>
+                  </property>
+                  <property name="checkable">
+                    <bool>true</bool>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <spacer name="toolbarSpacer">
+                  <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                    <size>
+                      <width>300</width>
+                      <height>20</height>
+                    </size>
+                  </property>
+                </spacer>
+              </item>
+              <item>
+                <widget class="QPushButton" name="savePageButton">
+                  <property name="text">
+                    <string>+  Save a page</string>
+                  </property>
+                  <property name="checkable">
+                    <bool>true</bool>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </item>
+        <item>
+          <widget class="QWidget" name="capturePanel">
+            <property name="visible">
+              <bool>false</bool>
+            </property>
+            <layout class="QVBoxLayout" name="captureLayout">
+              <property name="leftMargin">
+                <number>20</number>
+              </property>
+              <property name="rightMargin">
+                <number>20</number>
+              </property>
+              <property name="spacing">
+                <number>8</number>
+              </property>
+              <property name="topMargin">
+                <number>16</number>
+              </property>
+              <property name="bottomMargin">
+                <number>16</number>
+              </property>
+              <item>
+                <widget class="QLabel" name="captureLabel">
+                  <property name="text">
+                    <string>Page URL</string>
+                  </property>
+                  <property name="buddy">
+                    <cstring>urlInput</cstring>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <layout class="QHBoxLayout" name="captureRow">
+                  <property name="spacing">
+                    <number>8</number>
+                  </property>
+                  <item>
+                    <widget class="QLineEdit" name="urlInput">
+                      <property name="placeholderText">
+                        <string>https://example.com</string>
+                      </property>
+                      <property name="clearButtonEnabled">
+                        <bool>true</bool>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QPushButton" name="captureButton">
+                      <property name="text">
+                        <string>Save page</string>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QPushButton" name="cancelCaptureButton">
+                      <property name="text">
+                        <string>Cancel</string>
+                      </property>
+                    </widget>
+                  </item>
+                </layout>
+              </item>
+              <item>
+                <widget class="QLabel" name="captureStatus">
+                  <property name="text">
+                    <string/>
+                  </property>
+                  <property name="wordWrap">
+                    <bool>true</bool>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </item>
+        <item>
+          <widget class="QStackedWidget" name="mainStack">
+            <property name="currentIndex">
+              <number>0</number>
+            </property>
+            <widget class="QWidget" name="archivesPage">
+              <layout class="QVBoxLayout" name="archivesPageLayout">
+                <property name="spacing">
+                  <number>0</number>
+                </property>
+                <property name="leftMargin">
+                  <number>0</number>
+                </property>
+                <property name="topMargin">
+                  <number>0</number>
+                </property>
+                <property name="rightMargin">
+                  <number>0</number>
+                </property>
+                <property name="bottomMargin">
+                  <number>0</number>
+                </property>
+                <item>
+                  <widget class="QSplitter" name="workspaceSplitter">
+                    <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
+                    </property>
+                    <property name="childrenCollapsible">
+                      <bool>false</bool>
+                    </property>
+                    <widget class="QWidget" name="archivePanel">
+                      <property name="minimumSize">
+                        <size>
+                          <width>240</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                      <layout class="QVBoxLayout" name="archiveLayout">
+                        <property name="leftMargin">
+                          <number>16</number>
+                        </property>
+                        <property name="topMargin">
+                          <number>20</number>
+                        </property>
+                        <property name="rightMargin">
+                          <number>12</number>
+                        </property>
+                        <property name="bottomMargin">
+                          <number>12</number>
+                        </property>
+                        <property name="spacing">
+                          <number>8</number>
+                        </property>
+                        <item>
+                          <widget class="QLabel" name="archiveHeading">
+                            <property name="text">
+                              <string>Archives</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QLabel" name="archiveCount">
+                            <property name="text">
+                              <string>0 snapshots</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QLineEdit" name="searchInput">
+                            <property name="placeholderText">
+                              <string>Search by URL…</string>
+                            </property>
+                            <property name="clearButtonEnabled">
+                              <bool>true</bool>
+                            </property>
+                            <property name="accessibleName">
+                              <string>Search snapshots by URL</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QListWidget" name="snapshotList">
+                            <property name="mouseTracking">
+                              <bool>true</bool>
+                            </property>
+                            <property name="accessibleName">
+                              <string>Archived snapshots</string>
+                            </property>
+                          </widget>
+                        </item>
+                      </layout>
+                    </widget>
+                    <widget class="QWidget" name="readerPanel">
+                      <layout class="QVBoxLayout" name="readerLayout">
+                        <property name="spacing">
+                          <number>0</number>
+                        </property>
+                        <property name="leftMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="topMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="rightMargin">
+                          <number>0</number>
+                        </property>
+                        <property name="bottomMargin">
+                          <number>0</number>
+                        </property>
+                        <item>
+                          <widget class="QWidget" name="archiveTabsHost">
+                            <layout class="QVBoxLayout" name="archiveTabsLayout">
+                              <property name="leftMargin">
+                                <number>8</number>
+                              </property>
+                              <property name="topMargin">
+                                <number>6</number>
+                              </property>
+                              <property name="rightMargin">
+                                <number>8</number>
+                              </property>
+                              <property name="bottomMargin">
+                                <number>0</number>
+                              </property>
+                            </layout>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QWidget" name="readerBar">
+                            <layout class="QHBoxLayout" name="readerBarLayout">
+                              <property name="leftMargin">
+                                <number>20</number>
+                              </property>
+                              <property name="topMargin">
+                                <number>12</number>
+                              </property>
+                              <property name="rightMargin">
+                                <number>20</number>
+                              </property>
+                              <property name="bottomMargin">
+                                <number>12</number>
+                              </property>
+                              <property name="spacing">
+                                <number>12</number>
+                              </property>
+                              <item>
+                                <widget class="QPushButton" name="sidebarToggle">
+                                  <property name="text">
+                                    <string/>
+                                  </property>
+                                  <property name="minimumSize">
+                                    <size>
+                                      <width>36</width>
+                                      <height>34</height>
+                                    </size>
+                                  </property>
+                                  <property name="maximumSize">
+                                    <size>
+                                      <width>36</width>
+                                      <height>34</height>
+                                    </size>
+                                  </property>
+                                  <property name="icon">
+                                    <iconset>
+                                      <normaloff>icons/sidebar-light.svg</normaloff>icons/sidebar-light.svg</iconset>
+                                  </property>
+                                  <property name="iconSize">
+                                    <size>
+                                      <width>22</width>
+                                      <height>22</height>
+                                    </size>
+                                  </property>
+                                  <property name="checkable">
+                                    <bool>true</bool>
+                                  </property>
+                                  <property name="checked">
+                                    <bool>true</bool>
+                                  </property>
+                                  <property name="toolTip">
+                                    <string>Hide sidebar</string>
+                                  </property>
+                                  <property name="accessibleName">
+                                    <string>Archive sidebar</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="QLabel" name="pageTitle">
+                                  <property name="text">
+                                    <string>Archive</string>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <spacer name="readerSpacer">
+                                  <property name="orientation">
+                                    <enum>Qt::Horizontal</enum>
+                                  </property>
+                                  <property name="sizeHint" stdset="0">
+                                    <size>
+                                      <width>100</width>
+                                      <height>20</height>
+                                    </size>
+                                  </property>
+                                </spacer>
+                              </item>
+                              <item>
+                                <widget class="QPushButton" name="pageButton">
+                                  <property name="text">
+                                    <string>Page</string>
+                                  </property>
+                                  <property name="checkable">
+                                    <bool>true</bool>
+                                  </property>
+                                  <property name="checked">
+                                    <bool>true</bool>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="QPushButton" name="rawButton">
+                                  <property name="text">
+                                    <string>Raw HTML</string>
+                                  </property>
+                                  <property name="checkable">
+                                    <bool>true</bool>
+                                  </property>
+                                </widget>
+                              </item>
+                            </layout>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QWidget" name="addressBar">
+                            <layout class="QHBoxLayout" name="addressLayout">
+                              <property name="leftMargin">
+                                <number>20</number>
+                              </property>
+                              <property name="rightMargin">
+                                <number>20</number>
+                              </property>
+                              <property name="spacing">
+                                <number>12</number>
+                              </property>
+                              <property name="topMargin">
+                                <number>8</number>
+                              </property>
+                              <property name="bottomMargin">
+                                <number>8</number>
+                              </property>
+                              <item>
+                                <widget class="QLabel" name="currentUrl">
+                                  <property name="text">
+                                    <string/>
+                                  </property>
+                                  <property name="wordWrap">
+                                    <bool>true</bool>
+                                  </property>
+                                  <property name="textInteractionFlags">
+                                    <set>Qt::TextSelectableByMouse</set>
+                                  </property>
+                                </widget>
+                              </item>
+                              <item>
+                                <widget class="QPushButton" name="openWindowButton">
+                                  <property name="minimumSize">
+                                    <size>
+                                      <width>34</width>
+                                      <height>30</height>
+                                    </size>
+                                  </property>
+                                  <property name="maximumSize">
+                                    <size>
+                                      <width>34</width>
+                                      <height>36</height>
+                                    </size>
+                                  </property>
+                                  <property name="text">
+                                    <string>↗</string>
+                                  </property>
+                                  <property name="toolTip">
+                                    <string>Open in new window</string>
+                                  </property>
+                                  <property name="accessibleName">
+                                    <string>Open archive in new window</string>
+                                  </property>
+                                  <property name="enabled">
+                                    <bool>false</bool>
+                                  </property>
+                                </widget>
+                              </item>
+                            </layout>
+                          </widget>
+                        </item>
+                        <item>
+                          <layout class="QHBoxLayout" name="metadataLayout">
+                            <property name="leftMargin">
+                              <number>20</number>
+                            </property>
+                            <property name="topMargin">
+                              <number>10</number>
+                            </property>
+                            <property name="rightMargin">
+                              <number>20</number>
+                            </property>
+                            <property name="bottomMargin">
+                              <number>10</number>
+                            </property>
+                            <property name="spacing">
+                              <number>12</number>
+                            </property>
+                            <item>
+                              <widget class="QLabel" name="snapshotDate">
+                                <property name="text">
+                                  <string/>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <widget class="QLabel" name="offlineLabel">
+                                <property name="text">
+                                  <string>Offline copy</string>
+                                </property>
+                                <property name="alignment">
+                                  <set>Qt::AlignRight|Qt::AlignVCenter</set>
+                                </property>
+                              </widget>
+                            </item>
+                          </layout>
+                        </item>
+                        <item>
+                          <widget class="QStackedWidget" name="viewerStack">
+                            <property name="currentIndex">
+                              <number>0</number>
+                            </property>
+                            <widget class="QWidget" name="emptyPage">
+                              <layout class="QVBoxLayout" name="emptyLayout">
+                                <item>
+                                  <widget class="QLabel" name="emptyMessage">
+                                    <property name="text">
+                                      <string>No archive open.</string>
+                                    </property>
+                                    <property name="alignment">
+                                      <set>Qt::AlignCenter</set>
+                                    </property>
+                                    <property name="wordWrap">
+                                      <bool>true</bool>
+                                    </property>
+                                  </widget>
+                                </item>
+                              </layout>
+                            </widget>
+                            <widget class="QWidget" name="webPage">
+                              <layout class="QVBoxLayout" name="webLayout">
+                                <property name="leftMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                  <number>0</number>
+                                </property>
+                                <item>
+                                  <widget class="QWidget" name="webViewHost">
+                                    <layout class="QVBoxLayout" name="webViewLayout">
+                                      <property name="leftMargin">
+                                        <number>0</number>
+                                      </property>
+                                      <property name="topMargin">
+                                        <number>0</number>
+                                      </property>
+                                      <property name="rightMargin">
+                                        <number>0</number>
+                                      </property>
+                                      <property name="bottomMargin">
+                                        <number>0</number>
+                                      </property>
+                                      <item>
+                                        <widget class="QLabel" name="designerViewerPlaceholder">
+                                          <property name="text">
+                                            <string>Webpage</string>
+                                          </property>
+                                          <property name="alignment">
+                                            <set>Qt::AlignCenter</set>
+                                          </property>
+                                        </widget>
+                                      </item>
+                                    </layout>
+                                  </widget>
+                                </item>
+                              </layout>
+                            </widget>
+                            <widget class="QWidget" name="rawPage">
+                              <layout class="QVBoxLayout" name="rawLayout">
+                                <property name="leftMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="topMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="rightMargin">
+                                  <number>0</number>
+                                </property>
+                                <property name="bottomMargin">
+                                  <number>0</number>
+                                </property>
+                                <item>
+                                  <widget class="QPlainTextEdit" name="rawHtml">
+                                    <property name="readOnly">
+                                      <bool>true</bool>
+                                    </property>
+                                    <property name="placeholderText">
+                                      <string>Raw HTML</string>
+                                    </property>
+                                  </widget>
+                                </item>
+                              </layout>
+                            </widget>
+                          </widget>
+                        </item>
+                      </layout>
+                    </widget>
+                  </widget>
+                </item>
+              </layout>
+            </widget>
+            <widget class="QWidget" name="statisticsPage"/>
+            <widget class="QWidget" name="settingsPage">
+              <layout class="QVBoxLayout" name="settingsPageLayout">
+                <property name="leftMargin">
+                  <number>0</number>
+                </property>
+                <property name="topMargin">
+                  <number>0</number>
+                </property>
+                <property name="rightMargin">
+                  <number>0</number>
+                </property>
+                <property name="bottomMargin">
+                  <number>0</number>
+                </property>
+                <item>
+                  <widget class="QScrollArea" name="settingsScrollArea">
+                    <property name="frameShape">
+                      <enum>QFrame::NoFrame</enum>
+                    </property>
+                    <property name="widgetResizable">
+                      <bool>true</bool>
+                    </property>
+                    <widget class="QWidget" name="settingsContents">
+                      <layout class="QVBoxLayout" name="settingsLayout">
+                        <property name="leftMargin">
+                          <number>28</number>
+                        </property>
+                        <property name="topMargin">
+                          <number>28</number>
+                        </property>
+                        <property name="rightMargin">
+                          <number>28</number>
+                        </property>
+                        <property name="bottomMargin">
+                          <number>28</number>
+                        </property>
+                        <property name="spacing">
+                          <number>12</number>
+                        </property>
+                        <item>
+                          <widget class="QLabel" name="settingsHeading">
+                            <property name="text">
+                              <string>Settings</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <widget class="QLabel" name="appearanceLabel">
+                            <property name="text">
+                              <string>Appearance</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <layout class="QHBoxLayout" name="themeControls">
+                            <property name="spacing">
+                              <number>8</number>
+                            </property>
+                            <item>
+                              <widget class="QPushButton" name="lightModeButton">
+                                <property name="text">
+                                  <string>Light</string>
+                                </property>
+                                <property name="checkable">
+                                  <bool>true</bool>
+                                </property>
+                                <property name="checked">
+                                  <bool>true</bool>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <widget class="QPushButton" name="darkModeButton">
+                                <property name="text">
+                                  <string>Dark</string>
+                                </property>
+                                <property name="checkable">
+                                  <bool>true</bool>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <spacer name="themeSpacer">
+                                <property name="orientation">
+                                  <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                  <size>
+                                    <width>400</width>
+                                    <height>20</height>
+                                  </size>
+                                </property>
+                              </spacer>
+                            </item>
+                          </layout>
+                        </item>
+                        <item>
+                          <widget class="QLabel" name="webpageHeading">
+                            <property name="text">
+                              <string>Webpage viewing</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item>
+                          <layout class="QFormLayout" name="viewingForm">
+                            <property name="formAlignment">
+                              <set>Qt::AlignLeft|Qt::AlignTop</set>
+                            </property>
+                            <property name="labelAlignment">
+                              <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+                            </property>
+                            <property name="horizontalSpacing">
+                              <number>24</number>
+                            </property>
+                            <property name="verticalSpacing">
+                              <number>12</number>
+                            </property>
+                            <property name="fieldGrowthPolicy">
+                              <enum>QFormLayout::FieldsStayAtSizeHint</enum>
+                            </property>
+                            <item row="0" column="0">
+                              <widget class="QLabel" name="pageZoomLabel">
+                                <property name="text">
+                                  <string>Page zoom</string>
+                                </property>
+                                <property name="buddy">
+                                  <cstring>pageZoomInput</cstring>
+                                </property>
+                              </widget>
+                            </item>
+                            <item row="0" column="1">
+                              <widget class="QWidget" name="zoomStepper">
+                                <property name="maximumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <property name="minimumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <layout class="QHBoxLayout" name="zoomStepperLayout">
+                                  <property name="spacing">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="leftMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="topMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="rightMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="bottomMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <item>
+                                    <widget class="QSpinBox" name="pageZoomInput">
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>115</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="buttonSymbols">
+                                        <enum>QAbstractSpinBox::NoButtons</enum>
+                                      </property>
+                                      <property name="keyboardTracking">
+                                        <bool>false</bool>
+                                      </property>
+                                      <property name="suffix">
+                                        <string>%</string>
+                                      </property>
+                                      <property name="minimum">
+                                        <number>75</number>
+                                      </property>
+                                      <property name="maximum">
+                                        <number>200</number>
+                                      </property>
+                                      <property name="singleStep">
+                                        <number>5</number>
+                                      </property>
+                                      <property name="value">
+                                        <number>100</number>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                  <item>
+                                    <widget class="QPushButton" name="zoomDecrease">
+                                      <property name="text">
+                                        <string>−</string>
+                                      </property>
+                                      <property name="accessibleName">
+                                        <string>Decrease page zoom</string>
+                                      </property>
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="maximumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>42</height>
+                                        </size>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                  <item>
+                                    <widget class="QPushButton" name="zoomIncrease">
+                                      <property name="text">
+                                        <string>+</string>
+                                      </property>
+                                      <property name="accessibleName">
+                                        <string>Increase page zoom</string>
+                                      </property>
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="maximumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>42</height>
+                                        </size>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                </layout>
+                              </widget>
+                            </item>
+                            <item row="1" column="0">
+                              <widget class="QLabel" name="textSizeLabel">
+                                <property name="text">
+                                  <string>Text size</string>
+                                </property>
+                                <property name="buddy">
+                                  <cstring>textSizeInput</cstring>
+                                </property>
+                              </widget>
+                            </item>
+                            <item row="1" column="1">
+                              <widget class="QWidget" name="textSizeStepper">
+                                <property name="maximumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <property name="minimumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <layout class="QHBoxLayout" name="textSizeStepperLayout">
+                                  <property name="spacing">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="leftMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="topMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="rightMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="bottomMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <item>
+                                    <widget class="QSpinBox" name="textSizeInput">
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>115</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="buttonSymbols">
+                                        <enum>QAbstractSpinBox::NoButtons</enum>
+                                      </property>
+                                      <property name="keyboardTracking">
+                                        <bool>false</bool>
+                                      </property>
+                                      <property name="suffix">
+                                        <string> pt</string>
+                                      </property>
+                                      <property name="minimum">
+                                        <number>10</number>
+                                      </property>
+                                      <property name="maximum">
+                                        <number>32</number>
+                                      </property>
+                                      <property name="singleStep">
+                                        <number>1</number>
+                                      </property>
+                                      <property name="value">
+                                        <number>12</number>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                  <item>
+                                    <widget class="QPushButton" name="textSizeDecrease">
+                                      <property name="text">
+                                        <string>−</string>
+                                      </property>
+                                      <property name="accessibleName">
+                                        <string>Decrease text size</string>
+                                      </property>
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="maximumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>42</height>
+                                        </size>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                  <item>
+                                    <widget class="QPushButton" name="textSizeIncrease">
+                                      <property name="text">
+                                        <string>+</string>
+                                      </property>
+                                      <property name="accessibleName">
+                                        <string>Increase text size</string>
+                                      </property>
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="maximumSize">
+                                        <size>
+                                          <width>42</width>
+                                          <height>42</height>
+                                        </size>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                </layout>
+                              </widget>
+                            </item>
+                            <item row="2" column="0">
+                              <widget class="QLabel" name="fontLabel">
+                                <property name="text">
+                                  <string>Font</string>
+                                </property>
+                                <property name="buddy">
+                                  <cstring>fontCombo</cstring>
+                                </property>
+                              </widget>
+                            </item>
+                            <item row="2" column="1">
+                              <widget class="QWidget" name="fontControls">
+                                <layout class="QHBoxLayout" name="fontControlsLayout">
+                                  <property name="spacing">
+                                    <number>8</number>
+                                  </property>
+                                  <property name="leftMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="topMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="rightMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <property name="bottomMargin">
+                                    <number>0</number>
+                                  </property>
+                                  <item>
+                                    <widget class="QComboBox" name="fontCombo">
+                                      <property name="minimumSize">
+                                        <size>
+                                          <width>220</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <property name="maximumSize">
+                                        <size>
+                                          <width>220</width>
+                                          <height>36</height>
+                                        </size>
+                                      </property>
+                                      <item>
+                                        <property name="text">
+                                          <string>Sans serif</string>
+                                        </property>
+                                      </item>
+                                      <item>
+                                        <property name="text">
+                                          <string>Serif</string>
+                                        </property>
+                                      </item>
+                                      <item>
+                                        <property name="text">
+                                          <string>Monospace</string>
+                                        </property>
+                                      </item>
+                                    </widget>
+                                  </item>
+                                  <item>
+                                    <widget class="QPushButton" name="addFontButton">
+                                      <property name="text">
+                                        <string>Add font…</string>
+                                      </property>
+                                      <property name="toolTip">
+                                        <string>Add an installed font to Webber’s saved font menu</string>
+                                      </property>
+                                    </widget>
+                                  </item>
+                                </layout>
+                              </widget>
+                            </item>
+                            <item row="3" column="0">
+                              <widget class="QLabel" name="spacingLabel">
+                                <property name="text">
+                                  <string>Line spacing</string>
+                                </property>
+                                <property name="buddy">
+                                  <cstring>lineSpacingCombo</cstring>
+                                </property>
+                              </widget>
+                            </item>
+                            <item row="3" column="1">
+                              <widget class="QComboBox" name="lineSpacingCombo">
+                                <property name="minimumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <property name="maximumSize">
+                                  <size>
+                                    <width>220</width>
+                                    <height>36</height>
+                                  </size>
+                                </property>
+                                <item>
+                                  <property name="text">
+                                    <string>Normal</string>
+                                  </property>
+                                </item>
+                                <item>
+                                  <property name="text">
+                                    <string>Comfortable</string>
+                                  </property>
+                                </item>
+                              </widget>
+                            </item>
+                          </layout>
+                        </item>
+                        <item>
+                          <layout class="QHBoxLayout" name="resetRow">
+                            <property name="spacing">
+                              <number>8</number>
+                            </property>
+                            <item>
+                              <widget class="QPushButton" name="resetSettingsButton">
+                                <property name="text">
+                                  <string>Reset all settings</string>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <spacer name="resetSpacer">
+                                <property name="orientation">
+                                  <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                  <size>
+                                    <width>400</width>
+                                    <height>20</height>
+                                  </size>
+                                </property>
+                              </spacer>
+                            </item>
+                          </layout>
+                        </item>
+                        <item>
+                          <spacer name="settingsVerticalSpacer">
+                            <property name="orientation">
+                              <enum>Qt::Vertical</enum>
+                            </property>
+                            <property name="sizeHint" stdset="0">
+                              <size>
+                                <width>20</width>
+                                <height>12</height>
+                              </size>
+                            </property>
+                          </spacer>
+                        </item>
+                      </layout>
+                    </widget>
+                  </widget>
+                </item>
+              </layout>
+            </widget>
+          </widget>
+        </item>
+      </layout>
+    </widget>
+    <widget class="QStatusBar" name="statusbar"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
- </widget>
- <tabstops><tabstop>archivesButton</tabstop><tabstop>statisticsButton</tabstop><tabstop>settingsButton</tabstop><tabstop>savePageButton</tabstop><tabstop>searchInput</tabstop><tabstop>snapshotList</tabstop><tabstop>sidebarToggle</tabstop><tabstop>pageButton</tabstop><tabstop>rawButton</tabstop><tabstop>openWindowButton</tabstop></tabstops>
- <resources/>
- <connections>
-  <connection><sender>savePageButton</sender><signal>toggled(bool)</signal><receiver>capturePanel</receiver><slot>setVisible(bool)</slot><hints><hint type="sourcelabel"><x>0</x><y>0</y></hint><hint type="destinationlabel"><x>0</x><y>0</y></hint></hints></connection>
- </connections>
+  <tabstops>
+    <tabstop>archivesButton</tabstop>
+    <tabstop>statisticsButton</tabstop>
+    <tabstop>settingsButton</tabstop>
+    <tabstop>savePageButton</tabstop>
+    <tabstop>searchInput</tabstop>
+    <tabstop>snapshotList</tabstop>
+    <tabstop>sidebarToggle</tabstop>
+    <tabstop>pageButton</tabstop>
+    <tabstop>rawButton</tabstop>
+    <tabstop>openWindowButton</tabstop>
+  </tabstops>
+  <resources/>
+  <connections>
+    <connection>
+      <sender>savePageButton</sender>
+      <signal>toggled(bool)</signal>
+      <receiver>capturePanel</receiver>
+      <slot>setVisible(bool)</slot>
+      <hints>
+        <hint type="sourcelabel">
+          <x>0</x>
+          <y>0</y>
+        </hint>
+        <hint type="destinationlabel">
+          <x>0</x>
+          <y>0</y>
+        </hint>
+      </hints>
+    </connection>
+  </connections>
 </ui>

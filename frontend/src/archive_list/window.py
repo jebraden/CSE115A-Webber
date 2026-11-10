@@ -7,8 +7,17 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QHeaderView, QLabel, QLineEdit, QMainWindow,
-    QPushButton, QHBoxLayout, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .service import SnapshotService
@@ -24,7 +33,9 @@ class ArchiveWindow(QMainWindow):
         super().__init__()
         self._service = service
         self._snapshots = []
-        self._default_icon = QIcon(str(Path(__file__).parent / "assets" / "webpage.svg"))
+        self._default_icon = QIcon(
+            str(Path(__file__).parent / "assets" / "webpage.svg")
+        )
         self.setWindowTitle("Webber — Archived Webpages")
         self.resize(920, 480)
         self.setMinimumSize(620, 320)
@@ -53,6 +64,8 @@ class ArchiveWindow(QMainWindow):
         layout.addWidget(QLabel("Snapshots"))
         self.table = QTableWidget(0, 3)
         self.table.setIconSize(QSize(20, 20))
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.table.setHorizontalHeaderLabels(["URL", "Archived at (UTC)", "ID"])
         self.table.setAccessibleName("Snapshot list")
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -94,7 +107,13 @@ class ArchiveWindow(QMainWindow):
             # Format before populating so a malformed adapter response cannot
             # leave a partially displayed result set.
             rows = [
-                (s.url, s.archived_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), str(s.id))
+                (
+                    s.url,
+                    s.archived_at.astimezone(timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                    str(s.id),
+                )
                 for s in snapshots
             ]
         except Exception:
@@ -113,7 +132,9 @@ class ArchiveWindow(QMainWindow):
         if rows:
             self.status.setText(f"{len(rows)} snapshot(s) • Newest first")
         elif query:
-            self.status.setText("No snapshots match this URL. Try another search or clear the search field.")
+            self.status.setText(
+                "No snapshots match this URL. Try another search or clear the search field."
+            )
         else:
             self.status.setText("No archived webpages yet.")
 

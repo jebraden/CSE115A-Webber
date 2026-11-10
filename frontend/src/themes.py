@@ -3,6 +3,7 @@
 Archived HTML is never restyled. Keep Designer's light stylesheet as the source
 of layout rules; replace its color tokens when the user selects dark mode.
 """
+
 import re
 from pathlib import Path
 
@@ -80,13 +81,33 @@ DARK_COLORS = {
 
 
 def stylesheet_for(light_stylesheet: str, mode: str) -> str:
-    icon = Path(__file__).with_name("ui") / "icons" / ("chevron-dark.svg" if mode == "dark" else "chevron-light.svg")
-    light_stylesheet = light_stylesheet.replace("url(icons/chevron-light.svg)", f'url("{icon.as_posix()}")')
-    close_icon = icon.with_name("close-dark.svg" if mode == "dark" else "close-light.svg")
-    light_stylesheet = light_stylesheet.replace("url(icons/close-light.svg)", 'url("%s")' % close_icon.as_posix())
+    icon = (
+        Path(__file__).with_name("ui")
+        / "icons"
+        / ("chevron-dark.svg" if mode == "dark" else "chevron-light.svg")
+    )
+    light_stylesheet = light_stylesheet.replace(
+        "url(icons/chevron-light.svg)", f'url("{icon.as_posix()}")'
+    )
+    close_icon = icon.with_name(
+        "close-dark.svg" if mode == "dark" else "close-light.svg"
+    )
+    light_stylesheet = light_stylesheet.replace(
+        "url(icons/close-light.svg)", 'url("%s")' % close_icon.as_posix()
+    )
+    up_icon = icon.with_name(
+        "step-up-dark.svg" if mode == "dark" else "step-up-light.svg"
+    )
+    light_stylesheet = light_stylesheet.replace(
+        "url(icons/step-up-light.svg)", f'url("{up_icon.as_posix()}")'
+    )
     if mode != "dark":
         return light_stylesheet
-    stylesheet = re.sub(r"#[0-9a-fA-F]{6}\b", lambda match: DARK_COLORS.get(match[0].lower(), match[0]), light_stylesheet)
+    stylesheet = re.sub(
+        r"#[0-9a-fA-F]{6}\b",
+        lambda match: DARK_COLORS.get(match[0].lower(), match[0]),
+        light_stylesheet,
+    )
     # Filled actions retain a dark olive surface with clearly readable text.
     return stylesheet + (
         f"\nQPushButton#savePageButton, QPushButton#captureButton {{ color: {WHITE}; }}"

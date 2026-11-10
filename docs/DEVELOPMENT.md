@@ -196,3 +196,42 @@ for a real API adapter when backend integration is configured.
 The application uses QtAsyncio so the panel's asynchronous Generate and Cancel
 actions run within the main Qt event loop. Closing the window cancels generation.
 The standalone statistics driver remains available for isolated testing.
+
+
+### Review follow-ups: fonts, dropdowns, and input methods
+
+Settings > Add font opens Qt's font chooser with the installed font families,
+styles, and effects. The chosen family, weight, italic, underline, and strikeout
+are saved and applied to existing and future archive viewers. Text size retains
+the Settings control's supported 10–32 point range. Reset clears these overrides.
+
+Settings dropdowns use a Fusion-backed list with an explicitly painted popup
+surface, avoiding extra native-theme backgrounds. Archive tab drags stay within
+the occupied tab strip and avoid native animated tab painting.
+
+URL and search fields retain native Qt input-method composition. Search ignores
+pre-edit text and updates after candidate commit. Automated checks exercise
+Japanese pre-edit and committed text in both fields. Physical IME integration
+still depends on Qt's platform input-context plugin and the user's input-method
+service. If it fails only on Linux, run with QT_DEBUG_PLUGINS=1 to inspect missing
+input-context plugins, and check the desktop's IBus/Fcitx and Wayland/X11 setup.
+The app does not overwrite QT_IM_MODULE or force a platform backend.
+
+No scrollbar behavior or stylesheet rules were changed for these review fixes.
+
+### Saved installed-font menu
+
+Settings > Add font opens Qt's installed-font picker. Choose a family, style,
+size, and effects, then confirm. The chosen family is added to Webber's dropdown
+and remembered after switching fonts or restarting. Reset restores the viewing
+defaults but keeps saved font menu entries. Cancelling does not change settings.
+This control does not open a file browser or install fonts on the computer.
+
+
+### Native scrollbars
+
+Scrollbar-specific styles were removed at the user's request. Archive lists,
+statistics tables, and font dropdown lists use Qt per-pixel scrolling rather
+than row snapping. Native scrollbar appearance and trackpad/wheel behavior
+follow Qt and the operating system; smooth animation is platform-dependent.
+No custom wheel animation is installed.
