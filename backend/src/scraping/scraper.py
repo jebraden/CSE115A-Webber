@@ -13,6 +13,7 @@ import logging
 
 from datetime import datetime
 from playwright.async_api import async_playwright
+from playwright.async_api import Error as PlaywrightError
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
@@ -62,6 +63,8 @@ class PageScraper():
         
        
         try:
+            if self.debug:
+                print(f"Starting job for {url} with origin {snap_id}")
             snap_id = await self._download_page(url, headers, method, snap_id, saved_urls)
         finally:
             self.working = False
@@ -237,7 +240,17 @@ class PageScraper():
             page.on("request", self.handle_requests)
             page.on("response", self.on_response)
 
-            await page.goto(url)
+            # Maybe we want to handle this in the future?
+            # For now it seems a security risk, so skipping
+            page.on("download", lambda download: asyncio.create_task(download.cancel()))
+            try:
+                await page.goto(url, wait_until="load")
+            except PlaywrightError as e:
+                if "Download is starting" in str(e):
+                    logger.info(f"Request on {url} triggered a download: Skipping")
+                    await browser.close()
+                    return
+                raise
             await page.wait_for_timeout(5000)
 
             last_height = 0
@@ -260,9 +273,10 @@ class PageScraper():
             # Rewrite files where needed
             self.rewrite_resource_paths()
 
-            hyperlinks = await self.gather_hyperlinks(page)
+            if update_db:
+                hyperlinks = await self.gather_hyperlinks(page)
 
-            processed = await self.process_hyperlinks(hyperlinks, headers, method)
+                processed = await self.process_hyperlinks(hyperlinks, headers, method)
 
             end_time = time.time()
             await browser.close()
@@ -292,6 +306,8 @@ class PageScraper():
         if not self.tasks: return
         completed = 0
         while completed < len(self.tasks):
+            if self.debug:
+                print(f"Drained: {completed}")
             undone = self.tasks[completed:]
             results = await asyncio.gather(
                 *undone,
@@ -320,8 +336,8 @@ class PageScraper():
         """
         processed = set()
         for url in urls:
-            scraper = PageScraper(db_conn=self.db)
-            res = await scraper.archive_page(url, headers, method, self.snap_id)
+            scraper = PageScraper(db_conn=self.db, debug=self.debug)
+            res = await scraper.archive_page(url, headers, method, self.snap_id, self.saved_urls)
             if res is None: 
                 logger.warning("Skipping url: {url}. Failed to download page content") 
                 continue
@@ -333,12 +349,23 @@ class PageScraper():
         search_targets = [("a[href]", "href"), ("area[href]", "href"), ("form", "action")]
         urls = set()
 
+        if self.debug:
+            print("Processing hyperlinks")
+
         for selector, attr in search_targets:
             elements = page.locator(selector)
             elem_count = await elements.count()
             for i in range(elem_count):
                 element = elements.nth(i)
-                url = await ( await element.get_property(attr)).json_value()
+#url = await ( await element.get_property(attr)).json_value()
+                url = await element.evaluate("(el, attr) => el[attr]", attr)
+                if not url:
+                    continue
+                parsed = urlparse(url)
+                if parsed.scheme not in ("http", "https"):
+                    continue
+                if self.debug:
+                    print(f"Found url to look at: {url}")
                 urls.add(url)
 
         return urls
@@ -357,6 +384,12 @@ class PageScraper():
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
+        if self.snap_id is None:
+            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            return None
+        elif host is None:
+            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            return None
         path = os.path.join(os.path.join(os.getenv("HOME"), ".webber",
                     self.snap_id, host))
         return path
@@ -383,6 +416,8 @@ class PageScraper():
             case "font/otf": return "otf"
             case "application/font-woff": return "woff"
             case "application/vnd.ms-fontobject": return "eot"
+            case "application/json": return "json"
+            case "application/xml": return "xml"
             case _: return None
         # Redundant
         return None
@@ -400,12 +435,15 @@ class PageScraper():
                 continue
             with open(path, "rb") as file:
                 contents = file.read()
-            
-            if html_flag:
-                # Should I account for not utf-8?
-                contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
-            else:
-                contents = relativize_stylesheet(contents, url)
+            try:
+                if html_flag:
+                    # Should I account for not utf-8?
+                    contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
+                else:
+                    contents = relativize_stylesheet(contents, url)
+            except Exception as e:
+                logger.warning("Encountered error {e} relatvizing {url}")
+                continue
             with open(path, "w", encoding="utf-8") as file:
                 file.write(contents)
             self.db.execute(
@@ -482,15 +520,15 @@ class PageScraper():
     
 
 # Use to run a manual test
-#with open("./../../db/001_init.sql") as f:
-#    sql_script = f.read()
-#
-#with sqlite3.connect(db_path) as conn:
-#    cursor = conn.cursor()
-#    cursor.executescript(sql_script)
-#    conn.commit()
-#    print("Created db")
-#url = "https://oxylabs.io/blog/playwright-web-scraping"
-#s = PageScraper()
-#asyncio.run(s.archive_page(url))
+with open("./db/001_init.sql") as f:
+    sql_script = f.read()
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+cursor.executescript(sql_script)
+conn.commit()
+print("Created db")
+url = "https://oxylabs.io/blog/playwright-web-scraping"
+s = PageScraper(db_conn=conn, debug=True)
+asyncio.run(s.archive_page(url))
+
        
