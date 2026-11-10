@@ -96,3 +96,142 @@ All eight existing tests passed during integration. Manual testing also confirme
 ### Remaining Work
 
 The application currently uses `MockSnapshotService`. A future backend adapter must provide real snapshot metadata and the corresponding local HTML paths.
+
+## Central UI and Qt Designer (task 2.2.2)
+
+The application loads `frontend/src/ui/main_window.ui` at startup. Open that
+file in Qt Widgets Designer to edit spacing, colors, widget properties, and
+layouts. Keep object names unchanged: `frontend/src/main_window.py` uses them
+to connect behavior. Designer changes take effect when Webber restarts; no
+generated Python UI file is required.
+
+Use Form > Preview (Ctrl+R) to inspect layout. In Designer, select the
+`mainStack` currentIndex to inspect Archives (0) or the deliberately blank
+Statistics page (1). `viewerStack` contains empty (0), webpage (1), and raw
+HTML (2) views. The web view is inserted at runtime, with a standard QWidget
+placeholder in Designer. To inspect the URL form, make `capturePanel` visible
+in Designer temporarily, then undo that change before saving.
+
+Run from the repository root with `python -m frontend.src` using an environment
+with `frontend/requirements.txt` installed. Existing mock snapshots remain
+explicitly labeled as demo data. Only snapshots with a readable local_path can
+be viewed. Selection replaces the embedded page; Page / Raw HTML switches
+the same archive, while the hover action or Ctrl+Shift+O opens a separate
+window. Reopening the same snapshot reuses its window. Closing the main
+window closes its archive windows.
+
+Statistics remains empty pending coordination with Alexander. The URL form
+validates http/https input and emits `capture_requested(url)`; it does not
+pretend to save a page. The existing snapshot service remains injectable.
+Live scraper/API integration belongs to task 2.2.1 and is not added here.
+
+Central-shell regression tests use a viewer double to avoid requiring a
+Chromium graphics context in headless runs:
+`QT_QPA_PLATFORM=offscreen python -m pytest frontend/tests/test_main_window.py`.
+
+
+### Appearance and sample archives
+
+Settings contains explicit Light and Dark appearance choices. The choice is
+stored with QSettings under Webber/Webber, key appearance/theme, and restored
+on launch. Only Webber controls change: archived websites retain their HTML
+and saved styling. Light colors remain editable in the Designer stylesheet;
+`frontend/src/themes.py` supplies the corresponding neutral dark palette.
+Statistics remains an empty page.
+
+The demo application uses nine readable local snapshots via
+UI_DEMO_SNAPSHOTS. Five new handcrafted samples in `demo/samples/` exercise a
+long article, relative links, a local SVG and stylesheet, a responsive gallery,
+tables/code, a dark website, and plain Unicode HTML. These are fixtures, not
+real captures of the displayed URLs. Original MockSnapshotService defaults
+remain unchanged for existing contract tests.
+
+
+### Webpage viewing preferences
+
+Settings also offers page zoom (75–200%), base text sizing (10–32 pt),
+Sans serif / Serif / Monospace fonts, and Normal / Comfortable line spacing.
+Preferences are saved under viewing/* in the same QSettings store. They apply
+to the current embedded viewer, existing pop-outs, new windows, and future
+page loads. Reset all settings restores Light mode, 100% page zoom, 12 pt text, Sans serif
+font, and Normal (1.5) line spacing, including in open archive windows.
+
+Overrides run in the WebEngine application world at DocumentReady and affect
+only runtime presentation. They never write archive files or modify the raw
+HTML shown in the source view. Text sizing measures original computed sizes
+before applying overrides to avoid cumulative scaling. An explicit point value
+is the base reading size; headings retain their proportions relative to the
+original body font. Legacy percentage or Original text-size preferences fall back to 12 pt;
+page zoom remains a percentage. These controls target
+HTML text; canvas, images, and text inside shadow DOM are not restyled.
+
+
+Page zoom and text size use editable numeric fields with adjacent minus/plus
+buttons. Zoom accepts every integer from 75–200%, stepping by 5; text accepts
+10–32 pt, stepping by 1. Keyboard arrows and typed values work too. Buttons
+disable at their respective bounds. Settings restore/reset the same numeric
+values and units as the controls.
+
+
+### Archive tabs
+
+Selecting an archive now opens a closable, reorderable tab. A snapshot ID
+identifies a tab; selecting it again activates the existing tab. Each tab keeps
+its own WebEngine viewer (and therefore its scroll/navigation state) and its
+Page / Raw HTML choice. Search filters the sidebar without closing tabs.
+Viewing preferences update all open tabs as well as detached windows. The
+standard Close shortcut closes the active tab. Separate-window actions remain
+available independently.
+
+
+## Central UI statistics integration (tasks 2.2.2 and 2.4.1)
+
+Run `python -m frontend.src` from the repository root. The Statistics navigation
+button opens the embedded statistics panel; choose a time period and click
+Generate to populate the table and graph. The current demo uses MockWebberAPI
+and labels its generated data as sample data. It does not report saved archive
+statistics from a live backend. MainWindow accepts a `statistics_api` argument
+for a real API adapter when backend integration is configured.
+
+The application uses QtAsyncio so the panel's asynchronous Generate and Cancel
+actions run within the main Qt event loop. Closing the window cancels generation.
+The standalone statistics driver remains available for isolated testing.
+
+
+### Review follow-ups: fonts, dropdowns, and input methods
+
+Settings > Add font opens Qt's font chooser with the installed font families,
+styles, and effects. The chosen family, weight, italic, underline, and strikeout
+are saved and applied to existing and future archive viewers. Text size retains
+the Settings control's supported 10–32 point range. Reset clears these overrides.
+
+Settings dropdowns use a Fusion-backed list with an explicitly painted popup
+surface, avoiding extra native-theme backgrounds. Archive tab drags stay within
+the occupied tab strip and avoid native animated tab painting.
+
+URL and search fields retain native Qt input-method composition. Search ignores
+pre-edit text and updates after candidate commit. Automated checks exercise
+Japanese pre-edit and committed text in both fields. Physical IME integration
+still depends on Qt's platform input-context plugin and the user's input-method
+service. If it fails only on Linux, run with QT_DEBUG_PLUGINS=1 to inspect missing
+input-context plugins, and check the desktop's IBus/Fcitx and Wayland/X11 setup.
+The app does not overwrite QT_IM_MODULE or force a platform backend.
+
+No scrollbar behavior or stylesheet rules were changed for these review fixes.
+
+### Saved installed-font menu
+
+Settings > Add font opens Qt's installed-font picker. Choose a family, style,
+size, and effects, then confirm. The chosen family is added to Webber's dropdown
+and remembered after switching fonts or restarting. Reset restores the viewing
+defaults but keeps saved font menu entries. Cancelling does not change settings.
+This control does not open a file browser or install fonts on the computer.
+
+
+### Native scrollbars
+
+Scrollbar-specific styles were removed at the user's request. Archive lists,
+statistics tables, and font dropdown lists use Qt per-pixel scrolling rather
+than row snapping. Native scrollbar appearance and trackpad/wheel behavior
+follow Qt and the operating system; smooth animation is platform-dependent.
+No custom wheel animation is installed.
