@@ -520,15 +520,15 @@ class PageScraper():
     
 
 # Use to run a manual test
-with open("./db/001_init.sql") as f:
-    sql_script = f.read()
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
-cursor.executescript(sql_script)
-conn.commit()
-print("Created db")
-url = "https://oxylabs.io/blog/playwright-web-scraping"
-s = PageScraper(db_conn=conn, debug=True)
-asyncio.run(s.archive_page(url))
+#with open("./db/001_init.sql") as f:
+#    sql_script = f.read()
+#conn = sqlite3.connect(db_path)
+#cursor = conn.cursor()
+#cursor.executescript(sql_script)
+#conn.commit()
+#print("Created db")
+#url = "https://oxylabs.io/blog/playwright-web-scraping"
+#s = PageScraper(db_conn=conn, debug=True)
+#asyncio.run(s.archive_page(url))
 
        
