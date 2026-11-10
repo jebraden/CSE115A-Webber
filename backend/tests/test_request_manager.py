@@ -52,6 +52,7 @@ def insert_file(test_db, insert_snapshot):
             "id": file_id,
             "snapshot_id": snapshot_id,
             "on_disk_path": "/tmp/file-1.html",
+            "file_size": 100,
             "protocol": "https",
             "port": 443,
             "host": "example.com",

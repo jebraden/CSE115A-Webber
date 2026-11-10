@@ -133,10 +133,14 @@ class PageScraper():
         }
         default_port = 443 if parsed.scheme == "https" else 80
 
+        # Statistics requires the logical size of each saved resource.
+        file_size = os.path.getsize(local_path)
+
         values = (
                 str(uuid.uuid4()),
                 self.snap_id,
                 local_path,
+                file_size,
                 parsed.scheme,
                 parsed.port or default_port,
                 parsed.hostname or "",
@@ -153,14 +157,14 @@ class PageScraper():
         self.db.execute(
             """
             INSERT INTO files (
-                id, snapshot_id, on_disk_path,
+                id, snapshot_id, on_disk_path, file_size,
                 protocol, port, host, remote_path,
                 request_sent_time, request_method,
                 request_headers, request_parameters,
                 response_recieved_time, response_code,
                 response_headers
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
             """,
             values,
         )
