@@ -15,7 +15,7 @@ from playwright.async_api import async_playwright
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
-from src.urlreplace import relativize_html, relativize_stylesheet 
+from ..urlreplace import relativize_html, relativize_stylesheet
 
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
 
@@ -32,7 +32,7 @@ class PageScraper():
     debug: bool
     saved_resources: dict
 
-    def __init__(self, db_conn=None, debug=False):
+    def __init__(self, db_conn=None, debug=False, archive_dir=None):
         self.saved_urls = set()
         self.saved_resources = dict()
         self.style_sheets = set()
@@ -40,6 +40,7 @@ class PageScraper():
         self.working = False
         self.debug = debug
         self.db = db_conn
+        self.archive_dir = archive_dir or os.path.join(os.getenv("HOME"), ".webber")
 
     async def archive_page(self, url: str, headers: dict=None, method: str="GET"):
         if self.db is None:
@@ -292,8 +293,7 @@ class PageScraper():
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
-        path = os.path.join(os.path.join(os.getenv("HOME"), ".webber",
-                    self.snap_id, host))
+        path = os.path.join(self.archive_dir, self.snap_id, host)
         return path
 
 

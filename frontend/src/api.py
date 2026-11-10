@@ -22,7 +22,7 @@ def _to_json(obj: Any) -> str:
 
     def rec(cur: Any) -> Any:
         if isinstance(cur, StrictNamedTuple):
-            return {name: cur[i] for i, name in enumerate(cur._fields)}
+            return {name: rec(cur[i]) for i, name in enumerate(cur._fields)}
         elif isinstance(cur, (list, tuple)):
             return list(map(rec, cur))
         elif isinstance(cur, dict):
@@ -398,16 +398,24 @@ class StatisticsLimitsResponse(StrictNamedTuple):
 # The API #
 ###########
 class WebberAPI:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, *, client_factory=None, timeout=150.0):
         """Construct the API object.
 
         Arguments:
         base_url -- the base URL of the backend
         """
         self.base_url = base_url.removesuffix("/")
+        self._client_factory = client_factory
+        self.timeout = timeout
+
+    def _client(self):
+        # Construct and close each client in the calling worker's event loop.
+        if self._client_factory is not None:
+            return self._client_factory()
+        return httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=5), trust_env=False)
 
     async def aclose(self):
-        """Requests own and close their clients; no shared client remains."""
+        """Per-request clients are already closed on return."""
         pass
 
     def _endpoint(self, endpoint: str) -> str:
@@ -418,7 +426,8 @@ class WebberAPI:
     ) -> httpx.Response:
         json_str = _to_json(body)
         return await client.request(
-            method, self._endpoint(endpoint), content=json_str.encode()
+            method, self._endpoint(endpoint), content=json_str.encode(),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
         )
 
     def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
@@ -437,9 +446,9 @@ class WebberAPI:
         Arguments:
         request_body -- the body of the snapshot creation request 
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
-                client, "POST", "/snapshots/create", request_body
+                client, "POST", "/snapshots/create", {"url": request_body}
             )
 
             body = self._body_json(resp, 201)
@@ -457,7 +466,7 @@ class WebberAPI:
         Arguments:
         snapshot_id -- the id of the snapshot to delete
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "DELETE", "/snapshots/" + snapshot_id, {}
             )
@@ -475,7 +484,7 @@ class WebberAPI:
         Arguments:
         snapshot_id -- the id of the snapshot to request
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "GET", "/snapshots/" + snapshot_id, {}
             )
@@ -502,7 +511,7 @@ class WebberAPI:
         Arguments:
         file_id -- the id of the file to request
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "GET", "/files/" + file_id, {}
             )
@@ -529,7 +538,7 @@ class WebberAPI:
         Arguments:
         file_id -- the id of the file data to request
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "GET", "/files/" + file_id + "/data", {}
             )
@@ -552,11 +561,13 @@ class WebberAPI:
         key -- the search key corresponding to the field (optional)
         """
         request_body = {field: key} if field else {}
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "QUERY", "/search/snapshots", request_body
             )
             body = self._body_json(resp, 200)
+            if isinstance(body, list):
+                body = {"snapshot_ids": body}
             try:
                 return convert_object(
                     [
@@ -581,11 +592,13 @@ class WebberAPI:
         key -- the search key corresponding to the field
         """
         request_body = {field: key} if field else {}
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "QUERY", "/search/files", request_body
             )
             body = self._body_json(resp, 200)
+            if isinstance(body, list):
+                body = {"snapfilepairs": body}
             try:
                 return convert_object(
                     [
@@ -605,7 +618,7 @@ class WebberAPI:
         Arguments:
         intervals -- the interval over which to take the statistics
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(
                 client, "QUERY", "/statistics", {"intervals": intervals}
             )
@@ -633,7 +646,7 @@ class WebberAPI:
 
         Returns: the response
         """
-        async with httpx.AsyncClient() as client:
+        async with self._client() as client:
             resp = await self._request(client, "GET", "/statistics/limits", {})
         body = self._body_json(resp, 200)
         try:

@@ -54,14 +54,16 @@ def backend(monkeypatch) -> FakeBackend:
     state = FakeBackend()
 
     class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *exc):
             return False
 
-        async def request(self, method, url, content=None):
-            state.calls.append({"method": method, "url": url, "content": content})
+        async def request(self, method, url, content=None, **kwargs):
+            state.calls.append({"method": method, "url": url, "content": content, **kwargs})
             return state.response
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
@@ -92,7 +94,8 @@ class TestCreateSnapshot:
         run(api.create_snapshot("http://example.com"))
 
         assert backend.last["url"] == f"{BASE}/snapshots/create"
-        assert backend.last["content"] == json.dumps("http://example.com").encode()
+        assert backend.last["content"] == json.dumps({"url": "http://example.com"}).encode()
+        assert backend.last["headers"]["Content-Type"] == "application/json"
 
     def test_uses_post(self, api, backend):
         # NOTE: the docstring says POST, but the implementation currently sends
@@ -472,4 +475,17 @@ class TestQueryFiles:
 
         with pytest.raises(BadResponseError):
             run(api.query_files("host", "x"))
-            
+
+
+def test_real_backend_array_shapes_and_json_headers(api, backend):
+    backend.respond(200, ["s1"])
+    assert run(api.query_snapshots("url", "example")).snapshot_ids == ["s1"]
+    assert backend.last["headers"]["Content-Type"] == "application/json"
+    backend.respond(200, [{"snapshot_id": "s1", "file_id": "f1"}])
+    assert run(api.query_files("snapshot_id", "s1")).snapfilepairs[0].file_id == "f1"
+
+
+def test_nested_statistics_intervals_keep_named_fields_on_the_wire():
+    from src.api import Interval, _to_json
+    body = json.loads(_to_json({"intervals": [Interval(Timespec(10, 2), None)]}))
+    assert body == {"intervals": [{"start": {"sec": 10, "nsec": 2}, "end": None}]}

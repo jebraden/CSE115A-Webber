@@ -25,3 +25,9 @@ jobs:
         run: make setup
       - name: Run tests
         run: make test-offscreen
+      - name: Install capture browser
+        run: backend/venv/bin/python -m playwright install --with-deps chromium
+      - name: Verify real capture and offline viewing
+        env:
+          QTWEBENGINE_DISABLE_SANDBOX: "1"
+        run: make test-integration
