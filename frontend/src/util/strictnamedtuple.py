@@ -130,10 +130,10 @@ def _get_parameterized_checker(expected: GenericAlias) -> ParameterizedChecker:
     raise TypeError(f"No checker defined for {expected}")
 
 
-def _parameterized_isinstance(obj: object, typ: type) -> bool:
+def parameterized_isinstance(obj: object, typ: type) -> bool:
     if isinstance(typ, GenericAlias):
         checker = _get_parameterized_checker(typ)
-        return checker(obj, typ, _parameterized_isinstance)
+        return checker(obj, typ, parameterized_isinstance)
     else:
         return isinstance(obj, typ)
 
@@ -141,11 +141,11 @@ def _parameterized_isinstance(obj: object, typ: type) -> bool:
 def _check_type(name: str, val: Any, expected: type):
     if type(expected) is Union:
         for subtype in expected.__args__:  # type: ignore[attr-defined]
-            if _parameterized_isinstance(val, subtype):
+            if parameterized_isinstance(val, subtype):
                 return
         tn = _pretty_print_type(expected)
         raise TypeError(f"Field {name!r} must be of type '{tn}'")
-    elif not _parameterized_isinstance(val, expected):
+    elif not parameterized_isinstance(val, expected):
         tn = _pretty_print_type(expected)
         raise TypeError(f"Field {name!r} must be of type '{tn}'")
 
@@ -172,7 +172,22 @@ def _check_list(
     return True
 
 
+def _check_dict(
+    val: object, cls: GenericAlias, rec: Callable[[object, type], bool]
+) -> bool:
+    assert len(cls.__args__) == 2
+    if not isinstance(val, dict):
+        return False
+    key_type = cls.__args__[0]
+    value_type = cls.__args__[1]
+    for key, value in val.items():
+        if not rec(key, key_type) or not rec(value, value_type):
+            return False
+    return True
+
+
 define_parameterized_checker(list, _check_list)
+define_parameterized_checker(list, _check_dict)
 
 
 class StrictNamedTuple[*T](tuple[*T], metaclass=_StrictNamedTupleMeta):

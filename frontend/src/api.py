@@ -5,15 +5,16 @@ This file contains code for requesting the backend from the frontend.
 """
 
 from http import HTTPStatus
-from typing import Any, overload, Iterable
+from typing import Any, overload, Iterable, Optional
 from collections.abc import Callable
 from functools import total_ordering
 import json
 import httpx
-from .util.strictnamedtuple import StrictNamedTuple
+from .util.strictnamedtuple import StrictNamedTuple, parameterized_isinstance
 from .util.convpath import convert_object
 from copy import deepcopy
 from enum import Enum
+import urllib.parse
 
 from PySide6.QtCore import QDateTime
 
@@ -70,7 +71,7 @@ class Timespec(StrictNamedTuple):
         Note that QDateTime only has milisecond resolution, while Timespec has
         nanosecond resolution.
 
-        Return: a QDateTime representing this Timespec
+        Returns: a QDateTime representing this Timespec
         """
         return QDateTime.fromMSecsSinceEpoch(
             self.sec * 1000 + self.nsec // 1000000
@@ -217,6 +218,88 @@ class BadRequestError(APIError, code=400):
 ###########################
 
 
+# /snapshots/{SNAPSHOT_ID}
+class GetSnapshotResponse(StrictNamedTuple):
+    # echo back SNAPSHOT_ID
+    id: str
+
+    # URL that triggered the snapshot
+    url: str
+
+    # time the snapshot creation was requested
+    start_time: Timespec
+
+    # time the snapshot creation was finished
+    end_time: Timespec
+
+    # IDs of files in this snapshot
+    files: list[str]
+
+
+# /files/{FILE_ID}
+class FileRequestInformation(StrictNamedTuple):
+    # time the file request was made
+    sent_time: Timespec
+
+    # HTTP request method (e.g. get, post, etc.)
+    method: str
+
+    # HTTP request headers
+    headers: dict[str, list[str]]
+
+    # request parameters (the ones in the URL)
+    parameters: dict[str, list[str]]
+
+
+class FileResponseInformation(StrictNamedTuple):
+    # time the response was received
+    received_time: Timespec
+
+    # code the server responded with when serving this file
+    code: int
+
+    # response headers
+    headers: dict[str, list[str]]
+
+
+class GetFileResponse(StrictNamedTuple):
+    # echo back FILE_ID
+    id: str
+
+    # snapshot to which this file belongs
+    snapshot: str
+
+    # pretty URL to request this file
+    url: str
+
+    # protocol used to request the file
+    protocol: str
+
+    # port used to request the file
+    port: int
+
+    # (remote) host of the file
+    host: str
+
+    # relative path to file on (remote) host
+    path: str
+
+    # information about the request
+    request: FileRequestInformation
+
+    # information about the response
+    response: FileResponseInformation
+
+
+# /search/files
+class SearchFilesEntry(StrictNamedTuple):
+    # snapshot id
+    snapshot_id: str
+
+    # file id
+    file_id: str
+
+
 # /statistics
 class Interval(StrictNamedTuple):
     """Represents a span of time.
@@ -322,11 +405,228 @@ class WebberAPI:
                     content=json_str.encode(),
                 )
 
-    def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
+    def _check_status_code(self, resp: httpx.Response, expected_status: int):
         if resp.status_code != expected_status:
             raise APIError(resp.status_code, resp.text)
+
+    def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
+        self._check_status_code(resp, expected_status)
         try:
             return resp.json()
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    def _remove_none_values[K, V](self, map: dict[K, V | None]) -> dict[K, V]:
+        return {k: v for k, v in map.items() if v is not None}
+
+    async def create_snapshot(
+        self,
+        url: str,
+        method: str,
+        *,
+        headers: dict[str, list[str]] = {},
+    ) -> str:
+        """Make a request to the `/snapshots/create` endpoint.
+
+        Arguments:
+        url -- the URL to archive
+        method -- HTTP request method
+        headers -- HTTP request headers
+
+        Returns: the ID of the new snapshot
+        """
+        resp = await self._request(
+            "POST",
+            "/snapshots/create",
+            ContentType.JSON,
+            {
+                "url": url,
+                "request_options": {
+                    "method": method,
+                    "headers": headers,
+                },
+            },
+        )
+        body = self._body_json(resp, 201)
+        try:
+            id = body["id"]
+            if not isinstance(id, str):
+                raise TypeError('"id" must be a string')
+            return id
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    async def delete_snapshot(self, id: str):
+        """Delete the snapshot named by ID.
+
+        Arguments:
+        id -- the snapshot to delete
+        """
+        safe_id = urllib.parse.quote(id, safe="")
+        resp = await self._request(
+            "DELETE", "/snapshots/" + safe_id, ContentType.EMPTY
+        )
+        self._check_status_code(resp, 202)
+
+    async def get_snapshot_info(self, id: str) -> GetSnapshotResponse:
+        """Get information about the snapshot named by ID.
+
+        Arguments:
+        id -- the snapshot ID
+
+        Returns: information about the snapshot
+        """
+        safe_id = urllib.parse.quote(id, safe="")
+        resp = await self._request(
+            "GET", "/snapshots/" + safe_id, ContentType.EMPTY
+        )
+        body = self._body_json(resp, 200)
+        try:
+            return convert_object(
+                [
+                    ("start_time**", Timespec),
+                    ("end_time**", Timespec),
+                    ("**", GetSnapshotResponse),
+                ],
+                body,
+            )
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    async def get_file_info(self, id: str) -> GetFileResponse:
+        """Get information about the file named by ID.
+
+        Arguments:
+        id -- the file ID
+
+        Returns: information about the file
+        """
+        safe_id = urllib.parse.quote(id, safe="")
+        resp = await self._request(
+            "GET",
+            "/files/" + safe_id,
+            ContentType.EMPTY,
+        )
+        body = self._body_json(resp, 200)
+        try:
+            return convert_object(
+                [
+                    ("request**", FileRequestInformation),
+                    ("response**", FileResponseInformation),
+                    ("**", GetFileResponse),
+                ],
+                body,
+            )
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    async def get_file_data(self, id: str) -> httpx.Response:
+        """Get the original response that the remote server returned for the
+        file named by ID.
+
+        Arguments:
+        id -- the file ID
+
+        Returns: the file's original scrape-time response
+        """
+        safe_id = urllib.parse.quote(id, safe="")
+        return await self._request(
+            "GET", f"/files/{safe_id}/data", ContentType.EMPTY
+        )
+
+    async def search_snapshots(
+        self,
+        *,
+        start_time: Optional[Timespec] = None,
+        end_time: Optional[Timespec] = None,
+        url: Optional[str] = None,
+    ) -> list[str]:
+        """Make a general query for a list of snapshots.
+
+        Arguments:
+        start_time -- don't return snapshots created before this
+        end_time -- don't return snapshots created after this
+        url -- regexp to match against the original snapshot URL
+
+        Returns: a (possibly empty) list of matching snapshot IDs
+        """
+        resp = await self._request(
+            "QUERY",
+            "/search/snapshots",
+            ContentType.JSON,
+            self._remove_none_values(
+                {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "url": url,
+                }
+            ),
+        )
+        body = self._body_json(resp, 200)
+        try:
+            if not parameterized_isinstance(body, list[str]):
+                raise Exception("response must be a list of strings")
+            return body
+        except Exception as e:
+            raise BadResponseError(resp.text) from e
+
+    async def search_files(
+        self,
+        *,
+        snapshot_id: Optional[str] = None,
+        start_time: Optional[Timespec] = None,
+        end_time: Optional[Timespec] = None,
+        url: Optional[str] = None,
+        host: Optional[str] = None,
+        protocol: Optional[str] = None,
+        port: Optional[int] = None,
+        path: Optional[str] = None,
+        status_codes: Optional[list[int]] = None,
+    ) -> list[SearchFilesEntry]:
+        """Make a general query for a list of files (and their snapshots).
+
+        Arguments:
+        snapshot_id -- snapshot the file belongs to
+        start_time -- don't return files requested before this
+        end_time -- don't return files requested after this
+        url -- regexp to match against file (original) URLs
+        host -- regex to match against the file's original host
+        protocol -- regex to match against the file's protocol
+        port -- the file's port
+        path -- regexp to match against the file's path
+        status_codes -- the list of acceptable status codes
+
+        Returns: the (possibly empty) list of matching file IDs and their
+                 snapshot IDs
+        """
+        resp = await self._request(
+            "QUERY",
+            "/search/files",
+            ContentType.JSON,
+            self._remove_none_values(
+                {
+                    "snapshot_id": snapshot_id,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "url": url,
+                    "host": host,
+                    "protocol": protocol,
+                    "port": port,
+                    "path": path,
+                    "status_codes": status_codes,
+                },
+            ),
+        )
+        body = self._body_json(resp, 200)
+        try:
+            if not isinstance(body, list):
+                raise Exception("result must be a list")
+            return convert_object(
+                [
+                    ("[]**", SearchFilesEntry),
+                ],
+                body,
+            )
         except Exception as e:
             raise BadResponseError(resp.text) from e
 
