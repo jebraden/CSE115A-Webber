@@ -243,9 +243,11 @@ class URLRelativizer(URLRewriter):
 
     def _build_prefix(self, parsed: urllib.parse.SplitResult) -> str:
         """Build a URL encoded path component from a URLs scheme and netloc."""
-        netloc = self._normalize_netloc_port(parsed)
-        scheme = parsed.scheme.lower()
-        return urllib.parse.quote(scheme + "://" + netloc, safe="")
+        netloc = urllib.parse.quote(
+            self._normalize_netloc_port(parsed), safe=""
+        )
+        scheme = urllib.parse.quote(parsed.scheme.lower(), safe="")
+        return scheme + "/" + netloc
 
     def _relativize_html_hostful_url(
         self,
@@ -253,8 +255,8 @@ class URLRelativizer(URLRewriter):
         parsed: urllib.parse.SplitResult,
     ) -> str:
         """Relativize an HTML URL that has a host."""
-        # The extra +1 is for going into the directory containing hosts
-        depth = self._document_depth + 1
+        # The extra +2 is for going into the directory containing hosts
+        depth = self._document_depth + 2
         prefix = ("../" * depth) + self._build_prefix(parsed)
 
         path_parts = _split_path_preserving_seperators(parsed.path)
