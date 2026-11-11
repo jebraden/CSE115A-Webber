@@ -60,7 +60,7 @@ class Timespec(StrictNamedTuple):
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, Timespec):
-            return False
+            return NotImplemented
         elif self.sec == other.sec:
             return self.nsec < other.nsec
         return self.sec < other.sec
@@ -511,6 +511,8 @@ class WebberAPI:
         try:
             return convert_object(
                 [
+                    ("request.sent_time**", Timespec),
+                    ("response.received_time**", Timespec),
                     ("request**", FileRequestInformation),
                     ("response**", FileResponseInformation),
                     ("**", GetFileResponse),

@@ -187,7 +187,7 @@ def _check_dict(
 
 
 define_parameterized_checker(list, _check_list)
-define_parameterized_checker(list, _check_dict)
+define_parameterized_checker(dict, _check_dict)
 
 
 class StrictNamedTuple[*T](tuple[*T], metaclass=_StrictNamedTupleMeta):
