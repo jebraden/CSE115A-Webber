@@ -40,10 +40,8 @@ class FakeElement:
     def __init__(self, url):
         self.url = url
 
-    async def get_property(self, attribute):
-        prop = MagicMock()
-        prop.json_value = AsyncMock(return_value=self.url)
-        return prop
+    async def evaluate(self, f, attribute):
+        return self.url
 
 
 class FakeLocator:
@@ -66,7 +64,7 @@ class FakePage:
     def on(self, event, callback):
         self.handlers[event] = callback
 
-    async def goto(self, url):
+    async def goto(self, url, wait_until:str = None):
         self.current_url = url
         request = FakeRequest(url)
         self.handlers["request"](request)

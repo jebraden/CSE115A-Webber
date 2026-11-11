@@ -618,6 +618,7 @@ def mock_element(url):
     prop = MagicMock()
     prop.json_value = AsyncMock(return_value=url)
     element.get_property = AsyncMock(return_value=prop)
+    element.evaluate = AsyncMock(return_value=url)
 
     return element
 
@@ -685,7 +686,7 @@ class TestHyperlinkProcessing:
 
         instances = []
         class MockScraper:
-            def __init__(self, db_conn=None):
+            def __init__(self, db_conn=None, debug=False):
                 self.db = db_conn
                 self.archive_page = AsyncMock(return_value="snap-1")
                 instances.append(self)
@@ -698,7 +699,7 @@ class TestHyperlinkProcessing:
 
         for instance, url in zip(instances, urls):
             instance.archive_page.assert_awaited_once_with(
-                    url, None, "GET", "snap-1"
+                    url, None, "GET", "snap-1", set() #empty set bcs no responses
             )
 
 
