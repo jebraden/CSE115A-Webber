@@ -22,6 +22,9 @@ from src.urlreplace import relativize_html, relativize_stylesheet
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
 logger = logging.getLogger(__name__)
 
+
+RESPONSE_TIMEOUT = 20
+
 class PageScraper():
     saved_urls: set[str] 
     time: str
@@ -97,8 +100,28 @@ class PageScraper():
         )
 
     def on_response(self, response):
-        task = asyncio.create_task(self.handle_response(response))
+        task = asyncio.create_task(
+            asyncio.wait_for(
+                self.handle_response(response), 
+                timeout=RESPONSE_TIMEOUT
+            ),
+            name=response.url
+        )
+
+        task.add_done_callback(
+            lambda t: self.on_resp_complete
+        )
         self.tasks.append(task)
+
+    def on_resp_complete(self, task):
+        if not self.debug:
+            return
+        if task.cancelled():
+            print(f"Response task cancelled - {task.get_name()}")
+        elif isinstance(task.exception(), asyncio.TimeoutError):
+            print(f"Response task timed out - {task.get_name()}")
+        else:
+            print("response task complete")
 
     async def handle_response(self, response):
         """
@@ -110,7 +133,13 @@ class PageScraper():
         """
 
         request = response.request
+        url = response.url
+        parsed = urlparse(url)
+
         task = self.req_metadata.pop(id(request), None)
+        print(f"Starting task for {url}")
+
+        if url in self.saved_urls: return
 
         if task is None:
             if self.debug:
@@ -122,17 +151,28 @@ class PageScraper():
             if self.debug:
                 print(f"Failed to get req metadata {e}")
             return
-        url = response.url
-        parsed = urlparse(url)
 
-        if url in self.saved_urls: return
 
         local_path = None
         headers = await response.all_headers()
         content_type = headers.get("content-type", "")
         res_type = self.resource_type(content_type)
+
+        path = self.data_path(url, resource_type=res_type)
+        if path is None:
+            if self.debug:
+                print(f"Failed to generate a path for url: {url} - Most likely"
+                    " due to bad extension or non matching domain for js"
+                    " files")
+            return
+
+
         try:
+            # TODO:
+            print(f"Starting response awaiting at {time.time()}")
             body = await response.body()
+            print(f"Finished response awaiting at {time.time()}")
+
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
             if self.debug:
@@ -256,6 +296,8 @@ class PageScraper():
             last_height = 0
             new_height = -1
 
+            if self.debug:
+                print(f"Starting scrol for {url}")
             while last_height != new_height:
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
                 await page.wait_for_timeout(1000)
@@ -263,12 +305,17 @@ class PageScraper():
                 new_height = await page.evaluate("document.body.scrollHeight")
 
                 last_height = new_height
+            if self.debug:
+                print(f"Ended scroll for {url}")
+
            # We've scrolled as much to bottom of the page as possible
        
 
             # Added because we started skipping urls 
             # since browser closed early
+            print(f"Started drain for {url}")
             await self._drain_tasks()
+            print(f"Finished drain for {url}")
 
             # Rewrite files where needed
             self.rewrite_resource_paths()
@@ -280,6 +327,8 @@ class PageScraper():
 
             end_time = time.time()
             await browser.close()
+            if self.debug:
+                print(f"finished at {end_time} after {end_time - self.time} for {url}")
         
         if update_db:
             # conditional update because if snapshot exists, we probably have a parent process running that 
@@ -309,10 +358,14 @@ class PageScraper():
             if self.debug:
                 print(f"Drained: {completed}")
             undone = self.tasks[completed:]
+            if self.debug:
+                print("Awaiting task completion")
             results = await asyncio.gather(
                 *undone,
                 return_exceptions=True,
             )
+            if self.debug:
+                print("Finished waiting")
 
             completed += len(undone)
             
@@ -359,7 +412,7 @@ class PageScraper():
                 element = elements.nth(i)
 #url = await ( await element.get_property(attr)).json_value()
                 url = await element.evaluate("(el, attr) => el[attr]", attr)
-                if not url:
+                if not url or url in self.saved_urls:
                     continue
                 parsed = urlparse(url)
                 if parsed.scheme not in ("http", "https"):
