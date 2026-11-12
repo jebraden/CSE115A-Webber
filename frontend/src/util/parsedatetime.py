@@ -80,9 +80,12 @@ def _interpret_match_groupdict(
     ampm: str | None,
     **_kwargs: str | None,
 ) -> QDateTime:
-    if month and day and year:
+    if month and day:
         mnum = _interpret_month(month)
-        ynum = _parse_thing("year", year, 1, 9999)
+        if year:
+            ynum = _parse_thing("year", year, 1, 9999)
+        else:
+            ynum = QDate.currentDate().year()
         dnum = _parse_thing("day", day, 1, _days_for_month(mnum, ynum))
         date = QDate(ynum, mnum, dnum)
     else:
@@ -97,10 +100,10 @@ def _interpret_match_groupdict(
         mnum = _parse_thing("minute", minute, 0, 59)
         snum = 0
         if second:
-            snum = _parse_thing("minute", minute, 0, 59)
+            snum = _parse_thing("second", second, 0, 59)
         time = QTime(hnum, mnum, snum)
     else:
-        time = QTime.currentTime()
+        time = QTime(0, 0, 0)
     return QDateTime(date, time)
 
 
@@ -140,7 +143,7 @@ def parse_datetime(text: str) -> QDateTime:
 
     Returns: the parsed QDateTime
     """
-    text = text.strip()
+    text = text.strip().lower()
     if not text:
         raise ValueError('Empty datetime string: ""')
     if text == "now":
@@ -148,12 +151,10 @@ def parse_datetime(text: str) -> QDateTime:
     elif text == "today":
         return QDateTime(QDate.currentDate(), QTime(0, 0, 0))
     elif text == "yesterday":
-        date = QDate.currentDate()
-        date.addDays(-1)
-        return QDateTime(date, QTime(0, 0, 0))
+        return QDateTime(QDate.currentDate().addDays(-1), QTime(0, 0, 0))
     match = re.match(_DATETIME_RE, text)
     if match:
-        return _interpret_match_groupdict(*match.groupdict())
+        return _interpret_match_groupdict(**match.groupdict())
     raise ValueError(f"Cannot parse datetime: {text!r}")
 
 
