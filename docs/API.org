@@ -68,6 +68,29 @@
                   "Set-Cookie": ["...", "..."]
               }
           }
+          // (object, optional) Options for hyperlink scraping
+          // NOTE if not present, hyperlinks will not be scraped
+          "crawl": {
+              // (boolean) recursively enter hyperlinks
+              "enable": true,
+              // (boolean, optional) only scrape hyperlinks with matching top level domains
+              // ie. if url is www.example.com only urls containing "example" in
+              // the host are allowed.
+              // NOTE that outside domains may be allowed through whitelist_domains option
+              "top_level_only": true
+              // (integer, optional) maximum depth
+              // default: 1
+              // NOTE -1 is a special value that denotes inf
+              "depth": 1,
+              // (array of strings, optional) whitelisted domains to bypass top_level_only 
+              // default: empty set
+              // NOTE does nothing if top_level_only is false
+              "whitelist_domains": ["example", "cookiebot"],
+              // (array of strings, optional) blacklisted domains
+              // default: empty set
+              // NOTE does nothing if top_level_only is true
+              "blacklist_domains": ["cookiebot", "facebook"]
+          }
           // Example of something that might be added in a future sprint
           // TODO (object) Crawing options
           // "crawl": {
