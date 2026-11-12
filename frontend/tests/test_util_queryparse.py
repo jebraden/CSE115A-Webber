@@ -585,3 +585,153 @@ class TestKeywordKindBehavior:
         )
         result = parser.parse("num:1 num:2 num:3")
         assert result.keywords["num"] == [1, 2, 3]
+
+
+class TestDefaultValueSystem:
+    """Tests for the default value system in QueryParser."""
+
+    def test_default_value_none_by_default(self):
+        """Test that keywords default to None when not specified."""
+        parser = QueryParser([QueryKeyword(name="key")])
+        result = parser.parse("hello")
+        assert "key" in result.keywords
+        assert result.keywords["key"] is None
+
+    def test_custom_default_value(self):
+        """Test that custom default values are used when keyword not specified."""
+        parser = QueryParser([QueryKeyword(name="limit", default=10)])
+        result = parser.parse("hello")
+        assert result.keywords["limit"] == 10
+
+    def test_default_value_string(self):
+        """Test default value with a string."""
+        parser = QueryParser([QueryKeyword(name="mode", default="normal")])
+        result = parser.parse("hello")
+        assert result.keywords["mode"] == "normal"
+
+    def test_default_value_overridden_by_query(self):
+        """Test that query values override defaults."""
+        parser = QueryParser(
+            [QueryKeyword(name="limit", default=10, parser=int)]
+        )
+        result = parser.parse("limit:5")
+        assert result.keywords["limit"] == 5
+
+    def test_multiple_defaults(self):
+        """Test multiple keywords with different defaults."""
+        parser = QueryParser(
+            [
+                QueryKeyword(name="limit", default=10),
+                QueryKeyword(name="offset", default=0),
+                QueryKeyword(name="mode", default="normal"),
+            ]
+        )
+        result = parser.parse("hello")
+        assert result.keywords["limit"] == 10
+        assert result.keywords["offset"] == 0
+        assert result.keywords["mode"] == "normal"
+
+    def test_default_value_not_overridden_partially(self):
+        """Test that defaults for other keywords are preserved when one is set."""
+        parser = QueryParser(
+            [
+                QueryKeyword(name="limit", default=10, parser=int),
+                QueryKeyword(name="offset", default=0),
+            ]
+        )
+        result = parser.parse("limit:5")
+        assert result.keywords["limit"] == 5
+        assert result.keywords["offset"] == 0
+
+    def test_default_value_empty_query(self):
+        """Test that defaults are present even for empty queries."""
+        parser = QueryParser([QueryKeyword(name="key", default="value")])
+        result = parser.parse("")
+        assert result.keywords["key"] == "value"
+
+    def test_default_value_with_words(self):
+        """Test that defaults are present when query has words."""
+        parser = QueryParser([QueryKeyword(name="key", default="value")])
+        result = parser.parse("hello world")
+        assert result.words == ["hello", "world"]
+        assert result.keywords["key"] == "value"
+
+    def test_default_value_list_kind(self):
+        """Test that LIST kind starts with default value when provided."""
+        parser = QueryParser(
+            [
+                QueryKeyword(
+                    name="tags", default=["default"], kind=KeywordKind.LIST
+                )
+            ]
+        )
+        result = parser.parse("tags:new")
+        # LIST kind replaces the default with a list when used
+        assert result.keywords["tags"] == ["new"]
+
+    def test_default_value_not_in_list(self):
+        """Test that default value is not prepended to LIST kind results."""
+        parser = QueryParser(
+            [
+                QueryKeyword(
+                    name="tags", default=["default"], kind=KeywordKind.LIST
+                )
+            ]
+        )
+        result = parser.parse("")
+        # When not used, the default should be preserved
+        assert result.keywords["tags"] == ["default"]
+
+    def test_default_value_none_explicit(self):
+        """Test that explicit None default works."""
+        parser = QueryParser([QueryKeyword(name="key", default=None)])
+        result = parser.parse("hello")
+        assert result.keywords["key"] is None
+
+    def test_default_value_falsy_values(self):
+        """Test that falsy defaults (0, empty string, False) are preserved."""
+        parser = QueryParser(
+            [
+                QueryKeyword(name="count", default=0),
+                QueryKeyword(name="text", default=""),
+                QueryKeyword(name="flag", default=False),
+            ]
+        )
+        result = parser.parse("hello")
+        assert result.keywords["count"] == 0
+        assert result.keywords["text"] == ""
+        assert result.keywords["flag"] is False
+
+    def test_default_value_with_parser(self):
+        """Test that default values are not passed through the parser."""
+        parser = QueryParser(
+            [QueryKeyword(name="num", default=42, parser=int)]
+        )
+        result = parser.parse("hello")
+        # Default should be the raw value, not parsed
+        assert result.keywords["num"] == 42
+
+    def test_default_value_complex_objects(self):
+        """Test that complex objects can be defaults."""
+        default_list = [1, 2, 3]
+        parser = QueryParser(
+            [QueryKeyword(name="items", default=default_list)]
+        )
+        result = parser.parse("hello")
+        assert result.keywords["items"] == [1, 2, 3]
+
+    def test_get_default_keywords_method(self):
+        """Test the _get_default_keywords helper method."""
+        parser = QueryParser(
+            [
+                QueryKeyword(name="a", default=1),
+                QueryKeyword(name="b", default="text"),
+                QueryKeyword(name="c"),  # defaults to None
+            ]
+        )
+        defaults = parser._get_default_keywords()
+        assert defaults == {
+            "a": (True, 1),
+            "b": (True, "text"),
+            "c": (True, None),
+        }
