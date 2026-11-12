@@ -29,6 +29,14 @@ def test_copy_if_not_none_exists_and_is_none():
     assert "key" not in dest
 
 
+def test_copy_if_not_none_missing_key_raises():
+    """Test that missing keys raise KeyError."""
+    src = {"other": "value"}
+    dest = {}
+    with pytest.raises(KeyError):
+        _copy_if_not_none("key", src, dest)
+
+
 # =============================================================================
 # Tests for make_snapshot_search_args - basic queries
 # =============================================================================
