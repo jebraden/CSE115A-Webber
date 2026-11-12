@@ -11,6 +11,7 @@ import tinycss2
 import sqlite3
 import logging
 
+from tld import get_tld
 from datetime import datetime
 from playwright.async_api import async_playwright
 from playwright.async_api import Error as PlaywrightError
@@ -37,8 +38,11 @@ class PageScraper():
     working: bool
     debug: bool
     saved_resources: dict
+    hyperlink_rules: HyperlinkRules
+    snapshot_url: str
+    depth: int
 
-    def __init__(self, db_conn=None, debug=False):
+    def __init__(self, *, db_conn=None, debug=False, hyperlink_rules=None):
         self.saved_urls = set()
         self.saved_resources = dict()
         self.style_sheets = set()
@@ -46,8 +50,11 @@ class PageScraper():
         self.working = False
         self.debug = debug
         self.db = db_conn
+        self.hyperlink_rules = hyperlink_rules or HyperlinkRules()
+        self.depth = 0
 
-    async def archive_page(self, url: str, headers: dict=None, method: str="GET", snap_id: str=None, saved_urls: list=None):
+    async def archive_page(self, url: str, headers: dict=None, method: str="GET", *,
+            snap_id: str=None, saved_urls: list=None):
         """
             The function to call to start an archival job
             If snap_id is not null, it is assumed that it is already in the DB.
@@ -168,10 +175,11 @@ class PageScraper():
 
 
         try:
-            # TODO:
-            print(f"Starting response awaiting at {time.time()}")
+            if self.debug:
+                print(f"Starting response awaiting at {time.time()}")
             body = await response.body()
-            print(f"Finished response awaiting at {time.time()}")
+            if self.debug:
+                print(f"Finished response awaiting at {time.time()}")
 
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
@@ -248,6 +256,7 @@ class PageScraper():
         self.working = True
         self.tasks = []
         self.saved_urls = set()
+        self.depth = 0
         if saved_urls is not None:
             self.saved_urls.update(saved_urls)
 
@@ -257,6 +266,7 @@ class PageScraper():
         update_db = snap_id is None
         if update_db:
             self.snap_id = str(uuid.uuid4())
+            self.snapshot_url = url
             self.db.execute(
                 """
                 INSERT INTO snapshots (id, url, start_time, end_time)
@@ -323,7 +333,7 @@ class PageScraper():
             # Rewrite files where needed
             self.rewrite_resource_paths()
 
-            if update_db:
+            if self.depth < self.hyperlink_rules.get_max_depth():
                 hyperlinks = await self.gather_hyperlinks(page)
 
                 processed = await self.process_hyperlinks(hyperlinks, headers, method)
@@ -413,7 +423,12 @@ class PageScraper():
         """
         processed = set()
         for url in urls:
-            scraper = PageScraper(db_conn=self.db, debug=self.debug)
+            scraper = PageScraper(db_conn=self.db, debug=self.debug, hyperlink_rules=self.hyperlink_rules)
+            # I'm not a huge fan of doing the below.
+            # However, I felt like my constructors and parameters were getting too long
+            scraper.snapshot_url = self.snapshot_url
+            scraper.depth = self.depth + 1
+
             res = await scraper.archive_page(url, headers, method, self.snap_id, self.saved_urls)
             if res is None: 
                 logger.warning("Skipping url: {url}. Failed to download page content") 
@@ -441,11 +456,26 @@ class PageScraper():
                 parsed = urlparse(url)
                 if parsed.scheme not in ("http", "https"):
                     continue
+
+                if not self._apply_hyperlink_rules(url):
+                    continue
+
                 if self.debug:
                     print(f"Found url to look at: {url}")
                 urls.add(url)
 
         return urls
+
+    def _apply_hyperlink_rules(self, url: str) -> bool:
+        rules = self.hyperlink_rules
+        top_domain = get_tld(self.snapshot_url, as_object=True).domain
+        curr_domain = get_tld(url, as_object=True).domain
+        if rules.is_top_domain_only():
+            print(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
+            return top_domain == curr_domain or curr_domain in rules.get_whitelist_domains()
+        else:
+            return curr_domain not in rules.get_blacklist_domains()
+
 
         
 
@@ -593,6 +623,45 @@ class PageScraper():
         self.origin = parsed.netloc
         self.origin_host = parsed.hostname
         self.base_dir = self.get_base_dir(url)
+
+
+
+class HyperlinkRules:
+    """
+    Please note in all contexts, domains refer to the TLD
+    That is: bbc.co.uk, we mean bbc as the domain
+    """
+    max_depth: int
+    # Used to work around top_domain_only
+    # Only does something if top_domain_only is True
+    whitelist_domains: set
+
+    # Does not do anything if top_domain_only is True
+    blacklist_domains: set
+
+    top_domain_only: bool
+
+    def __init__(self, *, max_depth: int=1, whitelist_domains=set(), blacklist_domains=set(), top_domain_only=True):
+        self.max_depth = max_depth
+        self.whitelist_domains = whitelist_domains
+        self.blacklist_domains = blacklist_domains
+        self.top_domain_only = top_domain_only
+
+    def get_max_depth(self) -> int: 
+        return self.max_depth
+
+    def get_whitelist_domains(self) -> set:
+        return self.whitelist_domains
+
+    def get_blacklist_domains(self) -> set:
+        return self.blacklist_domains
+
+    def is_top_domain_only(self) -> bool:
+        return self.top_domain_only
+
+
+
+
 
     
 

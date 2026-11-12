@@ -1,5 +1,6 @@
 from src.scraping.scraper import (
     PageScraper,
+    HyperlinkRules,
 )
 
 import src
@@ -636,6 +637,7 @@ class TestHyperlinkCollection:
     @pytest.mark.asyncio
     async def test_gather_hyperlinks(self):
         scraper = PageScraper()
+        scraper.snapshot_url = "https://www.example.com/something"
         page = MagicMock()
 
         elements = {
@@ -659,7 +661,6 @@ class TestHyperlinkCollection:
 
         assert urls == {
             "https://example.com/about",
-            "https://google.com",
             "https://example.com/contact",
             "https://example.com/search"
         }
@@ -679,15 +680,16 @@ class TestHyperlinkProcessing:
     async def test_process_hyperlinks(self, monkeypatch):
         scraper = PageScraper(db_conn=MagicMock())
         scraper.snap_id = "snap-1"
+        scraper.snapshot_url = "https://example.com/something"
 
         urls = [
             "https://example.com/about",
-            "https://exmaple.com/contact"
+            "https://example.com/contact"
         ]
 
         instances = []
         class MockScraper:
-            def __init__(self, db_conn=None, debug=False):
+            def __init__(self, db_conn=None, debug=False, hyperlink_rules=HyperlinkRules()):
                 self.db = db_conn
                 self.archive_page = AsyncMock(return_value="snap-1")
                 instances.append(self)
