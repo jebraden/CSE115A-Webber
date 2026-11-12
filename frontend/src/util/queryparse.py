@@ -16,20 +16,27 @@ class KeywordKind(Enum):
     LIST = auto()
 
 
-class QueryKeyword(NamedTuple):
+class QueryKeyword:
     """Class representing a parseable keyword."""
 
-    # The name of the keyword
-    name: str
-
-    # The default value of the keyword
-    default: Any = None
-
-    # The action to make when storing the keyword
-    kind: KeywordKind = KeywordKind.VALUE
-
-    # A function used to parse the keyword's values before storing them
-    parser: Callable[[str], Any] = lambda x: x
+    def __init__(
+        self,
+        name: str,
+        default: Any = None,
+        kind: KeywordKind = KeywordKind.VALUE,
+        parser: Callable[[str], Any] = lambda x: x,
+    ):
+        self.name = name
+        self.kind = kind
+        if self.kind == KeywordKind.LIST:
+            if default is None:
+                default = []
+            elif not isinstance(default, list):
+                raise TypeError(
+                    "Default value of KeywordKind.LIST must be a list"
+                )
+        self.default = default
+        self.parser = parser
 
 
 class QuerySyntaxError(Exception):
@@ -168,10 +175,16 @@ class QueryParser:
         for kw in keywords:
             self.keywords[kw.name] = kw
 
+    def _get_default_keywords(self) -> dict[str, tuple[bool, Any]]:
+        out: dict[str, tuple[bool, Any]] = {}
+        for kw in self.keywords.values():
+            out[kw.name] = (True, kw.default)
+        return out
+
     def _handle_keyword(
         self,
         words: list[str],
-        keywords: dict[str, Any],
+        keywords: dict[str, tuple[bool, Any]],
         text: str,
         start: int,
         length: int,
@@ -188,12 +201,11 @@ class QueryParser:
                 ) from e
             match kw.kind:
                 case KeywordKind.VALUE:
-                    keywords[key] = converted
+                    keywords[key] = (False, converted)
+                case KeywordKind.LIST if keywords[key][0]:
+                    keywords[key] = (False, [converted])
                 case KeywordKind.LIST:
-                    if key in keywords:
-                        keywords[key].append(converted)
-                    else:
-                        keywords[key] = [converted]
+                    keywords[key][1].append(converted)
         else:
             raise QuerySyntaxError(text, start, length, "Unknown keyword")
 
@@ -214,7 +226,7 @@ class QueryParser:
         if end is None:
             end = len(text)
         words: list[str] = []
-        keywords: dict[str, Any] = {}
+        keywords: dict[str, tuple[bool, Any]] = self._get_default_keywords()
         i = start
         while i < end:
             match _parse_query_term(text, i, end):
@@ -228,4 +240,4 @@ class QueryParser:
                         words, keywords, text, i, length, key, val
                     )
                     i += length
-        return ParsedQuery(words, keywords)
+        return ParsedQuery(words, {k: v for k, (_, v) in keywords.items()})
