@@ -291,22 +291,25 @@ class PageScraper():
                     await browser.close()
                     return
                 raise
-            await page.wait_for_timeout(5000)
+#await page.wait_for_timeout(250)
 
             last_height = 0
             new_height = -1
 
             if self.debug:
                 print(f"Starting scrol for {url}")
-            while last_height != new_height:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-                await page.wait_for_timeout(1000)
-
-                new_height = await page.evaluate("document.body.scrollHeight")
-
-                last_height = new_height
+            scroll_start = time.time()
+# while last_height != new_height:
+#                await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+#                await page.wait_for_timeout(1000)
+#
+#                new_height = await page.evaluate("document.body.scrollHeight")
+#
+#                last_height = new_height
+            await self.scroll_page(page)
+            scroll_end = time.time()
             if self.debug:
-                print(f"Ended scroll for {url}")
+                print(f"Ended scroll for {url} after {scroll_end - scroll_start}")
 
            # We've scrolled as much to bottom of the page as possible
        
@@ -373,6 +376,27 @@ class PageScraper():
                 if isinstance(res, BaseException):
                     if self.debug:
                         print(f"Task Failed: {res!r}")
+
+    async def scroll_page(self, page, max_scrolls=200):
+        last_height = 0
+        for _ in range(max_scrolls):
+            try:
+                await page.evaluate(
+                    "window.scrollBy(0, window.innerHeight)"
+                )
+
+                new_height = await page.evaluate(
+                        "document.documentElement.scrollHeight"
+                )
+            except PlaywrightError as e:
+                if "Execution context was destroyed" in str(e):
+                    if self.debug:
+                        print("Navigation during scrolling-quitting")
+                    break
+                raise
+            if new_height == last_height:
+                break
+            last_height = new_height
 
     async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> list[str]:
         """
@@ -583,5 +607,7 @@ class PageScraper():
 #url = "https://oxylabs.io/blog/playwright-web-scraping"
 #s = PageScraper(db_conn=conn, debug=True)
 #asyncio.run(s.archive_page(url))
+#print("Finished all jobs!")
+
 
        
