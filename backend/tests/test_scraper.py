@@ -231,6 +231,7 @@ class TestHandleResponse:
         self.scraper = PageScraper()
         self.scraper.snap_id = "test-snapshot"
         self.origin_host = "example.com"
+        self.scraper.origin_host = "example.com"
         self.scraper.base_dir = "/tmp/test-snapshot/example.com"
         self.scraper.saved_urls = set()
         self.scraper.req_metadata = {}
