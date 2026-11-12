@@ -429,9 +429,9 @@ class PageScraper():
             scraper.snapshot_url = self.snapshot_url
             scraper.depth = self.depth + 1
 
-            res = await scraper.archive_page(url, headers, method, self.snap_id, self.saved_urls)
+            res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
             if res is None: 
-                logger.warning("Skipping url: {url}. Failed to download page content") 
+                logger.warning(f"Skipping url: {url}. Failed to download page content") 
                 continue
             processed.add(url)
         return processed

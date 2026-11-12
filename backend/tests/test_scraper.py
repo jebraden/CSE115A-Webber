@@ -702,7 +702,7 @@ class TestHyperlinkProcessing:
 
         for instance, url in zip(instances, urls):
             instance.archive_page.assert_awaited_once_with(
-                    url, None, "GET", "snap-1", set() #empty set bcs no responses
+                    url, None, "GET", snap_id="snap-1", saved_urls=set() #empty set bcs no responses
             )
 
 
