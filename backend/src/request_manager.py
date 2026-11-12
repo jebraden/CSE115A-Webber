@@ -7,7 +7,7 @@ import shutil
 import re
 import asyncio
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -59,14 +59,40 @@ class RequestManager():
 
         if url is None:
             return self.bad_request("No url found")
+        rules = None
+        try:
+            rules = self._get_hyperlink_rules(options_dict)
+        except Exception as e:
+            logger.warning(f"request_manager: create_spapshot: Hit an unexpected error while building hyperlink rules: {str(e)}")
+            return self.internal_server_error("Encountered error parsing crawl options")
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper(db_conn = self.db)
+        scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
         snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
+
+    def _get_hyperlink_rules(self, options: dict) -> HyperlinkRules:
+        crawl_options = options.get("crawl", None)
+        if crawl_options is None or not crawl_options.get("enabled", False):
+            return HyperlinkRules(max_depth=0)
+        max_depth = crawl_options.get("depth", 1)
+        if not isinstance(max_depth, int):
+            raise Exception("depth option must be an integer!")
+        top_level_only = crawl_options.get("top_level_only", True)
+        whitelisted = set(crawl_options.get("whitelist_domains", list()))
+        blacklisted = set(crawl_options.get("blacklist_domains", list()))
+
+        return HyperlinkRules(
+            max_depth=max_depth,
+            whitelist_domains=whitelisted,
+            blacklist_domains=blacklist,
+            top_level_only=top_level_only 
+        )
+
+
 
 
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
