@@ -41,27 +41,17 @@ class RequestManager():
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        raw_options = payload.get("request_options", None)
+        options_dict = payload.get("request_options", None)
         # Assume that options parameters are... optional
-        if raw_options:
-            try:
-                options_dict = json.loads(raw_options)
-            except json.JSONDecodeError:
-                return self.bad_request("'request-options' contained invalid json. Failed to parse")
         if options_dict:
             method = options_dict.get("method", None)
-            try:
-                raw_headers = options_dict.get("headers", None)
-                if raw_headers:
-                    headers = json.loads(options_dict["headers"])
-            except json.JSONDecodeError:
-                return self.bad_request("'request_options.headers' contained invalid json. Failed to parse")
+            headers = options_dict.get("headers", None)
 
         if url is None:
             return self.bad_request("No url found")
         rules = None
         try:
-            rules = self._get_hyperlink_rules(options_dict)
+            rules = self._get_hyperlink_rules(payload)
         except Exception as e:
             logger.warning(f"request_manager: create_spapshot: Hit an unexpected error while building hyperlink rules: {str(e)}")
             return self.internal_server_error("Encountered error parsing crawl options")
@@ -76,8 +66,10 @@ class RequestManager():
 
     def _get_hyperlink_rules(self, options: dict) -> HyperlinkRules:
         crawl_options = options.get("crawl", None)
-        if crawl_options is None or not crawl_options.get("enabled", False):
+        print(f"{crawl_options}")
+        if crawl_options is None or not crawl_options.get("enable", False):
             return HyperlinkRules(max_depth=0)
+        print(crawl_options.get("depth", f"{-1}"))
         max_depth = crawl_options.get("depth", 1)
         if not isinstance(max_depth, int):
             raise Exception("depth option must be an integer!")
@@ -88,8 +80,8 @@ class RequestManager():
         return HyperlinkRules(
             max_depth=max_depth,
             whitelist_domains=whitelisted,
-            blacklist_domains=blacklist,
-            top_level_only=top_level_only 
+            blacklist_domains=blacklisted,
+            top_domain_only=top_level_only 
         )
 
 

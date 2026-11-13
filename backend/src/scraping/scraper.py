@@ -623,10 +623,10 @@ class HyperlinkRules:
     max_depth: int
     # Used to work around top_domain_only
     # Only does something if top_domain_only is True
-    whitelist_domains: set
+    whitelist_domains: set[str]
 
     # Does not do anything if top_domain_only is True
-    blacklist_domains: set
+    blacklist_domains: set[str]
 
     top_domain_only: bool
 
@@ -641,11 +641,11 @@ class HyperlinkRules:
         return self._max_depth
 
     @property
-    def whitelist_domains(self) -> set:
+    def whitelist_domains(self) -> set[str]:
         return self._whitelist_domains
 
     @property
-    def blacklist_domains(self) -> set:
+    def blacklist_domains(self) -> set[str]:
         return self._blacklist_domains
 
     @property
