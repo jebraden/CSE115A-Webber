@@ -25,6 +25,30 @@ logger = logging.getLogger(__name__)
 
 
 RESPONSE_TIMEOUT = 20
+EXTENSION_MAP = {
+    "text/html":                     "html",
+    "text/css":                      "css",
+    "application/javascript":        "js",
+    "text/javascript":               "js",
+    "image/png":                     "png",
+    "image/jpg":                     "jpg",
+    "image/gif":                     "gif",
+    "image/svg+xml":                 "svg",
+    "image/webp":                    "webp",
+    "image/avif":                    "avif",
+    "image/x-icon":                  "ico",
+    "image/vnd.microsoft.icon":      "ico",
+    "font/woff":                     "woff",
+    "font/woff2":                    "woff2",
+    "font/ttf":                      "ttf",
+    "font/otf":                      "otf",
+    "application/font-woff":         "woff",
+    "application/vnd.ms-fontobject": "eot",
+    "application/json":              "json",
+    "application/xml":               "xml",
+
+}
+
 
 class PageScraper():
     saved_urls: set[str] 
@@ -42,7 +66,14 @@ class PageScraper():
     snapshot_url: str
     depth: int
 
-    def __init__(self, *, db_conn=None, debug=False, hyperlink_rules=None):
+    def __init__(self, *, 
+            db_conn=None, 
+            debug=False, 
+            hyperlink_rules=None,
+            snapshot_url=None,
+            depth=0
+        ):
+
         self.saved_urls = set()
         self.saved_resources = dict()
         self.style_sheets = set()
@@ -51,7 +82,8 @@ class PageScraper():
         self.debug = debug
         self.db = db_conn
         self.hyperlink_rules = hyperlink_rules or HyperlinkRules()
-        self.depth = 0
+        self.snapshot_url = snapshot_url
+        self.depth = depth
 
     async def archive_page(self, url: str, headers: dict=None, method: str="GET", *,
             snap_id: str=None, saved_urls: list=None):
@@ -256,7 +288,6 @@ class PageScraper():
         self.working = True
         self.tasks = []
         self.saved_urls = set()
-        self.depth = 0
         if saved_urls is not None:
             self.saved_urls.update(saved_urls)
 
@@ -333,7 +364,7 @@ class PageScraper():
             # Rewrite files where needed
             self.rewrite_resource_paths()
 
-            if self.depth < self.hyperlink_rules.get_max_depth():
+            if self.depth < self.hyperlink_rules.max_depth:
                 hyperlinks = await self.gather_hyperlinks(page)
 
                 processed = await self.process_hyperlinks(hyperlinks, headers, method)
@@ -423,11 +454,16 @@ class PageScraper():
         """
         processed = set()
         for url in urls:
-            scraper = PageScraper(db_conn=self.db, debug=self.debug, hyperlink_rules=self.hyperlink_rules)
+            scraper = PageScraper(
+                    db_conn=self.db, 
+                    debug=self.debug, 
+                    hyperlink_rules=self.hyperlink_rules,
+                    snapshot_url=self.snapshot_url,
+                    depth=self.depth+1
+            )
+
             # I'm not a huge fan of doing the below.
             # However, I felt like my constructors and parameters were getting too long
-            scraper.snapshot_url = self.snapshot_url
-            scraper.depth = self.depth + 1
 
             res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
             if res is None: 
@@ -449,7 +485,6 @@ class PageScraper():
             elem_count = await elements.count()
             for i in range(elem_count):
                 element = elements.nth(i)
-#url = await ( await element.get_property(attr)).json_value()
                 url = await element.evaluate("(el, attr) => el[attr]", attr)
                 if not url or url in self.saved_urls:
                     continue
@@ -470,11 +505,11 @@ class PageScraper():
         rules = self.hyperlink_rules
         top_domain = get_tld(self.snapshot_url, as_object=True).domain
         curr_domain = get_tld(url, as_object=True).domain
-        if rules.is_top_domain_only():
+        if rules.top_domain_only:
             print(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
-            return top_domain == curr_domain or curr_domain in rules.get_whitelist_domains()
+            return top_domain == curr_domain or curr_domain in rules.whitelist_domains
         else:
-            return curr_domain not in rules.get_blacklist_domains()
+            return curr_domain not in rules.blacklist_domains
 
 
         
@@ -503,31 +538,11 @@ class PageScraper():
 
 
     def resource_type(self, content_type: str) -> str | None:
+        """
+        Converts a http content-type to its assosciated resource type extension
+        """
         content = content_type.split(";", 1)[0].strip().lower()
-        match content:
-            case "text/html": return "html"
-            case "text/css": return "css"
-            case "application/javascript": return "js"
-            case "text/javascript": return "js"
-            case "image/png": return "png"
-            case "image/jpeg": return "jpg"
-            case "image/gif": return "gif"
-            case "image/svg+xml": return "svg"
-            case "image/webp": return "webp"
-            case "image/avif": return "avif"
-            case "image/x-icon": return "ico"
-            case "image/vnd.microsoft.icon": return "ico"
-            case "font/woff": return "woff"
-            case "font/woff2": return "woff2"
-            case "font/ttf": return "ttf"
-            case "font/otf": return "otf"
-            case "application/font-woff": return "woff"
-            case "application/vnd.ms-fontobject": return "eot"
-            case "application/json": return "json"
-            case "application/xml": return "xml"
-            case _: return None
-        # Redundant
-        return None
+        return EXTENSION_MAP.get(content, None)
 
     def rewrite_resource_paths(self):
         for url, resource in self.saved_resources.items():
@@ -642,22 +657,26 @@ class HyperlinkRules:
     top_domain_only: bool
 
     def __init__(self, *, max_depth: int=1, whitelist_domains=set(), blacklist_domains=set(), top_domain_only=True):
-        self.max_depth = max_depth
-        self.whitelist_domains = whitelist_domains
-        self.blacklist_domains = blacklist_domains
-        self.top_domain_only = top_domain_only
+        self._max_depth = max_depth
+        self._whitelist_domains = whitelist_domains
+        self._blacklist_domains = blacklist_domains
+        self._top_domain_only = top_domain_only
+    
+    @property
+    def max_depth(self) -> int: 
+        return self._max_depth
 
-    def get_max_depth(self) -> int: 
-        return self.max_depth
+    @property
+    def whitelist_domains(self) -> set:
+        return self._whitelist_domains
 
-    def get_whitelist_domains(self) -> set:
-        return self.whitelist_domains
+    @property
+    def blacklist_domains(self) -> set:
+        return self._blacklist_domains
 
-    def get_blacklist_domains(self) -> set:
-        return self.blacklist_domains
-
-    def is_top_domain_only(self) -> bool:
-        return self.top_domain_only
+    @property
+    def top_domain_only(self) -> bool:
+        return self._top_domain_only
 
 
 

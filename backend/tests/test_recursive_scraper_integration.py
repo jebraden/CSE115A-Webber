@@ -184,3 +184,72 @@ class TestArchivePageIntegration:
         ).fetchone()[0]
 
         assert count == 1
+
+
+    @pytest.mark.asyncio
+    async def test_enforce_max_depth(
+        self, test_conn, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        root = "https://example.com/"
+        about = "https://example.com/about"
+        contact = "https://example.com/contact"
+        layer2 = "https://example.com/something-else"
+
+        pages = {
+            root: {
+                "body": b"""
+                    <html>
+                        <a href="/about">About</a>
+                        <a href="/contact">Contact</a>
+                    </html>
+                    """,
+                "links": {
+                    "a[href]": [about, contact],
+                },
+            },
+            about: {
+                "body": b"""
+                    <html>
+                        <body>About Us</body>
+                        <a href="/layer2">Layer2</a>>
+                    </html>""",
+                "links": {
+                    "a[href]": [layer2],
+                },
+            },
+            contact: {
+                "body": b"<html><body>Contact Us</body></html>",
+                "links": {},
+            },
+            layer2: {
+                "body": b"<html><body>Somethin Else</body></html>",
+                "links": {},
+            }
+        }
+
+        monkeypatch.setattr("src.scraping.scraper.async_playwright",
+                lambda: FakePlaywrightContext(pages),)
+        scraper = PageScraper(db_conn=test_conn)
+
+        snap_id = await scraper.archive_page(root)
+
+        assert snap_id is not None
+
+        rows = test_conn.execute(
+            """
+            SELECT snapshot_id, host, remote_path, on_disk_path
+            FROM files
+            WHERE snapshot_id = ?
+            """,
+            (snap_id,),
+        ).fetchall()
+        assert len(rows) == 3
+
+        count = test_conn.execute(
+            "SELECT COUNT(*) FROM snapshots",
+        ).fetchone()[0]
+
+        assert count == 1
+
+
