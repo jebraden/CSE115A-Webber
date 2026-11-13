@@ -81,6 +81,12 @@ def create_app(
         resp = manager.create_snapshot(request)
         return jsonify(resp[0]), resp[1]
 
+    @app.route("/snapshots/delete", methods=["POST"])
+    def delete_snapshots():
+        manager = RequestManager(db_conn=query_conn)
+        resp = manager.delete_snapshots(request)
+        return jsonify(resp[0]), resp[1]
+
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
         manager = RequestManager(db_conn=query_conn)
