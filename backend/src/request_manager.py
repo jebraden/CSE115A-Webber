@@ -115,7 +115,16 @@ class RequestManager():
 
         return ({}, 202)
 
-    def delete_snapshots(self, snapshot_ids: list[str]) -> (dict, int):
+    def delete_snapshots(self, request) -> (dict, int):
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
+        snapshot_ids = payload.get("ids", None)
+
+        if snapshot_ids is None:
+            return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
+
         db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:

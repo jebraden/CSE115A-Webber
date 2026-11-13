@@ -630,6 +630,13 @@ class TestDeleteSnapshot:
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
 
         manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "ids": ["snap-1", "snap-2", "snap-3"]
+        }
+
+
         insert_snapshot("snap-1")
         insert_snapshot("snap-2")
         insert_snapshot("snap-3")
@@ -648,9 +655,7 @@ class TestDeleteSnapshot:
         insert_file(file_id="file-2", snapshot_id="snap-2", on_disk_path=str(path2))
         insert_file(file_id="file-3", snapshot_id="snap-3", on_disk_path=str(path3))
 
-        ids = ["snap-1", "snap-2", "snap-3"]
-
-        res, status = manager.delete_snapshots(ids)
+        res, status = manager.delete_snapshots(request)
         assert status == 202
         assert not path1.exists()
         assert not path2.exists()
@@ -856,7 +861,6 @@ class TestFlaskRoutes:
         insert_snapshot(snapshot_id="snap-1", start_time=400)
     
         body = {"start_time": {"sec": 300, "nsec": 0}}
-        resp = self.client.post("/search/snapshots", json=body)
         resp = self.client.open(
             "/search/snapshots",
             method="QUERY",
@@ -866,6 +870,29 @@ class TestFlaskRoutes:
 
         assert resp.json is not None
         assert resp.get_json()[0] == "snap-1"
+
+    def test_delete_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1")
+
+        resp = self.client.delete("/snapshots/snap-1")
+        assert resp.status_code == 202
+
+        resp2 = self.client.delete("/snapshots/snap-2")
+        assert resp2.status_code == 404
+
+    def test_delete_snapshots(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1")
+        insert_snapshot(snapshot_id="snap-2")
+
+        body = {"ids": ["snap-1", "snap-2"]}
+
+        resp = self.client.post("snapshots/delete", json=body)
+        assert resp.status_code == 202
+
+        resp = self.client.delete("snapshots/snap-1")
+        assert resp.status_code == 404
 
 
 
