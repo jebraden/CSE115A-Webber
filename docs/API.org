@@ -121,6 +121,26 @@
         {}
       #+end_src
 
+** POST =/snapshots/delete
+    Deletes many snapshots at once
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (array of strings) collection of snapshot ids to delete
+          "ids": ["snap-1", "snap-2", ...]
+      }
+    #+end_src
+*** Success Response
+    Code: 202 \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {}
+    #+end_src
+*** Error Responses
+    Only the global error responses defined above apply
+
+
 ** GET =/snapshots/{SNAPSHOT_ID}=
    Get information about the snapshot =SNAPSHOT_ID=.
 *** Request

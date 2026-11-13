@@ -598,17 +598,20 @@ class TestQueryFiles:
         ]
 
 class TestDeleteSnapshot:
-    def delete_not_exist(self, test_conn):
+    def test_delete_not_exist(self, test_conn):
         manager = RequestManager(test_conn)
         resp, status = manager.delete_snapshot("snap-1")
         assert status == 404
 
-    def delete_exist_has_files(self, tmp_path, insert_snapshot, insert_file, test_conn):
+    def test_delete_exist_has_files(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
         manager = RequestManager(test_conn)
 
         insert_snapshot(snapshot_id="snap-1")
 
-        path = tmp_path / "test.html"
+        path = tmp_path / "snap-1" / "test.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"hello")
 
         insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path))
@@ -620,8 +623,49 @@ class TestDeleteSnapshot:
         _, status2 = manager.get_file("file-1")
         assert status2 == 404
 
-        _, status3 = maager.get_snapshot("snap-1")
+        _, status3 = manager.get_snapshot("snap-1")
         assert status3 == 404
+
+    def test_delete_batch_snapshots(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager(test_conn)
+        insert_snapshot("snap-1")
+        insert_snapshot("snap-2")
+        insert_snapshot("snap-3")
+
+        path1 = tmp_path / "snap-1" / "3.html"
+        path1.parent.mkdir(parents=True, exist_ok=True)
+        path1.write_bytes(b"b") 
+        path2 = tmp_path / "snap-2" / "2.html"
+        path2.parent.mkdir(parents=True, exist_ok=True)
+        path2.write_bytes(b"b")
+        path3 = tmp_path / "snap-3" / "1.html"
+        path3.parent.mkdir(parents=True, exist_ok=True)
+        path3.write_bytes(b"b")
+
+        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
+        insert_file(file_id="file-2", snapshot_id="snap-2", on_disk_path=str(path2))
+        insert_file(file_id="file-3", snapshot_id="snap-3", on_disk_path=str(path3))
+
+        ids = ["snap-1", "snap-2", "snap-3"]
+
+        res, status = manager.delete_snapshots(ids)
+        assert status == 202
+        assert not path1.exists()
+        assert not path2.exists()
+        assert not path3.exists()
+
+        _, fstatus1 = manager.get_file("file-1")
+        _, fstatus2 = manager.get_file("file-2")
+        _, fstatus3 = manager.get_file("file-3")
+
+        _, sstatus1 = manager.get_snapshot("snap-1")
+        _, sstatus1 = manager.get_snapshot("snap-2")
+        _, sstatus1 = manager.get_snapshot("snap-3")
+
+
+
 
 
 class TestProcessInterval:
