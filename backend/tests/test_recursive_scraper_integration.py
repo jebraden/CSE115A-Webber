@@ -93,6 +93,9 @@ class FakeBrowser:
     async def new_page(self):
         return FakePage(self.pages)
 
+    async def new_context(self, *, accept_downloads):
+        return self
+
     async def close(self):
         pass
 
