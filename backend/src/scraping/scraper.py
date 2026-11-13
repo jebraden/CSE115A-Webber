@@ -13,8 +13,7 @@ import logging
 
 from tld import get_tld
 from datetime import datetime
-from playwright.async_api import async_playwright
-from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright, Error as PlaywrightError
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
@@ -105,8 +104,7 @@ class PageScraper():
         
        
         try:
-            if self.debug:
-                print(f"Starting job for {url} with origin {snap_id}")
+            logger.info(f"Starting job for {url} with origin {snap_id}")
             snap_id = await self._download_page(url, headers, method, snap_id, saved_urls)
         finally:
             self.working = False
@@ -156,11 +154,11 @@ class PageScraper():
         if not self.debug:
             return
         if task.cancelled():
-            print(f"Response task cancelled - {task.get_name()}")
+            logger.info(f"Response task cancelled - {task.get_name()}")
         elif isinstance(task.exception(), asyncio.TimeoutError):
-            print(f"Response task timed out - {task.get_name()}")
+            logger.warning(f"Response task timed out - {task.get_name()}")
         else:
-            print("response task complete")
+            logger.info("response task complete")
 
     async def handle_response(self, response):
         """
@@ -176,19 +174,17 @@ class PageScraper():
         parsed = urlparse(url)
 
         task = self.req_metadata.pop(id(request), None)
-        print(f"Starting task for {url}")
+        logger.info(f"Starting task for {url}")
 
         if url in self.saved_urls: return
 
         if task is None:
-            if self.debug:
-                print("No task, Skipping")
             return
         try:
             req_data = await task
         except Exception as e:
             if self.debug:
-                print(f"Failed to get req metadata {e}")
+                logger.warning(f"Failed to get request metadata {e}")
             return
 
 
@@ -199,24 +195,20 @@ class PageScraper():
 
         path = self.data_path(url, resource_type=res_type)
         if path is None:
-            if self.debug:
-                print(f"Failed to generate a path for url: {url} - Most likely"
+            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
                     " files")
             return
 
 
         try:
-            if self.debug:
-                print(f"Starting response awaiting at {time.time()}")
+            logger.info(f"Starting response awaiting at {time.time()}")
             body = await response.body()
-            if self.debug:
-                print(f"Finished response awaiting at {time.time()}")
+            logger.info(f"Finished response awaiting at {time.time()}")
 
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
-            if self.debug:
-                print(f"Failed to save url {url}: {e}")
+            logger.info(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
         if local_path is None: return
@@ -245,8 +237,7 @@ class PageScraper():
         try:
             file_size = os.path.getsize(local_path)
         except Exception as e:
-            if self.debug:
-                print(f"Failed to save url {url}: {e} at file byte size gathering")
+            logger.warning(f"Failed to save url {url}: {e} at file byte size gathering")
             return 
     
 
@@ -313,6 +304,7 @@ class PageScraper():
             browser = await pw.chromium.launch(
                     headless=True,
             )
+            browser = await browser.new_context(accept_downloads=False)
             page = await browser.new_page()
             
             if headers is not None:
@@ -323,7 +315,7 @@ class PageScraper():
 
             # Maybe we want to handle this in the future?
             # For now it seems a security risk, so skipping
-            page.on("download", lambda download: asyncio.create_task(download.cancel()))
+            #page.on("download", lambda download: asyncio.create_task(download.cancel()))
             try:
                 await page.goto(url, wait_until="load")
             except PlaywrightError as e:
@@ -332,34 +324,27 @@ class PageScraper():
                     await browser.close()
                     return
                 raise
-#await page.wait_for_timeout(250)
 
             last_height = 0
             new_height = -1
 
-            if self.debug:
-                print(f"Starting scrol for {url}")
+            logger.info(f"Starting scroll for {url}")
             scroll_start = time.time()
-# while last_height != new_height:
-#                await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-#                await page.wait_for_timeout(1000)
-#
-#                new_height = await page.evaluate("document.body.scrollHeight")
-#
-#                last_height = new_height
+
             await self.scroll_page(page)
             scroll_end = time.time()
-            if self.debug:
-                print(f"Ended scroll for {url} after {scroll_end - scroll_start}")
+            logger.info(f"Ended scroll for {url} after {scroll_end - scroll_start}")
 
            # We've scrolled as much to bottom of the page as possible
        
 
             # Added because we started skipping urls 
             # since browser closed early
-            print(f"Started drain for {url}")
+            drain_start = time.time()
+            logger.info(f"Started drain for {url}")
             await self._drain_tasks()
-            print(f"Finished drain for {url}")
+            drain_end = time.time()
+            logger.info(f"Finished drain for {url} after {drain_end - drain_start}")
 
             # Rewrite files where needed
             self.rewrite_resource_paths()
@@ -371,8 +356,7 @@ class PageScraper():
 
             end_time = time.time()
             await browser.close()
-            if self.debug:
-                print(f"finished at {end_time} after {end_time - self.time} for {url}")
+            logger.info(f"finished at {end_time} after {end_time - self.time} for {url}")
         
         if update_db:
             # conditional update because if snapshot exists, we probably have a parent process running that 
@@ -399,24 +383,19 @@ class PageScraper():
         if not self.tasks: return
         completed = 0
         while completed < len(self.tasks):
-            if self.debug:
-                print(f"Drained: {completed}")
             undone = self.tasks[completed:]
-            if self.debug:
-                print("Awaiting task completion")
+            logger.debug("Awaiting task completion")
             results = await asyncio.gather(
                 *undone,
                 return_exceptions=True,
             )
-            if self.debug:
-                print("Finished waiting")
+            logger.debug("Finished waiting")
 
             completed += len(undone)
             
             for res in results:
                 if isinstance(res, BaseException):
-                    if self.debug:
-                        print(f"Task Failed: {res!r}")
+                    logger.warning(f"Task Failed: {res!r}")
 
     async def scroll_page(self, page, max_scrolls=200):
         last_height = 0
@@ -431,15 +410,14 @@ class PageScraper():
                 )
             except PlaywrightError as e:
                 if "Execution context was destroyed" in str(e):
-                    if self.debug:
-                        print("Navigation during scrolling-quitting")
+                    logger.warning("Navigation during scrolling-quitting")
                     break
                 raise
             if new_height == last_height:
                 break
             last_height = new_height
 
-    async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> list[str]:
+    async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> set[str]:
         """
         Takes a list of urls (presumably from PageScraper#gather_hyperlinks) and downloads the pages, 
         Recursively PageScraping)
@@ -449,7 +427,7 @@ class PageScraper():
                   archive_page was.
         method  - the HTTP method to make the request with. Currently only GET is supported explicitly
 
-        Returns a list of the urls that were successively scraped. Urls scraped here have the contents stored
+        Returns a set of the urls that were successively scraped. Urls scraped here have the contents stored
         in the same snapshot directory as the original archive_page caller.
         """
         processed = set()
@@ -473,12 +451,11 @@ class PageScraper():
         return processed
 
 
-    async def gather_hyperlinks(self, page) -> list[str]:
+    async def gather_hyperlinks(self, page) -> set[str]:
         search_targets = [("a[href]", "href"), ("area[href]", "href"), ("form", "action")]
         urls = set()
 
-        if self.debug:
-            print("Processing hyperlinks")
+        logger.debug("Processing hyperlinks")
 
         for selector, attr in search_targets:
             elements = page.locator(selector)
@@ -495,8 +472,7 @@ class PageScraper():
                 if not self._apply_hyperlink_rules(url):
                     continue
 
-                if self.debug:
-                    print(f"Found url to look at: {url}")
+                logger.debug(f"Found url to look at: {url}")
                 urls.add(url)
 
         return urls
@@ -506,7 +482,7 @@ class PageScraper():
         top_domain = get_tld(self.snapshot_url, as_object=True).domain
         curr_domain = get_tld(url, as_object=True).domain
         if rules.top_domain_only:
-            print(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
+            logger.debug(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
             return top_domain == curr_domain or curr_domain in rules.whitelist_domains
         else:
             return curr_domain not in rules.blacklist_domains
@@ -595,8 +571,7 @@ class PageScraper():
         """
         path = self.data_path(url, resource_type=resource_type)
         if path is None:
-            if self.debug:
-                print(f"Failed to generate a path for url: {url} - Most likely"
+            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
                     " files")
             return None
@@ -627,8 +602,7 @@ class PageScraper():
         if host != self.origin_host and (
             not extension or extension == ".js"
         ):
-            if self.debug:
-                print(f"url: {url} host: {host} og-host: {self.origin_host}")
+            logger.debug(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
 
@@ -683,19 +657,16 @@ class HyperlinkRules:
 
 
     
+if __name__ == "__main__":
+    with open("./db/001_init.sql") as f:
+        sql_script = f.read()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.executescript(sql_script)
+    conn.commit()
+    print("Created db")
+    url = "https://oxylabs.io/blog/playwright-web-scraping"
+    s = PageScraper(db_conn=conn, debug=True)
+    asyncio.run(s.archive_page(url))
+    print("Finished all jobs!")
 
-# Use to run a manual test
-#with open("./db/001_init.sql") as f:
-#    sql_script = f.read()
-#conn = sqlite3.connect(db_path)
-#cursor = conn.cursor()
-#cursor.executescript(sql_script)
-#conn.commit()
-#print("Created db")
-#url = "https://oxylabs.io/blog/playwright-web-scraping"
-#s = PageScraper(db_conn=conn, debug=True)
-#asyncio.run(s.archive_page(url))
-#print("Finished all jobs!")
-
-
-       
