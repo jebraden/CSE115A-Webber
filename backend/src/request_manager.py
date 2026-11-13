@@ -73,6 +73,9 @@ class RequestManager():
         db = self.db 
         try:
             with db:
+                # Was thinking if we need this initial query
+                # It allows us to be informative, but it really doesn't
+                # change behavior
                 row = db.execute(
                     """
                     SELECT * 
@@ -107,12 +110,65 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"delete_snapshot: Encountered unexpected error {e}")
             return self.internal_server_error(f"encountered unexpected error deleting snapshot {snapshot_id}")
-        path = os.path.join(base_dir, snapshot_id)
-        # Should clean up the directory
-        shutil.rmtree(path)
-        logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
+
+        self._delete_snapshot_files(snapshot_id)
+
         return ({}, 202)
 
+    def delete_snapshots(self, request) -> (dict, int):
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
+        snapshot_ids = payload.get("ids", None)
+
+        if snapshot_ids is None:
+            return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
+
+        db = self.db
+        list_placeholder = ", ".join("?" * len(snapshot_ids))
+        try:
+            with db:
+                db.execute(
+                    f"""
+                    DELETE
+                    FROM files
+                    WHERE snapshot_id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted file entries assosciated with snapshot_ids {snapshot_ids}")
+
+                db.execute(
+                    f"""
+                    DELETE
+                    from snapshots
+                    WHERE id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted all snapshot entries assosciated with snapshot_ids {snapshot_ids}")
+                db.commit()
+        except Exception as e:
+            logger.warning(f"delete_snapshops: Encountered unexpected error deleting from the database: {e}")
+            return self.internal_server_error(f"Encountered unexpected error deleting from the database")
+
+        for snap_id in snapshot_ids:
+            self._delete_snapshot_files(snap_id)
+        return ({}, 202)
+
+
+    def _delete_snapshot_files(self, snapshot_id: str):
+        path = os.path.join(base_dir, snapshot_id)
+        if not os.path.exists(path):
+            logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist! Skipping")
+            return
+        try:
+            shutil.rmtree(path)
+            logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")
+        except Exception as e:
+            logger.warning(f"delete_snapshots: Encountered unexpected error while deleting files on disk for snapshot {snapshot_id} at {str(path)}: {e}")
+ 
     def get_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         db.row_factory = sqlite3.Row
