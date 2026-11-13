@@ -5,7 +5,7 @@ from src.util.parsedatetime import (
     parse_datetime,
     parse_timespec,
     _interpret_month,
-    _parse_thing,
+    _parse_integral_thing,
     _days_for_month,
 )
 from src.api import Timespec
@@ -109,31 +109,31 @@ def test_interpret_month_ambiguous_prefix():
 
 def test_parse_thing_valid():
     """Test valid number parsing within range."""
-    assert _parse_thing("hour", "12", 0, 23) == 12
-    assert _parse_thing("minute", "0", 0, 59) == 0
-    assert _parse_thing("minute", "59", 0, 59) == 59
+    assert _parse_integral_thing("hour", "12", 0, 23) == 12
+    assert _parse_integral_thing("minute", "0", 0, 59) == 0
+    assert _parse_integral_thing("minute", "59", 0, 59) == 59
 
 
 def test_parse_thing_out_of_range_low():
     """Test that numbers below minimum raise ValueError."""
     with pytest.raises(ValueError, match="Not a valid hour"):
-        _parse_thing("hour", "-1", 0, 23)
+        _parse_integral_thing("hour", "-1", 0, 23)
     with pytest.raises(ValueError, match="Not a valid minute"):
-        _parse_thing("minute", "-1", 0, 59)
+        _parse_integral_thing("minute", "-1", 0, 59)
 
 
 def test_parse_thing_out_of_range_high():
     """Test that numbers above maximum raise ValueError."""
     with pytest.raises(ValueError, match="Not a valid hour"):
-        _parse_thing("hour", "24", 0, 23)
+        _parse_integral_thing("hour", "24", 0, 23)
     with pytest.raises(ValueError, match="Not a valid minute"):
-        _parse_thing("minute", "60", 0, 59)
+        _parse_integral_thing("minute", "60", 0, 59)
 
 
 def test_parse_thing_invalid_text():
     """Test that non-numeric text raises ValueError."""
     with pytest.raises(ValueError, match="Not a valid hour"):
-        _parse_thing("hour", "abc", 0, 23)
+        _parse_integral_thing("hour", "abc", 0, 23)
 
 
 # =============================================================================

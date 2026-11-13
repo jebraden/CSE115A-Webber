@@ -38,7 +38,7 @@ def _interpret_month(text: str) -> int:
         raise ValueError(f"Not a valid month: {text!r}")
 
 
-def _parse_thing(thing: str, text: str, min: int, max: int) -> int:
+def _parse_integral_thing(thing: str, text: str, min: int, max: int) -> int:
     try:
         val = int(text)
         if val < min or val > max:
@@ -83,24 +83,26 @@ def _interpret_match_groupdict(
     if month and day:
         mnum = _interpret_month(month)
         if year:
-            ynum = _parse_thing("year", year, 1, 9999)
+            ynum = _parse_integral_thing("year", year, 1, 9999)
         else:
             ynum = QDate.currentDate().year()
-        dnum = _parse_thing("day", day, 1, _days_for_month(mnum, ynum))
+        dnum = _parse_integral_thing(
+            "day", day, 1, _days_for_month(mnum, ynum)
+        )
         date = QDate(ynum, mnum, dnum)
     else:
         date = QDate.currentDate()
     if hour and minute:
         if ampm is None:
-            hnum = _parse_thing("hour", hour, 0, 23)
+            hnum = _parse_integral_thing("hour", hour, 0, 23)
         else:
-            hnum = _parse_thing("hour", hour, 1, 12) % 12
+            hnum = _parse_integral_thing("hour", hour, 1, 12) % 12
             if ampm.lower() == "p":
                 hnum += 12
-        mnum = _parse_thing("minute", minute, 0, 59)
+        mnum = _parse_integral_thing("minute", minute, 0, 59)
         snum = 0
         if second:
-            snum = _parse_thing("second", second, 0, 59)
+            snum = _parse_integral_thing("second", second, 0, 59)
         time = QTime(hnum, mnum, snum)
     else:
         time = QTime(0, 0, 0)
