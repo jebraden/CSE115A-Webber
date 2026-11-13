@@ -1,9 +1,9 @@
 from src.request_manager import RequestManager
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 import src.request_manager
 
 from src.app import create_app
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from flask import Flask, request
 
 import pytest
@@ -139,7 +139,8 @@ class TestBuildPattern:
         assert conds == ["host REGEXP ?"]
         assert vals == [r"example\.com$"]
 
-    def test_omit_empty_pattern(self, test_conn): 
+
+    def test_omit_empty_pattern(self, test_conn):
         manager = RequestManager(test_conn)
         conds = []
         vals = []
@@ -223,6 +224,96 @@ class TestFileFromRow:
         )
         assert status == 500
         assert "message" in resp
+
+class MockScraper:
+    def __init__(self, db_conn=None, debug=False, hyperlink_rules=HyperlinkRules(), snapshot_url=None, depth=0):
+        self.db = db_conn
+        self.archive_page = AsyncMock(return_value="snap-1")
+        self.snapshot_url = snapshot_url
+        self.depth = depth
+        self.hyperlink_rules = hyperlink_rules
+
+
+
+class TestCreateSnapshot:
+    def test_create_basic(self, monkeypatch, test_db, insert_snapshot, test_conn):
+        instances = []
+        original_init = MockScraper.__init__
+
+
+        def capture_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            instances.append(self)
+
+        monkeypatch.setattr(MockScraper, "__init__", capture_init)
+        monkeypatch.setattr("src.request_manager.PageScraper", MockScraper)
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "url": "https://example.com",
+            "request_options": {
+                "method": "GET",
+                "headers": {
+                    "Authorization": ["Basic"]
+                }
+            }
+        }
+
+        resp, status = manager.create_snapshot(request)
+        
+        assert status == 201
+        assert resp == {"id": "snap-1"}
+
+        assert len(instances) == 1
+        rules = instances[0].hyperlink_rules
+        assert rules.max_depth == 0
+        assert rules.top_domain_only == True
+        assert rules.blacklist_domains == set()
+        assert rules.whitelist_domains == set()
+
+    def test_create_with_rules(self, monkeypatch, test_db, insert_snapshot, test_conn):
+        instances = []
+        original_init = MockScraper.__init__
+
+
+        def capture_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            instances.append(self)
+
+        monkeypatch.setattr(MockScraper, "__init__", capture_init)
+        monkeypatch.setattr("src.request_manager.PageScraper", MockScraper)
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "url": "https://example.com",
+            "request_options": {
+                "method": "GET",
+                "headers": {
+                    "Authorization": ["Basic"],
+                },
+            },
+            "crawl": {
+                "enable": True,
+                "top_level_only": False,
+                "depth": 9,
+                "whitelist_domains": ["some_domain"],
+                "blacklist_domains": ["some_other"]
+            }
+        }
+
+        resp, status = manager.create_snapshot(request)
+        
+        assert status == 201
+        assert resp == {"id": "snap-1"}
+
+        assert len(instances) == 1
+        rules = instances[0].hyperlink_rules
+        assert rules.max_depth == 9
+        assert rules.top_domain_only == False
+        assert rules.blacklist_domains == {"some_other"}
+        assert rules.whitelist_domains == {"some_domain"}
 
 class TestGetSnapshot:
     def test_snapshot_with_files(self, test_db, insert_snapshot, insert_file, test_conn):
@@ -483,7 +574,6 @@ class TestQueryFiles:
 
         res, status = manager.query_files(request)
     
-        print(res["content"])
         assert status == 200
         assert res["content"] ==[
             {"snapshot_id": "snap-1", "file_id": "file-1"}

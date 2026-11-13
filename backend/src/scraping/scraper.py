@@ -9,15 +9,45 @@ import asyncio
 import hashlib
 import tinycss2
 import sqlite3
+import logging
 
+from tld import get_tld
 from datetime import datetime
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Error as PlaywrightError
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
 from src.urlreplace import relativize_html, relativize_stylesheet 
 
 db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
+logger = logging.getLogger(__name__)
+
+
+RESPONSE_TIMEOUT = 20
+EXTENSION_MAP = {
+    "text/html":                     "html",
+    "text/css":                      "css",
+    "application/javascript":        "js",
+    "text/javascript":               "js",
+    "image/png":                     "png",
+    "image/jpg":                     "jpg",
+    "image/gif":                     "gif",
+    "image/svg+xml":                 "svg",
+    "image/webp":                    "webp",
+    "image/avif":                    "avif",
+    "image/x-icon":                  "ico",
+    "image/vnd.microsoft.icon":      "ico",
+    "font/woff":                     "woff",
+    "font/woff2":                    "woff2",
+    "font/ttf":                      "ttf",
+    "font/otf":                      "otf",
+    "application/font-woff":         "woff",
+    "application/vnd.ms-fontobject": "eot",
+    "application/json":              "json",
+    "application/xml":               "xml",
+
+}
+
 
 class PageScraper():
     saved_urls: set[str] 
@@ -31,8 +61,18 @@ class PageScraper():
     working: bool
     debug: bool
     saved_resources: dict
+    hyperlink_rules: HyperlinkRules
+    snapshot_url: str
+    depth: int
 
-    def __init__(self, db_conn=None, debug=False):
+    def __init__(self, *, 
+            db_conn=None, 
+            debug=False, 
+            hyperlink_rules=None,
+            snapshot_url=None,
+            depth=0
+        ):
+
         self.saved_urls = set()
         self.saved_resources = dict()
         self.style_sheets = set()
@@ -40,8 +80,23 @@ class PageScraper():
         self.working = False
         self.debug = debug
         self.db = db_conn
+        self.hyperlink_rules = hyperlink_rules or HyperlinkRules()
+        self.snapshot_url = snapshot_url
+        self.depth = depth
 
-    async def archive_page(self, url: str, headers: dict=None, method: str="GET"):
+    async def archive_page(self, url: str, headers: dict=None, method: str="GET", *,
+            snap_id: str=None, saved_urls: list=None):
+        """
+            The function to call to start an archival job
+            If snap_id is not null, it is assumed that it is already in the DB.
+
+            A non-null snap_id also means the snapshots table will not be modified
+            by this function.
+
+            Please only supply a non-null saved_urls value if snap_id was also not null
+        """
+        if self.working: return None
+
         if self.db is None:
             self.db = sqlite3.connect(db_path)
             self.db.execute("PRAGMA foreign_keys = ON")
@@ -49,7 +104,8 @@ class PageScraper():
         
        
         try:
-            snap_id = await self._download_page(url, headers, method)
+            logger.info(f"Starting job for {url} with origin {snap_id}")
+            snap_id = await self._download_page(url, headers, method, snap_id, saved_urls)
         finally:
             self.working = False
         return snap_id
@@ -81,8 +137,28 @@ class PageScraper():
         )
 
     def on_response(self, response):
-        task = asyncio.create_task(self.handle_response(response))
+        task = asyncio.create_task(
+            asyncio.wait_for(
+                self.handle_response(response), 
+                timeout=RESPONSE_TIMEOUT
+            ),
+            name=response.url
+        )
+
+        task.add_done_callback(
+            lambda t: self.on_resp_complete
+        )
         self.tasks.append(task)
+
+    def on_resp_complete(self, task):
+        if not self.debug:
+            return
+        if task.cancelled():
+            logger.info(f"Response task cancelled - {task.get_name()}")
+        elif isinstance(task.exception(), asyncio.TimeoutError):
+            logger.warning(f"Response task timed out - {task.get_name()}")
+        else:
+            logger.info("response task complete")
 
     async def handle_response(self, response):
         """
@@ -94,33 +170,45 @@ class PageScraper():
         """
 
         request = response.request
+        url = response.url
+        parsed = urlparse(url)
+
         task = self.req_metadata.pop(id(request), None)
+        logger.info(f"Starting task for {url}")
+
+        if url in self.saved_urls: return
 
         if task is None:
-            if self.debug:
-                print("No task, Skipping")
             return
         try:
             req_data = await task
         except Exception as e:
             if self.debug:
-                print(f"Failed to get req metadata {e}")
+                logger.warning(f"Failed to get request metadata {e}")
             return
-        url = response.url
-        parsed = urlparse(url)
 
-        if url in self.saved_urls: return
 
         local_path = None
         headers = await response.all_headers()
         content_type = headers.get("content-type", "")
         res_type = self.resource_type(content_type)
+
+        path = self.data_path(url, resource_type=res_type)
+        if path is None:
+            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
+                    " due to bad extension or non matching domain for js"
+                    " files")
+            return
+
+
         try:
+            logger.info(f"Starting response awaiting at {time.time()}")
             body = await response.body()
+            logger.info(f"Finished response awaiting at {time.time()}")
+
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
-            if self.debug:
-                print(f"Failed to save url {url}: {e}")
+            logger.info(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
         if local_path is None: return
@@ -149,8 +237,7 @@ class PageScraper():
         try:
             file_size = os.path.getsize(local_path)
         except Exception as e:
-            if self.debug:
-                print(f"Failed to save url {url}: {e} at file byte size gathering")
+            logger.warning(f"Failed to save url {url}: {e} at file byte size gathering")
             return 
     
 
@@ -187,76 +274,105 @@ class PageScraper():
             values,
         )
 
-    async def _download_page(self, url: str, headers: dict=None, method:str="GET"):
+    async def _download_page(self, url: str, headers: dict=None, method:str="GET", snap_id: str=None, saved_urls: set=None):
         if self.working: return None
+        self.working = True
         self.tasks = []
         self.saved_urls = set()
+        if saved_urls is not None:
+            self.saved_urls.update(saved_urls)
+
         self.saved_resources = dict()
-        self.snap_id = str(uuid.uuid4())
-        self.working = True
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                    headless=True,
-            )
-            self.time = time.time()
-            page = await browser.new_page()
-            
-            parsed = urlparse(url)
-            self.url = url
 
-
-            if headers is not None:
-                await page.setExtraHTTPHeaders(headers)
-
-            self.origin = parsed.netloc
-            self.origin_host = parsed.hostname
-            self.base_dir = self.get_base_dir(url)
-
+        self.time = time.time()
+        update_db = snap_id is None
+        if update_db:
+            self.snap_id = str(uuid.uuid4())
+            self.snapshot_url = url
             self.db.execute(
                 """
                 INSERT INTO snapshots (id, url, start_time, end_time)
                 VALUES (?, ?, ?, ?)
                 """,
-                (self.snap_id, url, self.time, self.time),
+                (self.snap_id, url, self.time, self.time)
             )
+        else: self.snap_id = snap_id
+
+        self.set_origin_url(url)
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                    headless=True,
+            )
+            browser = await browser.new_context(accept_downloads=False)
+            page = await browser.new_page()
+            
+            if headers is not None:
+                await page.setExtraHTTPHeaders(headers)
 
             page.on("request", self.handle_requests)
             page.on("response", self.on_response)
 
-            await page.goto(url)
-            await page.wait_for_timeout(5000)
+            # Maybe we want to handle this in the future?
+            # For now it seems a security risk, so skipping
+            #page.on("download", lambda download: asyncio.create_task(download.cancel()))
+            try:
+                await page.goto(url, wait_until="load")
+            except PlaywrightError as e:
+                if "Download is starting" in str(e):
+                    logger.info(f"Request on {url} triggered a download: Skipping")
+                    await browser.close()
+                    return
+                raise
 
             last_height = 0
             new_height = -1
 
-            while last_height != new_height:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-                await page.wait_for_timeout(1000)
+            logger.info(f"Starting scroll for {url}")
+            scroll_start = time.time()
 
-                new_height = await page.evaluate("document.body.scrollHeight")
+            await self.scroll_page(page)
+            scroll_end = time.time()
+            logger.info(f"Ended scroll for {url} after {scroll_end - scroll_start}")
 
-                last_height = new_height
            # We've scrolled as much to bottom of the page as possible
        
 
             # Added because we started skipping urls 
             # since browser closed early
+            drain_start = time.time()
+            logger.info(f"Started drain for {url}")
             await self._drain_tasks()
+            drain_end = time.time()
+            logger.info(f"Finished drain for {url} after {drain_end - drain_start}")
 
             # Rewrite files where needed
             self.rewrite_resource_paths()
 
+            if self.depth < self.hyperlink_rules.max_depth:
+                hyperlinks = await self.gather_hyperlinks(page)
+
+                processed = await self.process_hyperlinks(hyperlinks, headers, method)
+
             end_time = time.time()
             await browser.close()
-        self.db.execute(
-            """
-            UPDATE snapshots SET end_time = ? WHERE id = ?
-            """,
-            (end_time, self.snap_id),
-        )
+            logger.info(f"finished at {end_time} after {end_time - self.time} for {url}")
+        
+        if update_db:
+            # conditional update because if snapshot exists, we probably have a parent process running that 
+            # returns the true end time. Avoid over-updating.
+            self.db.execute(
+                """
+                UPDATE snapshots SET end_time = ? WHERE id = ?
+                """,
+                (end_time, self.snap_id),
+            )
+
+        # unconditional commit since we still write files
         self.db.commit()
         self.working = False
         return self.snap_id
+
 
 
     async def _drain_tasks(self):
@@ -268,17 +384,111 @@ class PageScraper():
         completed = 0
         while completed < len(self.tasks):
             undone = self.tasks[completed:]
+            logger.debug("Awaiting task completion")
             results = await asyncio.gather(
                 *undone,
                 return_exceptions=True,
             )
+            logger.debug("Finished waiting")
 
             completed += len(undone)
             
             for res in results:
                 if isinstance(res, BaseException):
-                    if self.debug:
-                        print(f"Task Failed: {res!r}")
+                    logger.warning(f"Task Failed: {res!r}")
+
+    async def scroll_page(self, page, max_scrolls=200):
+        last_height = 0
+        for _ in range(max_scrolls):
+            try:
+                await page.evaluate(
+                    "window.scrollBy(0, window.innerHeight)"
+                )
+
+                new_height = await page.evaluate(
+                        "document.documentElement.scrollHeight"
+                )
+            except PlaywrightError as e:
+                if "Execution context was destroyed" in str(e):
+                    logger.warning("Navigation during scrolling-quitting")
+                    break
+                raise
+            if new_height == last_height:
+                break
+            last_height = new_height
+
+    async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> set[str]:
+        """
+        Takes a list of urls (presumably from PageScraper#gather_hyperlinks) and downloads the pages, 
+        Recursively PageScraping)
+
+        urls    - the list of urls to start scraping processes for
+        headers - the headers we want to make the request with, Generally should follow what the root call to
+                  archive_page was.
+        method  - the HTTP method to make the request with. Currently only GET is supported explicitly
+
+        Returns a set of the urls that were successively scraped. Urls scraped here have the contents stored
+        in the same snapshot directory as the original archive_page caller.
+        """
+        processed = set()
+        for url in urls:
+            scraper = PageScraper(
+                    db_conn=self.db, 
+                    debug=self.debug, 
+                    hyperlink_rules=self.hyperlink_rules,
+                    snapshot_url=self.snapshot_url,
+                    depth=self.depth+1
+            )
+
+            # I'm not a huge fan of doing the below.
+            # However, I felt like my constructors and parameters were getting too long
+
+            res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
+            if res is None: 
+                logger.warning(f"Skipping url: {url}. Failed to download page content") 
+                continue
+            processed.add(url)
+        return processed
+
+
+    async def gather_hyperlinks(self, page) -> set[str]:
+        search_targets = [("a[href]", "href"), ("area[href]", "href"), ("form", "action")]
+        urls = set()
+
+        logger.debug("Processing hyperlinks")
+
+        for selector, attr in search_targets:
+            elements = page.locator(selector)
+            elem_count = await elements.count()
+            for i in range(elem_count):
+                element = elements.nth(i)
+                url = await element.evaluate("(el, attr) => el[attr]", attr)
+                if not url or url in self.saved_urls:
+                    continue
+                parsed = urlparse(url)
+                if parsed.scheme not in ("http", "https"):
+                    continue
+
+                if not self._apply_hyperlink_rules(url):
+                    continue
+
+                logger.debug(f"Found url to look at: {url}")
+                urls.add(url)
+
+        return urls
+
+    def _apply_hyperlink_rules(self, url: str) -> bool:
+        rules = self.hyperlink_rules
+        top_domain = get_tld(self.snapshot_url, as_object=True).domain
+        curr_domain = get_tld(url, as_object=True).domain
+        if rules.top_domain_only:
+            logger.debug(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
+            return top_domain == curr_domain or curr_domain in rules.whitelist_domains
+        else:
+            return curr_domain not in rules.blacklist_domains
+
+
+        
 
 
     def get_base_dir(self, url: str):
@@ -292,35 +502,23 @@ class PageScraper():
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
+        if self.snap_id is None:
+            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            return None
+        elif host is None:
+            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            return None
         path = os.path.join(os.path.join(os.getenv("HOME"), ".webber",
                     self.snap_id, host))
         return path
 
 
     def resource_type(self, content_type: str) -> str | None:
+        """
+        Converts a http content-type to its assosciated resource type extension
+        """
         content = content_type.split(";", 1)[0].strip().lower()
-        match content:
-            case "text/html": return "html"
-            case "text/css": return "css"
-            case "application/javascript": return "js"
-            case "text/javascript": return "js"
-            case "image/png": return "png"
-            case "image/jpeg": return "jpg"
-            case "image/gif": return "gif"
-            case "image/svg+xml": return "svg"
-            case "image/webp": return "webp"
-            case "image/avif": return "avif"
-            case "image/x-icon": return "ico"
-            case "image/vnd.microsoft.icon": return "ico"
-            case "font/woff": return "woff"
-            case "font/woff2": return "woff2"
-            case "font/ttf": return "ttf"
-            case "font/otf": return "otf"
-            case "application/font-woff": return "woff"
-            case "application/vnd.ms-fontobject": return "eot"
-            case _: return None
-        # Redundant
-        return None
+        return EXTENSION_MAP.get(content, None)
 
     def rewrite_resource_paths(self):
         for url, resource in self.saved_resources.items():
@@ -335,12 +533,15 @@ class PageScraper():
                 continue
             with open(path, "rb") as file:
                 contents = file.read()
-            
-            if html_flag:
-                # Should I account for not utf-8?
-                contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
-            else:
-                contents = relativize_stylesheet(contents, url)
+            try:
+                if html_flag:
+                    # Should I account for not utf-8?
+                    contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
+                else:
+                    contents = relativize_stylesheet(contents, url)
+            except Exception as e:
+                logger.warning("Encountered error {e} relatvizing {url}")
+                continue
             with open(path, "w", encoding="utf-8") as file:
                 file.write(contents)
             self.db.execute(
@@ -370,8 +571,7 @@ class PageScraper():
         """
         path = self.data_path(url, resource_type=resource_type)
         if path is None:
-            if self.debug:
-                print(f"Failed to generate a path for url: {url} - Most likely"
+            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
                     " due to bad extension or non matching domain for js"
                     " files")
             return None
@@ -402,22 +602,71 @@ class PageScraper():
         if host != self.origin_host and (
             not extension or extension == ".js"
         ):
-            if self.debug:
-                print(f"url: {url} host: {host} og-host: {self.origin_host}")
+            logger.debug(f"url: {url} host: {host} og-host: {self.origin_host}")
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
-    
 
-# Use to run a manual test
-#with open("./../../db/001_init.sql") as f:
-#    sql_script = f.read()
-#
-#with sqlite3.connect(db_path) as conn:
-#    cursor = conn.cursor()
-#    cursor.executescript(sql_script)
-#    conn.commit()
-#    print("Created db")
-#url = "https://oxylabs.io/blog/playwright-web-scraping"
-#s = PageScraper()
-#asyncio.run(s.archive_page(url))
-       
+    def set_origin_url(self, url: str):
+        parsed = urlparse(url)
+        self.url = url
+        self.origin = parsed.netloc
+        self.origin_host = parsed.hostname
+        self.base_dir = self.get_base_dir(url)
+
+
+
+class HyperlinkRules:
+    """
+    Please note in all contexts, domains refer to the TLD
+    That is: bbc.co.uk, we mean bbc as the domain
+    """
+    max_depth: int
+    # Used to work around top_domain_only
+    # Only does something if top_domain_only is True
+    whitelist_domains: set[str]
+
+    # Does not do anything if top_domain_only is True
+    blacklist_domains: set[str]
+
+    top_domain_only: bool
+
+    def __init__(self, *, max_depth: int=1, whitelist_domains=set(), blacklist_domains=set(), top_domain_only=True):
+        self._max_depth = max_depth
+        self._whitelist_domains = whitelist_domains
+        self._blacklist_domains = blacklist_domains
+        self._top_domain_only = top_domain_only
+    
+    @property
+    def max_depth(self) -> int: 
+        return self._max_depth
+
+    @property
+    def whitelist_domains(self) -> set[str]:
+        return self._whitelist_domains
+
+    @property
+    def blacklist_domains(self) -> set[str]:
+        return self._blacklist_domains
+
+    @property
+    def top_domain_only(self) -> bool:
+        return self._top_domain_only
+
+
+
+
+
+    
+if __name__ == "__main__":
+    with open("./db/001_init.sql") as f:
+        sql_script = f.read()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.executescript(sql_script)
+    conn.commit()
+    print("Created db")
+    url = "https://oxylabs.io/blog/playwright-web-scraping"
+    s = PageScraper(db_conn=conn, debug=True)
+    asyncio.run(s.archive_page(url))
+    print("Finished all jobs!")
+

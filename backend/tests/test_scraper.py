@@ -1,10 +1,12 @@
 from src.scraping.scraper import (
     PageScraper,
+    HyperlinkRules,
 )
 
 import src
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from playwright.async_api import async_playwright
 
 
 import pytest
@@ -230,6 +232,7 @@ class TestHandleResponse:
         self.scraper = PageScraper()
         self.scraper.snap_id = "test-snapshot"
         self.origin_host = "example.com"
+        self.scraper.origin_host = "example.com"
         self.scraper.base_dir = "/tmp/test-snapshot/example.com"
         self.scraper.saved_urls = set()
         self.scraper.req_metadata = {}
@@ -612,4 +615,177 @@ class TestRelativizeResources:
 
         assert path.read_text() == 'body { background: url("../image.png"); }'
     
+def mock_element(url):
+    element = MagicMock()
+    prop = MagicMock()
+    prop.json_value = AsyncMock(return_value=url)
+    element.get_property = AsyncMock(return_value=prop)
+    element.evaluate = AsyncMock(return_value=url)
+
+    return element
+
+def mock_locator(elements):
+    locator = MagicMock()
+    locator.count = AsyncMock(return_value=len(elements))
+    locator.nth.side_effect = elements.__getitem__
+
+    return locator
+
+class TestHyperlinkCollection:
+    
+
+    @pytest.mark.asyncio
+    async def test_gather_hyperlinks(self):
+        scraper = PageScraper()
+        scraper.snapshot_url = "https://www.example.com/something"
+        page = MagicMock()
+
+        elements = {
+            "a[href]": [
+                mock_element("https://example.com/about"),
+                # Note we also test top_domain_only enforcement with this
+                mock_element("https://google.com")
+            ],
+            "area[href]": [
+                mock_element("https://example.com/contact")
+            ],
+            "form": [
+                mock_element("https://example.com/search")
+            ]
+        }
+
+        page.locator.side_effect = lambda selector: (
+            mock_locator(elements[selector])
+        )
+
+        urls = await scraper.gather_hyperlinks(page)
+
+        assert urls == {
+            "https://example.com/about",
+            "https://example.com/contact",
+            "https://example.com/search"
+        }
+
+    @pytest.mark.asyncio
+    async def test_gathering_enforce_whitelist(self):
+        rules = HyperlinkRules(top_domain_only=True, whitelist_domains={"google"})
+        scraper = PageScraper(
+                hyperlink_rules=rules,
+                snapshot_url="https://www.example.com/something"
+        )
+
+        page = MagicMock()
+        
+        elements = {
+            "a[href]": [
+                mock_element("https://example.com/about"),
+                # Note we also test top_domain_only enforcement with this
+                mock_element("https://google.com")
+            ],
+            "area[href]": [
+                mock_element("https://example.com/contact")
+            ],
+            "form": [
+                mock_element("https://example.com/search")
+            ]
+        }
+
+        page.locator.side_effect = lambda selector: (
+            mock_locator(elements[selector])
+        )
+
+        urls = await scraper.gather_hyperlinks(page)
+
+        assert urls == {
+            "https://example.com/about",
+            "https://example.com/contact",
+            "https://google.com",
+            "https://example.com/search"
+        } 
+
+    @pytest.mark.asyncio
+    async def test_gather_hyperlinks_enforce_blacklist(self):
+        rules = HyperlinkRules(top_domain_only=False, blacklist_domains="google")
+        scraper = PageScraper(
+            hyperlink_rules=rules,
+            snapshot_url="https://www.example.com/something"
+        )
+
+        page = MagicMock()
+        elements = {
+            "a[href]": [
+                mock_element("https://example.com/about"),
+                # Note we also test top_domain_only enforcement with this
+                mock_element("https://google.com")
+            ],
+            "area[href]": [
+                mock_element("https://example.com/contact")
+            ],
+            "form": [
+                mock_element("https://example.com/search")
+            ]
+        }
+
+        page.locator.side_effect = lambda selector: (
+            mock_locator(elements[selector])
+        )
+
+        urls = await scraper.gather_hyperlinks(page)
+
+        assert urls == {
+            "https://example.com/about",
+            "https://example.com/contact",
+            "https://example.com/search"
+        }
+
+         
+    @pytest.mark.asyncio
+    async def test_gather_hyperlinks_empty(self):
+        scraper = PageScraper()
+        page = MagicMock()
+        page.locator.side_effect = lambda selector: mock_locator([])
+
+        urls = await scraper.gather_hyperlinks(page)
+        assert urls == set()
+
+
+class TestHyperlinkProcessing:
+
+    @pytest.mark.asyncio
+    async def test_process_hyperlinks(self, monkeypatch):
+        scraper = PageScraper(db_conn=MagicMock())
+        scraper.snap_id = "snap-1"
+        scraper.snapshot_url = "https://example.com/something"
+        scraper.saved_urls={"https://test_url.com"}
+
+        urls = [
+            "https://example.com/about",
+            "https://example.com/contact"
+        ]
+
+        instances = []
+        class MockScraper:
+            def __init__(self, db_conn=None, debug=False, hyperlink_rules=HyperlinkRules(), snapshot_url=None, depth=0):
+                self.db = db_conn
+                self.archive_page = AsyncMock(return_value="snap-1")
+                self.snapshot_url = snapshot_url
+                self.depth = depth
+                instances.append(self)
+
+        monkeypatch.setattr("src.scraping.scraper.PageScraper", MockScraper)
+
+        processed = await scraper.process_hyperlinks(urls, headers=None, method="GET")
+        assert processed == set(urls)
+        assert len(instances) == 2
+
+        for instance, url in zip(instances, urls):
+            instance.archive_page.assert_awaited_once_with(
+                    url, None, "GET", snap_id="snap-1", saved_urls={"https://test_url.com"} #empty set bcs no responses
+            )
+            assert instance.depth == 1
+            assert instance.snapshot_url == scraper.snapshot_url
+
+
+
+
 

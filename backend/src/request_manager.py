@@ -7,7 +7,7 @@ import shutil
 import re
 import asyncio
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -41,32 +41,50 @@ class RequestManager():
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        raw_options = payload.get("request_options", None)
+        options_dict = payload.get("request_options", None)
         # Assume that options parameters are... optional
-        if raw_options:
-            try:
-                options_dict = json.loads(raw_options)
-            except json.JSONDecodeError:
-                return self.bad_request("'request-options' contained invalid json. Failed to parse")
         if options_dict:
             method = options_dict.get("method", None)
-            try:
-                raw_headers = options_dict.get("headers", None)
-                if raw_headers:
-                    headers = json.loads(options_dict["headers"])
-            except json.JSONDecodeError:
-                return self.bad_request("'request_options.headers' contained invalid json. Failed to parse")
+            headers = options_dict.get("headers", None)
 
         if url is None:
             return self.bad_request("No url found")
+        rules = None
+        try:
+            rules = self._get_hyperlink_rules(payload)
+        except Exception as e:
+            logger.warning(f"request_manager: create_spapshot: Hit an unexpected error while building hyperlink rules: {str(e)}")
+            return self.internal_server_error("Encountered error parsing crawl options")
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper(db_conn = self.db)
+        scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
         snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
+
+    def _get_hyperlink_rules(self, options: dict) -> HyperlinkRules:
+        crawl_options = options.get("crawl", None)
+        print(f"{crawl_options}")
+        if crawl_options is None or not crawl_options.get("enable", False):
+            return HyperlinkRules(max_depth=0)
+        print(crawl_options.get("depth", f"{-1}"))
+        max_depth = crawl_options.get("depth", 1)
+        if not isinstance(max_depth, int):
+            raise Exception("depth option must be an integer!")
+        top_level_only = crawl_options.get("top_level_only", True)
+        whitelisted = set(crawl_options.get("whitelist_domains", list()))
+        blacklisted = set(crawl_options.get("blacklist_domains", list()))
+
+        return HyperlinkRules(
+            max_depth=max_depth,
+            whitelist_domains=whitelisted,
+            blacklist_domains=blacklisted,
+            top_domain_only=top_level_only 
+        )
+
+
 
 
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):

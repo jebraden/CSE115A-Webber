@@ -719,9 +719,9 @@ def _find_all_css_urls(
             to_scan.extend(cur.value or [])
         elif isinstance(cur, tinycss2.ast.CurlyBracketsBlock):
             to_scan.extend(cur.content or [])
-        elif isinstance(cur, tinycss2.ast.AtKeywordToken):
-            to_scan.extend(cur.prelude or [])
-            to_scan.extend(cur.content or [])
+#        elif isinstance(cur, tinycss2.ast.AtKeywordToken):
+#            to_scan.extend(cur.prelude or [])
+#            to_scan.extend(cur.content or [])
         elif isinstance(cur, tinycss2.ast.AtRule):
             to_scan.extend(cur.prelude or [])
             to_scan.extend(cur.content or [])
