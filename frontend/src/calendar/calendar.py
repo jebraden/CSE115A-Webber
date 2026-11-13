@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QResizeEvent,
     QAction,
+    QVector3D,
 )
 from PySide6.QtCore import (
     QDate,
@@ -46,6 +47,13 @@ from .calendar_ui import Ui_Calendar
 from ..api import WebberAPI, GetSnapshotResponse
 from ..queries import make_snapshot_search_args
 from ..util.queryparse import QuerySyntaxError
+
+
+def _compose(top: QColor, bottom: QColor):
+    tv = QVector3D(top.redF(), top.greenF(), top.blueF())
+    bv = QVector3D(bottom.redF(), bottom.greenF(), bottom.blueF())
+    out = tv * top.alphaF() + (1 - top.alphaF()) * bv
+    return QColor.fromRgbF(out.x(), out.y(), out.z(), 1.0)
 
 
 class _Calendar(QTableWidget):
@@ -93,10 +101,11 @@ class _Calendar(QTableWidget):
         return QSize(edge, edge)
 
     def _color_for_day(self, day: int) -> QColor:
+        bg = self.palette().color(self.backgroundRole())
         date = QDate(self._year, self._month, day + 1)
         bucket = self._view._results_by_day[date]
         alpha = len(bucket) / self._view._most_snapshots_on_day
-        return QColor.fromRgbF(0.0, 0.5, 0.0, alpha)
+        return _compose(QColor.fromRgbF(bg.redF(), 0.5, bg.blueF(), alpha), bg)
 
     def set_year(self, year: int):
         self._year = year
