@@ -80,7 +80,8 @@
               "top_level_only": true
               // (integer, optional) maximum depth
               // default: 1
-              // NOTE -1 is a special value that denotes inf
+              // NOTE maximum depth must be a positive integer.
+              // Infinite depth is asking for trouble to happen as we may continue infinitely
               "depth": 1,
               // (array of strings, optional) whitelisted domains to bypass top_level_only 
               // default: empty set
