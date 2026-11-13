@@ -167,7 +167,7 @@ def test_make_snapshot_search_args_returns_dict():
 def test_make_snapshot_search_args_special_characters():
     """Test query with special characters in words."""
     result = make_snapshot_search_args("test-123 example.org")
-    assert result["url"] == " *test-123 *example.org *"
+    assert result["url"] == " *test\\-123 *example\\.org *"
 
 
 def test_make_snapshot_search_args_underscore():

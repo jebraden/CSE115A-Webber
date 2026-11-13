@@ -114,11 +114,13 @@ def _read_until(
 
 
 class Word(NamedTuple):
+    leading_whitespace: int
     original_length: int
     value: str
 
 
 class KeywordAndValue(NamedTuple):
+    leading_whitespace: int
     original_length: int
     key: str
     value: str
@@ -143,12 +145,12 @@ def _parse_query_term(text: str, start: int, end: int) -> Term | None:
     delim, key_read, key = _read_until({":", " "}, text, start, end)
 
     if delim != ":":
-        return Word(consumed_whitespace + key_read, key)
+        return Word(consumed_whitespace, key_read, key)
 
     _, val_read, val = _read_until({" "}, text, start + key_read + 1, end)
 
     return KeywordAndValue(
-        consumed_whitespace + key_read + 1 + val_read, key, val
+        consumed_whitespace, key_read + 1 + val_read, key, val
     )
 
 
@@ -207,7 +209,9 @@ class QueryParser:
                 case KeywordKind.LIST:
                     keywords[key][1].append(converted)
         else:
-            raise QuerySyntaxError(text, start, length, "Unknown keyword")
+            raise QuerySyntaxError(
+                text, start, length, f"Unknown keyword: {key!r}"
+            )
 
     def parse(
         self, text: str, start: Optional[int] = None, end: Optional[int] = None
@@ -232,12 +236,12 @@ class QueryParser:
             match _parse_query_term(text, i, end):
                 case None:
                     break
-                case Word(length, val):
+                case Word(whitespace, length, val):
                     words.append(val)
-                    i += length
-                case KeywordAndValue(length, key, val):
+                    i += whitespace + length
+                case KeywordAndValue(whitespace, length, key, val):
                     self._handle_keyword(
-                        words, keywords, text, i, length, key, val
+                        words, keywords, text, i + whitespace, length, key, val
                     )
-                    i += length
+                    i += whitespace + length
         return ParsedQuery(words, {k: v for k, (_, v) in keywords.items()})

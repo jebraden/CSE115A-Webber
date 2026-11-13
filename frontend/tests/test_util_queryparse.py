@@ -213,6 +213,7 @@ class TestParseQueryTerm:
         result = _parse_query_term("hello", 0, 5)
         assert isinstance(result, Word)
         assert result.value == "hello"
+        assert result.leading_whitespace == 0
         assert result.original_length == 5
 
     def test_keyword_and_value(self):
@@ -228,6 +229,7 @@ class TestParseQueryTerm:
         assert result.key == "key"
         # Space is a delimiter, so value stops at first space
         assert result.value == "hello"
+        assert result.leading_whitespace == 0
         assert result.original_length == 9
 
     def test_empty_text(self):
@@ -243,6 +245,7 @@ class TestParseQueryTerm:
         assert isinstance(result, Word)
         assert result.value == "hello"
         # Note: length does not include the space delimiter
+        assert result.leading_whitespace == 0
         assert result.original_length == 5
 
     def test_leading_whitespace(self):
@@ -250,7 +253,8 @@ class TestParseQueryTerm:
         result = _parse_query_term("  hello", 0, 7)
         assert isinstance(result, Word)
         assert result.value == "hello"
-        assert result.original_length == 7  # includes 2 spaces
+        assert result.leading_whitespace == 2
+        assert result.original_length == 5
 
 
 class TestParsedQuery:

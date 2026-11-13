@@ -49,21 +49,44 @@ class Ui_Calendar(object):
 
         self.horizontalLayout.addWidget(self.search_box)
 
-        self.pushButton = QPushButton(Calendar)
-        self.pushButton.setObjectName(u"pushButton")
+        self.search_button = QPushButton(Calendar)
+        self.search_button.setObjectName(u"search_button")
         sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         sizePolicy2.setHorizontalStretch(0)
         sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.pushButton.sizePolicy().hasHeightForWidth())
-        self.pushButton.setSizePolicy(sizePolicy2)
+        sizePolicy2.setHeightForWidth(self.search_button.sizePolicy().hasHeightForWidth())
+        self.search_button.setSizePolicy(sizePolicy2)
 
-        self.horizontalLayout.addWidget(self.pushButton)
+        self.horizontalLayout.addWidget(self.search_button)
 
 
         self.verticalLayout_2.addLayout(self.horizontalLayout)
 
         self.stacked = QStackedWidget(Calendar)
         self.stacked.setObjectName(u"stacked")
+        self.searching_page = QWidget()
+        self.searching_page.setObjectName(u"searching_page")
+        self.verticalLayout_6 = QVBoxLayout(self.searching_page)
+        self.verticalLayout_6.setObjectName(u"verticalLayout_6")
+        self.label_5 = QLabel(self.searching_page)
+        self.label_5.setObjectName(u"label_5")
+        sizePolicy1.setHeightForWidth(self.label_5.sizePolicy().hasHeightForWidth())
+        self.label_5.setSizePolicy(sizePolicy1)
+        font = QFont()
+        font.setPointSize(26)
+        self.label_5.setFont(font)
+        self.label_5.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.verticalLayout_6.addWidget(self.label_5, 0, Qt.AlignmentFlag.AlignBottom)
+
+        self.cancel_button = QPushButton(self.searching_page)
+        self.cancel_button.setObjectName(u"cancel_button")
+        sizePolicy2.setHeightForWidth(self.cancel_button.sizePolicy().hasHeightForWidth())
+        self.cancel_button.setSizePolicy(sizePolicy2)
+
+        self.verticalLayout_6.addWidget(self.cancel_button, 0, Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignTop)
+
+        self.stacked.addWidget(self.searching_page)
         self.results_page = QWidget()
         self.results_page.setObjectName(u"results_page")
         self.verticalLayout = QVBoxLayout(self.results_page)
@@ -101,9 +124,9 @@ class Ui_Calendar(object):
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.label_3 = QLabel(self.no_search_page)
         self.label_3.setObjectName(u"label_3")
-        font = QFont()
-        font.setPointSize(36)
-        self.label_3.setFont(font)
+        font1 = QFont()
+        font1.setPointSize(36)
+        self.label_3.setFont(font1)
         self.label_3.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.verticalLayout_3.addWidget(self.label_3)
@@ -115,7 +138,7 @@ class Ui_Calendar(object):
         self.verticalLayout_4.setObjectName(u"verticalLayout_4")
         self.label_4 = QLabel(self.no_results_page)
         self.label_4.setObjectName(u"label_4")
-        self.label_4.setFont(font)
+        self.label_4.setFont(font1)
         self.label_4.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.verticalLayout_4.addWidget(self.label_4)
@@ -127,9 +150,9 @@ class Ui_Calendar(object):
         self.verticalLayout_5.setObjectName(u"verticalLayout_5")
         self.error_label = QLabel(self.error_page)
         self.error_label.setObjectName(u"error_label")
-        font1 = QFont()
-        font1.setPointSize(20)
-        self.error_label.setFont(font1)
+        font2 = QFont()
+        font2.setPointSize(20)
+        self.error_label.setFont(font2)
         self.error_label.setStyleSheet(u"QLabel {\n"
 "	color: rgb(255, 0, 0);\n"
 "}")
@@ -139,6 +162,9 @@ class Ui_Calendar(object):
 
         self.error_content = QPlainTextEdit(self.error_page)
         self.error_content.setObjectName(u"error_content")
+        font3 = QFont()
+        font3.setFamilies([u"DejaVu Sans Mono"])
+        self.error_content.setFont(font3)
         self.error_content.setFrameShape(QFrame.Shape.NoFrame)
         self.error_content.setFrameShadow(QFrame.Shadow.Plain)
         self.error_content.setUndoRedoEnabled(False)
@@ -153,7 +179,7 @@ class Ui_Calendar(object):
 
         self.retranslateUi(Calendar)
 
-        self.stacked.setCurrentIndex(0)
+        self.stacked.setCurrentIndex(4)
 
 
         QMetaObject.connectSlotsByName(Calendar)
@@ -162,7 +188,9 @@ class Ui_Calendar(object):
     def retranslateUi(self, Calendar):
         Calendar.setWindowTitle(QCoreApplication.translate("Calendar", u"Form", None))
         self.label.setText(QCoreApplication.translate("Calendar", u"Search:", None))
-        self.pushButton.setText(QCoreApplication.translate("Calendar", u"Search", None))
+        self.search_button.setText(QCoreApplication.translate("Calendar", u"Search", None))
+        self.label_5.setText(QCoreApplication.translate("Calendar", u"Searching...", None))
+        self.cancel_button.setText(QCoreApplication.translate("Calendar", u"Cancel", None))
         self.label_2.setText(QCoreApplication.translate("Calendar", u"Year:", None))
         self.label_3.setText(QCoreApplication.translate("Calendar", u"Use the field above to search.", None))
         self.label_4.setText(QCoreApplication.translate("Calendar", u"No snapshots matched your search.", None))

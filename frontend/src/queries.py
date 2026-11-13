@@ -3,6 +3,7 @@ Query definitions for the frontend.
 """
 
 from typing import Any
+import re
 
 from .util.queryparse import QueryParser, QueryKeyword, KeywordKind
 from .util.parsedatetime import parse_timespec
@@ -36,5 +37,5 @@ def make_snapshot_search_args(query: str) -> dict[str, Any]:
     elif res.keywords["regexp"] is not None:
         out["url"] = res.keywords["regexp"]
     elif res.words:
-        out["url"] = " *" + " *".join(res.words) + " *"
+        out["url"] = " *" + " *".join(map(re.escape, res.words)) + " *"
     return out
