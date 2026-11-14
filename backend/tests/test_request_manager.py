@@ -737,27 +737,73 @@ class TestDeleteSnapshot:
         path2 = tmp_path / "snap-2" / "2.html"
         path2.parent.mkdir(parents=True, exist_ok=True)
         path2.write_bytes(b"b")
-        path3 = tmp_path / "snap-3" / "1.html"
-        path3.parent.mkdir(parents=True, exist_ok=True)
-        path3.write_bytes(b"b")
 
         insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
         insert_file(file_id="file-2", snapshot_id="snap-2", on_disk_path=str(path2))
-        insert_file(file_id="file-3", snapshot_id="snap-3", on_disk_path=str(path3))
 
         res, status = manager.delete_snapshots(request)
         assert status == 202
         assert not path1.exists()
         assert not path2.exists()
-        assert not path3.exists()
 
         _, fstatus1 = manager.get_file("file-1")
         _, fstatus2 = manager.get_file("file-2")
-        _, fstatus3 = manager.get_file("file-3")
+
+        assert fstatus1 == 404
+        assert fstatus2 == 404
 
         _, sstatus1 = manager.get_snapshot("snap-1")
-        _, sstatus1 = manager.get_snapshot("snap-2")
-        _, sstatus1 = manager.get_snapshot("snap-3")
+        _, sstatus2 = manager.get_snapshot("snap-2")
+        _, sstatus3 = manager.get_snapshot("snap-3")
+        assert sstatus1 == 404
+        assert sstatus2 == 404
+        assert sstatus3 == 404
+
+
+
+    def test_batch_delete_delete_fail(self, test_conn, insert_snapshot, insert_file, monkeypatch):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(snapshot_id="snap-1")
+        test_conn.execute(
+                """
+                CREATE TRIGGER prevent_snapshot_delete
+                BEFORE DELETE ON snapshots
+                BEGIN
+                    SELECT RAISE(ABORT, 'born to fail');
+                END;
+                """
+        )
+        cleanup_called = False
+        def mock_cleanup(self, snapshot_id):
+            nonlocal cleanup_called
+            cleanup_called = True
+
+        monkeypatch.setattr(RequestManager, "_delete_snapshot_files", mock_cleanup)
+      
+        request = MockRequest()
+        request.json_dat = {
+            "ids": ["snap-1"]
+        }
+
+
+        manager = RequestManager(db_conn=test_conn)
+        resp, status = manager.delete_snapshots(request)
+
+        assert status == 500
+        assert not cleanup_called
+
+        _, sstatus1 = manager.get_snapshot("snap-1")
+        assert sstatus1 == 200
+
+        cleanup_called = False
+
+        # Logically guaranteed we do not touch the DB if we return a 400.
+        resp, status = manager.delete_snapshots(MockRequest())
+        assert status == 400
+        assert not cleanup_called
+
+
+        
 
 
 
