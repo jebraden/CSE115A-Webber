@@ -64,7 +64,7 @@ _DATETIME_RE = _build_regex(
 def _days_for_month(m: int, y: int) -> int:
     if m == 2:
         return 29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28
-    elif m in {1, 3, 5, 7, 8, 10}:
+    elif m in {1, 3, 5, 7, 8, 10, 12}:
         return 31
     else:
         return 30
