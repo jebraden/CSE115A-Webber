@@ -62,7 +62,7 @@ class RequestManager():
         # Parameters validated
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
-        with write_lock:
+        with RequestManager.write_lock:
             snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
@@ -95,7 +95,7 @@ class RequestManager():
         db = self.db 
         try:
             
-            with db, writer_lock:
+            with db, RequestManager.write_lock:
                 # Was thinking if we need this initial query
                 # It allows us to be informative, but it really doesn't
                 # change behavior
