@@ -172,6 +172,7 @@ class RequestManager():
                 )
                 logger.info(f"Batch deleted all snapshot entries assosciated with snapshot_ids {snapshot_ids}")
                 db.commit()
+            
         except Exception as e:
             logger.warning(f"delete_snapshops: Encountered unexpected error deleting from the database: {e}")
             return self.internal_server_error(f"Encountered unexpected error deleting from the database")
@@ -189,12 +190,11 @@ class RequestManager():
             logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
             return
         path = os.path.join(base_dir, snapshot_id)
-        if not os.path.exists(path):
-            logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist! Skipping")
-            return
         try:
             shutil.rmtree(path)
             logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")
+        except FileNotFoundError:
+            logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist!")
         except Exception as e:
             logger.warning(f"delete_snapshots: Encountered unexpected error while deleting files on disk for snapshot {snapshot_id} at {str(path)}: {e}")
  
