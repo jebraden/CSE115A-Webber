@@ -182,6 +182,12 @@ class RequestManager():
 
 
     def _delete_snapshot_files(self, snapshot_id: str):
+
+        # There should not be a situation where these characters are in the ID, thus 
+        # they get skipped
+        if "." in snapshot_id or "/" in snapshot_id:
+            logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
+            return
         path = os.path.join(base_dir, snapshot_id)
         if not os.path.exists(path):
             logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist! Skipping")

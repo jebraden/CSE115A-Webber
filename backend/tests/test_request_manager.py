@@ -716,6 +716,33 @@ class TestDeleteSnapshot:
         _, status3 = manager.get_snapshot("snap-1")
         assert status3 == 404
 
+    def test_delete_evil_path_no_remove(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "ids": [".", "/", "snap-1/../"]
+        }
+        
+        insert_snapshot("snap-1")
+
+        path1 = tmp_path / "snap-1" / "test.html"
+        path1.parent.mkdir(parents=True, exist_ok=True)
+        path1.write_bytes(b"test")
+
+        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
+
+        res, status = manager.delete_snapshots(request)
+       
+        assert status == 202
+
+        # IF the evil path was deleted, this should be gone too!
+        assert path1.exists()
+        res, status = manager.get_snapshot("snap-1") 
+        assert status == 200
+
     def test_delete_batch_snapshots(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
 
