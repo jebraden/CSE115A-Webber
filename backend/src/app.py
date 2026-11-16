@@ -60,15 +60,16 @@ def create_app(
     app = Flask(__name__)
     app.logger.setLevel(log_level)
 
-    snapshot_conn = sqlite3.connect(db_path)
+    snapshot_conn = sqlite3.connect(db_path, check_same_thread=False)
 
-    query_conn = sqlite3.connect(db_path)
+    query_conn = sqlite3.connect(db_path, check_same_thread=False)
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_path) as db:
         with open(schema, "r") as sql_script:
-            snapshot_conn.executescript(sql_script.read())
-            query_conn.executescript(sql_script.read())
+            schema_data = sql_script.read()
+            snapshot_conn.executescript(schema_data)
+            query_conn.executescript(schema_data)
 
     @app.route("/health")
     def health():
@@ -83,17 +84,18 @@ def create_app(
 
     @app.route("/snapshots/delete", methods=["POST"])
     def delete_snapshots():
-        manager = RequestManager(db_conn=query_conn)
+        manager = RequestManager(db_conn=snapshot_conn)
         resp = manager.delete_snapshots(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        manager = RequestManager(db_conn=query_conn)
         resp = None
         if request.method == "GET":
+            manager = RequestManager(db_conn=query_conn)
             resp = manager.get_snapshot(snapshot_id)
         if request.method == "DELETE":
+            manager = RequestManager(db_conn=snapshot_conn)
             resp = manager.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
@@ -288,3 +290,7 @@ def main():
         _start_waitress(app, **opts["listen"])
     else:
         _start_flask(app, opts["debug"], **opts["listen"])
+
+
+if __name__ == "__main__":
+    main()

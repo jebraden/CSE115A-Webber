@@ -6,6 +6,7 @@ import logging
 import shutil
 import re
 import asyncio
+import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from src.scraping.scraper import PageScraper, HyperlinkRules
 
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
 class RequestManager():
+    write_lock = threading.Lock()
+
     def __init__(self, db_conn=None):
         if db_conn is None:
             db_conn = sqlite3.connect(db_path)
@@ -59,7 +62,8 @@ class RequestManager():
         # Parameters validated
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
-        snap_id = asyncio.run(scraper.archive_page(url))
+        with write_lock:
+            snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
@@ -90,7 +94,8 @@ class RequestManager():
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         try:
-            with db:
+            
+            with db, writer_lock:
                 # Was thinking if we need this initial query
                 # It allows us to be informative, but it really doesn't
                 # change behavior
@@ -146,7 +151,7 @@ class RequestManager():
         db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
-            with db:
+            with db, RequestManager.write_lock:
                 db.execute(
                     f"""
                     DELETE
