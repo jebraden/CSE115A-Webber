@@ -6,6 +6,7 @@ import logging
 import shutil
 import re
 import asyncio
+import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from src.scraping.scraper import PageScraper, HyperlinkRules
 
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
 class RequestManager():
+    write_lock = threading.Lock()
+
     def __init__(self, db_conn=None):
         if db_conn is None:
             db_conn = sqlite3.connect(db_path)
@@ -59,7 +62,8 @@ class RequestManager():
         # Parameters validated
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
-        snap_id = asyncio.run(scraper.archive_page(url))
+        with RequestManager.write_lock:
+            snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
@@ -90,7 +94,11 @@ class RequestManager():
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         try:
-            with db:
+            
+            with db, RequestManager.write_lock:
+                # Was thinking if we need this initial query
+                # It allows us to be informative, but it really doesn't
+                # change behavior
                 row = db.execute(
                     """
                     SELECT * 
@@ -125,12 +133,71 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"delete_snapshot: Encountered unexpected error {e}")
             return self.internal_server_error(f"encountered unexpected error deleting snapshot {snapshot_id}")
-        path = os.path.join(base_dir, snapshot_id)
-        # Should clean up the directory
-        shutil.rmtree(path)
-        logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
+
+        self._delete_snapshot_files(snapshot_id)
+
         return ({}, 202)
 
+    def delete_snapshots(self, request) -> (dict, int):
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
+        snapshot_ids = payload.get("ids", None)
+
+        if snapshot_ids is None:
+            return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
+
+        db = self.db
+        list_placeholder = ", ".join("?" * len(snapshot_ids))
+        try:
+            with db, RequestManager.write_lock:
+                db.execute(
+                    f"""
+                    DELETE
+                    FROM files
+                    WHERE snapshot_id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted file entries assosciated with snapshot_ids {snapshot_ids}")
+
+                db.execute(
+                    f"""
+                    DELETE
+                    from snapshots
+                    WHERE id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted all snapshot entries assosciated with snapshot_ids {snapshot_ids}")
+                db.commit()
+            
+        except Exception as e:
+            logger.warning(f"delete_snapshops: Encountered unexpected error deleting from the database: {e}")
+            return self.internal_server_error(f"Encountered unexpected error deleting from the database")
+
+        for snap_id in snapshot_ids:
+            self._delete_snapshot_files(snap_id)
+        return ({}, 202)
+
+
+    def _delete_snapshot_files(self, snapshot_id: str):
+
+        # There should not be a situation where these characters are in the ID, thus 
+        # they get skipped
+        if "." in snapshot_id or "/" in snapshot_id:
+            logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
+            return
+        path = os.path.join(base_dir, snapshot_id)
+        try:
+            shutil.rmtree(path)
+            logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")
+        except FileNotFoundError:
+            logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist!")
+        except Exception as e:
+            logger.warning(f"delete_snapshots: Encountered unexpected error while deleting files on disk for snapshot {snapshot_id} at {str(path)}: {e}")
+ 
     def get_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         db.row_factory = sqlite3.Row
