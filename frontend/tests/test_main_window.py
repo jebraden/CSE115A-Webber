@@ -51,7 +51,7 @@ def select(window, snapshot_id):
     raise AssertionError(snapshot_id)
 
 
-def test_navigation_embeds_statistics_panel(window):
+def test_US_2_2_T_5_navigation_embeds_statistics_panel(window):
     window.ui.statisticsButton.click()
     assert window.ui.mainStack.currentWidget() is window.ui.statisticsPage
     assert window.statistics_widget is not None
@@ -359,9 +359,10 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
 
 
 @pytest.mark.asyncio
-async def test_embedded_statistics_generates_table_and_graph(window):
+async def test_US_2_2_T_5_embedded_statistics_generates_table_and_graph(window):
     window.ui.statisticsButton.click()
     panel = window.statistics_widget
+    panel.week_radio.click()
     panel.generate_button.click()
     assert panel.task is not None
     await panel.task
@@ -379,6 +380,42 @@ async def test_embedded_statistics_generates_table_and_graph(window):
     window.ui.archivesButton.click()
     window.ui.statisticsButton.click()
     assert panel.stacked_content.currentWidget() is panel.stats_page
+
+
+def test_US_2_2_T_5_sample_label_and_injected_api(window, app, monkeypatch, tmp_path):
+    assert window.statistics_sample_label.text() == "Statistics: sample data"
+    assert window.statusBar().isAncestorOf(window.statistics_sample_label)
+    api = object()
+    settings = QSettings(str(tmp_path / "other.ini"), QSettings.Format.IniFormat)
+    other = main_window.MainWindow(MockSnapshotService([]), demo=True, settings=settings, statistics_api=api)
+    assert other.statistics_widget.api is api
+    assert other.statistics_sample_label is None
+    other.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["cancel", "close"])
+async def test_US_2_2_T_5_cancel_generation(window, action):
+    import asyncio
+
+    panel = window.statistics_widget
+    started = asyncio.Event()
+
+    async def wait_for_statistics():
+        started.set()
+        await asyncio.Event().wait()
+
+    panel._get_staistics = wait_for_statistics
+    panel.generate_button.click()
+    task = panel.task
+    await started.wait()
+    if action == "cancel":
+        panel.cancel_button.click()
+    else:
+        window.close()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert panel.task is None
 
 
 def test_qt_font_chooser_persists_family_style_and_effects(window):

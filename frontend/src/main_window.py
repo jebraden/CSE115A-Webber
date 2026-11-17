@@ -403,6 +403,12 @@ class MainWindow(QMainWindow):
         u.previewLabel = QLabel("Sample archives" if demo else "Local archives")
         u.previewLabel.setObjectName("previewLabel")
         self.statusBar().addPermanentWidget(u.previewLabel)
+        if demo_statistics:
+            self.statistics_sample_label = QLabel("Statistics: sample data")
+            self.statistics_sample_label.setObjectName("statisticsSampleLabel")
+            self.statusBar().addPermanentWidget(self.statistics_sample_label)
+        else:
+            self.statistics_sample_label = None
         self.set_theme(self.settings.value("appearance/theme", "light"), persist=False)
         self._viewing_controls = {
             "zoom": u.pageZoomInput,
