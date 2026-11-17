@@ -1,9 +1,9 @@
 from src.request_manager import RequestManager
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 import src.request_manager
 
 from src.app import create_app
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from flask import Flask, request
 
 import pytest
@@ -139,7 +139,8 @@ class TestBuildPattern:
         assert conds == ["host REGEXP ?"]
         assert vals == [r"example\.com$"]
 
-    def test_omit_empty_pattern(self, test_conn): 
+
+    def test_omit_empty_pattern(self, test_conn):
         manager = RequestManager(test_conn)
         conds = []
         vals = []
@@ -223,6 +224,96 @@ class TestFileFromRow:
         )
         assert status == 500
         assert "message" in resp
+
+class MockScraper:
+    def __init__(self, db_conn=None, debug=False, hyperlink_rules=HyperlinkRules(), snapshot_url=None, depth=0):
+        self.db = db_conn
+        self.archive_page = AsyncMock(return_value="snap-1")
+        self.snapshot_url = snapshot_url
+        self.depth = depth
+        self.hyperlink_rules = hyperlink_rules
+
+
+
+class TestCreateSnapshot:
+    def test_create_basic(self, monkeypatch, test_db, insert_snapshot, test_conn):
+        instances = []
+        original_init = MockScraper.__init__
+
+
+        def capture_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            instances.append(self)
+
+        monkeypatch.setattr(MockScraper, "__init__", capture_init)
+        monkeypatch.setattr("src.request_manager.PageScraper", MockScraper)
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "url": "https://example.com",
+            "request_options": {
+                "method": "GET",
+                "headers": {
+                    "Authorization": ["Basic"]
+                }
+            }
+        }
+
+        resp, status = manager.create_snapshot(request)
+        
+        assert status == 201
+        assert resp == {"id": "snap-1"}
+
+        assert len(instances) == 1
+        rules = instances[0].hyperlink_rules
+        assert rules.max_depth == 0
+        assert rules.top_domain_only == True
+        assert rules.blacklist_domains == set()
+        assert rules.whitelist_domains == set()
+
+    def test_create_with_rules(self, monkeypatch, test_db, insert_snapshot, test_conn):
+        instances = []
+        original_init = MockScraper.__init__
+
+
+        def capture_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            instances.append(self)
+
+        monkeypatch.setattr(MockScraper, "__init__", capture_init)
+        monkeypatch.setattr("src.request_manager.PageScraper", MockScraper)
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "url": "https://example.com",
+            "request_options": {
+                "method": "GET",
+                "headers": {
+                    "Authorization": ["Basic"],
+                },
+            },
+            "crawl": {
+                "enable": True,
+                "top_level_only": False,
+                "depth": 9,
+                "whitelist_domains": ["some_domain"],
+                "blacklist_domains": ["some_other"]
+            }
+        }
+
+        resp, status = manager.create_snapshot(request)
+        
+        assert status == 201
+        assert resp == {"id": "snap-1"}
+
+        assert len(instances) == 1
+        rules = instances[0].hyperlink_rules
+        assert rules.max_depth == 9
+        assert rules.top_domain_only == False
+        assert rules.blacklist_domains == {"some_other"}
+        assert rules.whitelist_domains == {"some_domain"}
 
 class TestGetSnapshot:
     def test_snapshot_with_files(self, test_db, insert_snapshot, insert_file, test_conn):
@@ -483,7 +574,6 @@ class TestQueryFiles:
 
         res, status = manager.query_files(request)
     
-        print(res["content"])
         assert status == 200
         assert res["content"] ==[
             {"snapshot_id": "snap-1", "file_id": "file-1"}
@@ -598,17 +688,20 @@ class TestQueryFiles:
         ]
 
 class TestDeleteSnapshot:
-    def delete_not_exist(self, test_conn):
+    def test_delete_not_exist(self, test_conn):
         manager = RequestManager(test_conn)
         resp, status = manager.delete_snapshot("snap-1")
         assert status == 404
 
-    def delete_exist_has_files(self, tmp_path, insert_snapshot, insert_file, test_conn):
+    def test_delete_exist_has_files(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
         manager = RequestManager(test_conn)
 
         insert_snapshot(snapshot_id="snap-1")
 
-        path = tmp_path / "test.html"
+        path = tmp_path / "snap-1" / "test.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"hello")
 
         insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path))
@@ -620,8 +713,127 @@ class TestDeleteSnapshot:
         _, status2 = manager.get_file("file-1")
         assert status2 == 404
 
-        _, status3 = maager.get_snapshot("snap-1")
+        _, status3 = manager.get_snapshot("snap-1")
         assert status3 == 404
+
+    def test_delete_evil_path_no_remove(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "ids": [".", "/", "snap-1/../"]
+        }
+        
+        insert_snapshot("snap-1")
+
+        path1 = tmp_path / "snap-1" / "test.html"
+        path1.parent.mkdir(parents=True, exist_ok=True)
+        path1.write_bytes(b"test")
+
+        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
+
+        res, status = manager.delete_snapshots(request)
+       
+        assert status == 202
+
+        # IF the evil path was deleted, this should be gone too!
+        assert path1.exists()
+        res, status = manager.get_snapshot("snap-1") 
+        assert status == 200
+
+    def test_delete_batch_snapshots(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager(test_conn)
+
+        request = MockRequest()
+        request.json_dat = {
+            "ids": ["snap-1", "snap-2", "snap-3"]
+        }
+
+
+        insert_snapshot("snap-1")
+        insert_snapshot("snap-2")
+        insert_snapshot("snap-3")
+
+        path1 = tmp_path / "snap-1" / "3.html"
+        path1.parent.mkdir(parents=True, exist_ok=True)
+        path1.write_bytes(b"b") 
+        path2 = tmp_path / "snap-2" / "2.html"
+        path2.parent.mkdir(parents=True, exist_ok=True)
+        path2.write_bytes(b"b")
+
+        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
+        insert_file(file_id="file-2", snapshot_id="snap-2", on_disk_path=str(path2))
+
+        res, status = manager.delete_snapshots(request)
+        assert status == 202
+        assert not path1.exists()
+        assert not path2.exists()
+
+        _, fstatus1 = manager.get_file("file-1")
+        _, fstatus2 = manager.get_file("file-2")
+
+        assert fstatus1 == 404
+        assert fstatus2 == 404
+
+        _, sstatus1 = manager.get_snapshot("snap-1")
+        _, sstatus2 = manager.get_snapshot("snap-2")
+        _, sstatus3 = manager.get_snapshot("snap-3")
+        assert sstatus1 == 404
+        assert sstatus2 == 404
+        assert sstatus3 == 404
+
+
+
+    def test_batch_delete_delete_fail(self, test_conn, insert_snapshot, insert_file, monkeypatch):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(snapshot_id="snap-1")
+        test_conn.execute(
+                """
+                CREATE TRIGGER prevent_snapshot_delete
+                BEFORE DELETE ON snapshots
+                BEGIN
+                    SELECT RAISE(ABORT, 'born to fail');
+                END;
+                """
+        )
+        cleanup_called = False
+        def mock_cleanup(self, snapshot_id):
+            nonlocal cleanup_called
+            cleanup_called = True
+
+        monkeypatch.setattr(RequestManager, "_delete_snapshot_files", mock_cleanup)
+      
+        request = MockRequest()
+        request.json_dat = {
+            "ids": ["snap-1"]
+        }
+
+
+        manager = RequestManager(db_conn=test_conn)
+        resp, status = manager.delete_snapshots(request)
+
+        assert status == 500
+        assert not cleanup_called
+
+        _, sstatus1 = manager.get_snapshot("snap-1")
+        assert sstatus1 == 200
+
+        cleanup_called = False
+
+        # Logically guaranteed we do not touch the DB if we return a 400.
+        resp, status = manager.delete_snapshots(MockRequest())
+        assert status == 400
+        assert not cleanup_called
+
+
+        
+
+
+
 
 
 class TestProcessInterval:
@@ -653,18 +865,21 @@ class TestProcessInterval:
             file_id="file-1",
             snapshot_id="snap-1",
             on_disk_path=str(file1),
+            file_size=os.path.getsize(file1),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-2",
             snapshot_id="snap-1",
             on_disk_path=str(file2),
+            file_size=os.path.getsize(file2),
             host="cdn.example.com",
         )
         insert_file(
             file_id="file-3",
             snapshot_id="snap-2",
             on_disk_path=str(file3),
+            file_size=os.path.getsize(file3),
             host="example.com",
         )
         db = sqlite3.connect(test_db)
@@ -803,6 +1018,44 @@ class TestFlaskRoutes:
 
         assert resp.status_code == 200
         assert resp2.status_code == 404
+
+    def test_query_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1", start_time=400)
+    
+        body = {"start_time": {"sec": 300, "nsec": 0}}
+        resp = self.client.open(
+            "/search/snapshots",
+            method="QUERY",
+            json={"host": "example.com"}
+        )
+        assert resp.status_code == 200
+
+        assert resp.json is not None
+        assert resp.get_json()[0] == "snap-1"
+
+    def test_delete_snapshot(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1")
+
+        resp = self.client.delete("/snapshots/snap-1")
+        assert resp.status_code == 202
+
+        resp2 = self.client.delete("/snapshots/snap-2")
+        assert resp2.status_code == 404
+
+    def test_delete_snapshots(self, insert_snapshot):
+        self.setup()
+        insert_snapshot(snapshot_id="snap-1")
+        insert_snapshot(snapshot_id="snap-2")
+
+        body = {"ids": ["snap-1", "snap-2"]}
+
+        resp = self.client.post("snapshots/delete", json=body)
+        assert resp.status_code == 202
+
+        resp = self.client.delete("snapshots/snap-1")
+        assert resp.status_code == 404
 
 
 
