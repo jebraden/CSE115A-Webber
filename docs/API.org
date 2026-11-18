@@ -67,7 +67,7 @@
                   "Authorization": ["Basic ..."], // example, for basic auth
                   "Set-Cookie": ["...", "..."]
               }
-          }
+          },
           // (object, optional) Options for hyperlink scraping
           // NOTE if not present, hyperlinks will not be scraped
           "crawl": {
@@ -77,13 +77,13 @@
               // ie. if url is www.example.com only urls containing "example" in
               // the host are allowed.
               // NOTE that outside domains may be allowed through whitelist_domains option
-              "top_level_only": true
+              "top_level_only": true,
               // (integer, optional) maximum depth
               // default: 1
               // NOTE maximum depth must be a positive integer.
               // Infinite depth is asking for trouble to happen as we may continue infinitely
               "depth": 1,
-              // (array of strings, optional) whitelisted domains to bypass top_level_only 
+              // (array of strings, optional) whitelisted domains to bypass top_level_only
               // default: empty set
               // NOTE does nothing if top_level_only is false
               "whitelist_domains": ["example", "cookiebot"],
@@ -92,20 +92,6 @@
               // NOTE does nothing if top_level_only is true
               "blacklist_domains": ["cookiebot", "facebook"]
           }
-          // Example of something that might be added in a future sprint
-          // TODO (object) Crawing options
-          // "crawl": {
-          //     // (boolean) do crawing
-          //     "enable": true,
-          //     // NOTE that one of the following (`depth` or `limit_hosts`) is
-          //     // required.
-          //     // (integer, optional) maximum depth
-          //     // default: infinity
-          //     "depth": 3,
-          //     // (array of strings, optional) hosts to scan (supports globs)
-          //     // default: ["*"]
-          //     "limit_hosts": ["www.example.com", "example.com", "*.abc.com"]
-          // }
       }
     #+end_src
 *** Success Response
@@ -477,6 +463,7 @@
     #+end_src
 *** Error Response
     Only the global error responses defined above apply.
+
 ** GET =/statistics/limits=
 *** Request
     Get requests have empty bodies.
@@ -495,3 +482,84 @@
     #+end_src
 *** Error Response
     Only the global error responses defined above apply.
+
+** POST =/bookmarks/create=
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) user-friendly name of the bookmark
+          "name": "...",
+          // NOTE, exactly one of the following must be specified
+          // (string, optional) ID of the file this bookmark points to
+          "file_id": "...",
+          // (string, optional) ID of the snapshot this bookmark points to
+          "snapshot_id": "..."
+      }
+    #+end_src
+*** Success Response
+    Code: 201 (Created) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) ID of the bookmark
+          "id": "..."
+      }
+    #+end_src
+*** Error Response
+    Only the global error responses defined above apply.
+
+** QUERY =/search/bookmarks=
+   Make a general query for a list of bookmarks.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string, optional) ID of the bookmark
+          "id": "...",
+          // (string, optional) regexp name to match for the bookmark
+          "name": "...",
+          // NOTE these refer only to the object directly pointed to by the
+          // bookmark. That is, searching for a specific SNAPSHOT_ID does not
+          // also return all files pointed to by that snapshot.
+          // (string, optional) snapshot ID the bookmark points to
+          "snapshot_id": "",
+          // (string, optional) file ID the bookmark points to
+          "file_id": "",
+      }
+    #+end_src
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      // (array of string) bookmark IDs that matched the above search
+      [
+          "...",
+          "..."
+      ]
+    #+end_src
+*** Error Responses
+    Only the global error responses defined above apply.
+
+** DELETE =/bookmarks/{BOOKMARK_ID}=
+   Delete the bookmark identified by =BOOKMARK_ID=.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {}
+    #+end_src
+*** Success Response
+    Code: 202 \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {}
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =BOOKMARK_ID= refers to a non-existent bookmark.
+
+      #+begin_src json-ts
+        {}
+      #+end_src

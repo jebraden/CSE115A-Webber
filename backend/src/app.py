@@ -11,12 +11,11 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager 
+from src.request_manager import RequestManager
 
+base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
+db_path = os.path.join(base_dir, "archive.db")
 
-
-base_dir = os.path.join(os.getenv("HOME"), ".webber")
-db_path = os.path.join(base_dir, "archive.db") 
 
 def _setup_die_with_parent(ppid: int | None):
     if ppid is None:
@@ -90,7 +89,6 @@ def create_app(
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        resp = None
         if request.method == "GET":
             manager = RequestManager(db_conn=query_conn)
             resp = manager.get_snapshot(snapshot_id)
@@ -98,7 +96,6 @@ def create_app(
             manager = RequestManager(db_conn=snapshot_conn)
             resp = manager.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
-
 
     @app.route("/files/<string:file_id>", methods=["GET"])
     def get_file_info(file_id: str):
@@ -118,7 +115,7 @@ def create_app(
         return Response(
             data["body"],
             status=data["status"],
-            content_type=data["content_type"]
+            content_type=data["content_type"],
         )
 
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
@@ -133,7 +130,7 @@ def create_app(
         return Response(
             data["body"],
             status=data["status"],
-            content_type=data["content_type"]
+            content_type=data["content_type"],
         )
 
     @app.route("/search/snapshots", methods=["QUERY"])
@@ -150,7 +147,7 @@ def create_app(
     def query_files():
         resp = None
         manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_files(request) 
+        resp = manager.query_files(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -171,11 +168,6 @@ def create_app(
         return jsonify(resp[0]), resp[1]
 
     return app
-
-
-
-
-
 
 
 def _handle_options() -> dict[str, Any]:
