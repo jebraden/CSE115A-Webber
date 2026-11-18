@@ -71,7 +71,7 @@ class RequestManager():
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn=self.db, hyperlink_rules=rules)
         try:
-            snap_id = asyncio.run(asyncio.wait_for(scraper.archive_page(url), timeout=120))
+            snap_id = asyncio.run(scraper.archive_page(url))
         except (TimeoutError, ScrapeTimeout):
             self.db.rollback()
             return {"message": "Archiving timed out. Check your archives before retrying."}, 504

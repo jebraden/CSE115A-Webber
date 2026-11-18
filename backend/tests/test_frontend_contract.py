@@ -4,9 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 from threading import Event, Lock, Thread
 from time import sleep
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from playwright.async_api import TimeoutError as ScrapeTimeout
 from werkzeug.serving import make_server
 
 from src.app import close_archive_database, create_app
@@ -198,19 +200,56 @@ def test_statistics_limits_use_the_configured_collection(live_backend):
     assert statistics.json()["statistics"][0]["files"] == 2
 
 
-def test_failed_scrape_rolls_back_snapshot(live_backend, monkeypatch):
+def test_recursive_capture_is_not_cut_off_by_a_total_deadline(live_backend, monkeypatch):
+    from src import request_manager
+
+    async def accelerated_deadline(capture, timeout):
+        return await asyncio.wait_for(capture, timeout=0)
+
+    # Accelerate the old deadline without sleeping for two minutes in CI.
+    monkeypatch.setattr(request_manager, "asyncio", SimpleNamespace(
+        run=asyncio.run, wait_for=accelerated_deadline,
+    ))
+
+    class RecursiveScraper:
+        def __init__(self, db_conn, hyperlink_rules):
+            self.db = db_conn
+            assert hyperlink_rules.max_depth == 1
+
+        async def archive_page(self, url):
+            await asyncio.sleep(0)
+            self.db.execute("INSERT INTO snapshots VALUES ('recursive', ?, 100, 101)", (url,))
+            self.db.commit()
+            return "recursive"
+
+    monkeypatch.setattr(request_manager, "PageScraper", RecursiveScraper)
+    base_url, _ = live_backend
+    response = httpx.post(
+        base_url + "/snapshots/create",
+        json={"url": "https://example.org", "crawl": {"enable": True, "depth": 1}},
+        trust_env=False,
+    )
+    assert response.status_code == 201
+    assert response.json() == {"id": "recursive"}
+
+
+@pytest.mark.parametrize("failure,status,message", [
+    (RuntimeError, 500, "Internal Server Error: Could not archive this page"),
+    (ScrapeTimeout, 504, "Archiving timed out"),
+])
+def test_failed_scrape_rolls_back_snapshot(live_backend, monkeypatch, failure, status, message):
     from src import request_manager
     class FailedScraper:
         def __init__(self, db_conn, **kwargs):
             self.db = db_conn
         async def archive_page(self, url):
             self.db.execute("INSERT INTO snapshots VALUES ('failed', ?, 100, 100)", (url,))
-            raise RuntimeError("Simulated scrape failure")
+            raise failure("Simulated scrape failure")
     monkeypatch.setattr(request_manager, "PageScraper", FailedScraper)
     base_url, root = live_backend
     response = httpx.post(base_url + "/snapshots/create", json={"url":"https://example.org/"}, trust_env=False)
-    assert response.status_code == 500
-    assert response.json()["message"].startswith("Internal Server Error: Could not archive this page")
+    assert response.status_code == status
+    assert response.json()["message"].startswith(message)
     with sqlite3.connect(root / "archive.db") as db:
         assert db.execute("SELECT count(*) FROM snapshots").fetchone()[0] == 0
 
