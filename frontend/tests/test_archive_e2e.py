@@ -13,7 +13,7 @@ import time
 
 import pytest
 import PySide6.QtAsyncio as QtAsyncio
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QSettings, QTimer, QUrl
 from PySide6.QtWidgets import QApplication
 
 from frontend.src.archive_service import ArchiveService
@@ -102,7 +102,12 @@ def test_2_2_1_capture_search_offline_view_and_restart(tmp_path):
             await until(lambda: window._search_request is None and not window._debounce.isActive())
             assert window.ui.snapshotList.count() == 1
             window.ui.snapshotList.setCurrentRow(0)
+            viewer = window.viewer
+            page_loads = []
+            viewer.loadFinished.connect(lambda ok: page_loads.append((viewer.url(), ok)))
             await until(lambda: window._snapshot is not None and window._tabs[window._snapshot.id]["available"])
+            document = window._tabs[window._snapshot.id]["document"]
+            await until(lambda: (QUrl(document.url), True) in page_loads)
             deadline = time.monotonic() + 15
             while await javascript('document.querySelector("#picture")?.naturalWidth || 0') != 64:
                 assert time.monotonic() < deadline
