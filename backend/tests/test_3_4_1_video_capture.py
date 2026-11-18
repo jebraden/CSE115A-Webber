@@ -1,6 +1,7 @@
 """Exercise the scraper's response handler against a real recovery server."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 from pathlib import Path
 import sqlite3
 from threading import Thread
@@ -102,25 +103,29 @@ def assert_saved_video(db, expected_status):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("content_range,status", [(None, 200), ("bytes 0-127/128", 206)])
-async def test_3_4_1_saves_complete_video_without_retry(capture, video_origin, content_range, status):
+async def test_3_4_1_saves_complete_video_without_retry(capture, video_origin, content_range, status, caplog):
     scraper, db, _ = capture
     origin, requests = video_origin
     record_response(scraper, origin + "/full.mp4", "video/mp4", VIDEO, content_range)
-    await scraper._drain_tasks()
+    with caplog.at_level(logging.DEBUG, logger=scraper_module.__name__):
+        await scraper._drain_tasks()
 
     assert_saved_video(db, status)
     assert requests == []
+    assert "Response body read for" in caplog.text
+    assert "Full video recovery for" not in caplog.text
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("subtype", ["mp4", "webm"])
-async def test_3_4_1_recovers_one_complete_video_from_concurrent_ranges(capture, video_origin, subtype):
+async def test_3_4_1_recovers_one_complete_video_from_concurrent_ranges(capture, video_origin, subtype, caplog):
     scraper, db, _ = capture
     origin, requests = video_origin
     url = f"{origin}/retry.{subtype}"
     for _ in range(3):
         record_response(scraper, url, f"video/{subtype}", MIDDLE, PARTIAL_RANGE)
-    await scraper._drain_tasks()
+    with caplog.at_level(logging.DEBUG, logger=scraper_module.__name__):
+        await scraper._drain_tasks()
 
     headers = assert_saved_video(db, 200)
     assert "content-range" not in headers
@@ -128,6 +133,7 @@ async def test_3_4_1_recovers_one_complete_video_from_concurrent_ranges(capture,
     [request] = requests
     assert "Range" not in request
     assert request["Referer"] == "https://example.org/"
+    assert f"Full video recovery for {url} took" in caplog.text
 
 
 @pytest.mark.asyncio

@@ -169,6 +169,14 @@ class PageScraper():
         else:
             logger.info("response task complete")
 
+    @staticmethod
+    async def _read_response_body(response):
+        started = time.perf_counter()
+        try:
+            return await response.body()
+        finally:
+            logger.debug("Response body read for %s took %.3f s", response.url, time.perf_counter() - started)
+
     async def _recover_video(self, url, mime, request_headers, expected_size):
         """Try to obtain a complete video without buffering an unbounded response."""
         if expected_size is not None and not 0 < expected_size <= VIDEO_RECOVERY_MAX_BYTES:
@@ -179,6 +187,7 @@ class PageScraper():
             for value in request_headers.get(name, [])
         ]
         headers.append(("accept-encoding", "identity"))
+        started = time.perf_counter()
         try:
             async with asyncio.timeout(VIDEO_RECOVERY_TIMEOUT):
                 async with httpx.AsyncClient() as client:
@@ -210,6 +219,8 @@ class PageScraper():
         except (TimeoutError, httpx.HTTPError, ValueError) as error:
             logger.debug("Full video request failed for %s: %s", url, error)
             return None
+        finally:
+            logger.debug("Full video recovery for %s took %.3f s", url, time.perf_counter() - started)
 
     async def handle_response(self, response):
         """
@@ -263,7 +274,7 @@ class PageScraper():
                 if match:
                     start, end, expected_size = map(int, match.groups())
                     if start == 0 and end + 1 == expected_size:
-                        complete_range = await response.body()
+                        complete_range = await self._read_response_body(response)
                         if len(complete_range) == expected_size:
                             body = complete_range
                 if body is None:
@@ -288,7 +299,7 @@ class PageScraper():
                     response_status = download.status_code
                     content_type = download.headers["content-type"]
             else:
-                body = await response.body()
+                body = await self._read_response_body(response)
 
             # Other range tasks can finish while the recovery GET is running.
             if mime in VIDEO_TYPES and url in self.saved_urls:
