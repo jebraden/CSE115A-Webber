@@ -218,7 +218,7 @@ class WebberBackend:
     )
 
     def _build_arguments(self) -> list[str]:
-        ppid = os.getppid()
+        ppid = os.getpid()
         out: list[str] = [
             sys.executable,
             "-m",

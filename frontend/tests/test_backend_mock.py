@@ -327,6 +327,10 @@ class TestArgumentBuilding:
         args = backend._build_arguments()
         assert "--production" not in args
 
+    def test_backend_receives_launching_process_id(self, backend):
+        args = backend._build_arguments()
+        assert args[args.index("--ppid") + 1] == str(os.getpid())
+
     def test_unix_socket(self, backend):
         """Test Unix socket address parsing."""
         backend.address = "unix:///tmp/test.sock"
