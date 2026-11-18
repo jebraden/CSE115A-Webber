@@ -107,13 +107,13 @@ class _Calendar(QTableWidget):
         alpha = len(bucket) / self._view._most_snapshots_on_day
         return _compose(QColor.fromRgbF(bg.redF(), 0.5, bg.blueF(), alpha), bg)
 
-    def set_year(self, year: int):
-        self._year = year
+    def refresh(self):
         self._items = []
         self.clearContents()
-        month_date = QDate(year, self._month, 1)
+        month_date = QDate(self._year, self._month, 1)
         day_count = month_date.daysInMonth()
-        first_col = month_date.dayOfWeek() - 1
+        first_col_dow = QLocale.system().firstDayOfWeek().value - 1
+        first_col = ((month_date.dayOfWeek() - 1) - first_col_dow) % 7
         first_row = int(first_col == 0)
         size = self._item_size()
         for day in range(day_count):
@@ -128,6 +128,10 @@ class _Calendar(QTableWidget):
                 (first_col + day) % 7,
                 item,
             )
+
+    def set_year(self, year: int):
+        self._year = year
+        self.refresh()
 
     def _date_at_point(self, point: QPoint) -> QDate | None:
         item = self.itemAt(point)
@@ -266,6 +270,10 @@ class CalendarView(Ui_Calendar, QWidget):
             self.search_button.setEnabled(True)
             self._display_error(e)
 
+    def _refresh_calendars(self):
+        for cal in self._calendars.values():
+            cal.refresh()
+
     def _set_results_and_calculate_stats(
         self, infos: list[GetSnapshotResponse]
     ):
@@ -295,6 +303,7 @@ class CalendarView(Ui_Calendar, QWidget):
                 self._first_result_date.year(), self._last_result_date.year()
             )
             self.year_spin.setValue(self._last_result_date.year())
+            self._refresh_calendars()
             self.stacked.setCurrentWidget(self.results_page)
 
     async def _do_search(self, args: dict[str, Any]):

@@ -137,6 +137,7 @@ class TestDaysForMonth:
         assert _days_for_month(7, 2024) == 31
         assert _days_for_month(8, 2024) == 31
         assert _days_for_month(10, 2024) == 31
+        assert _days_for_month(12, 2024) == 31
         # 30-day months
         assert _days_for_month(4, 2024) == 30
         assert _days_for_month(6, 2024) == 30

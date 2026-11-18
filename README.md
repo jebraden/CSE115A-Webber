@@ -35,3 +35,9 @@ The project will involve developing a desktop program that should be able to sup
 
 ## Tech Stack
 Tentatively, we'll probably use Electron for the browser, React or HTML for the UI, Python and Node.js on the backend for scraping, and SQLite for the database. We can also talk and see if there are better alternatives.
+### Integrated frontend (task 2.2.1 preview)
+
+After `make setup` and `make install-browser`, run `make run-frontend` to save,
+search and view real archives, or `make run-demo` for bundled samples. See
+[the integration guide](docs/FRONTEND_INTEGRATION.md) for collection options,
+QtAsyncio execution, dependencies, tests and current limitations.
