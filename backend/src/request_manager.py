@@ -6,8 +6,9 @@ import logging
 import shutil
 import re
 import asyncio
+import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
 class RequestManager():
+    write_lock = threading.Lock()
+
     def __init__(self, db_conn=None):
         if db_conn is None:
             db_conn = sqlite3.connect(db_path)
@@ -41,38 +44,61 @@ class RequestManager():
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        raw_options = payload.get("request_options", None)
+        options_dict = payload.get("request_options", None)
         # Assume that options parameters are... optional
-        if raw_options:
-            try:
-                options_dict = json.loads(raw_options)
-            except json.JSONDecodeError:
-                return self.bad_request("'request-options' contained invalid json. Failed to parse")
         if options_dict:
             method = options_dict.get("method", None)
-            try:
-                raw_headers = options_dict.get("headers", None)
-                if raw_headers:
-                    headers = json.loads(options_dict["headers"])
-            except json.JSONDecodeError:
-                return self.bad_request("'request_options.headers' contained invalid json. Failed to parse")
+            headers = options_dict.get("headers", None)
 
         if url is None:
             return self.bad_request("No url found")
+        rules = None
+        try:
+            rules = self._get_hyperlink_rules(payload)
+        except Exception as e:
+            logger.warning(f"request_manager: create_spapshot: Hit an unexpected error while building hyperlink rules: {str(e)}")
+            return self.internal_server_error("Encountered error parsing crawl options")
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper(db_conn = self.db)
-        snap_id = asyncio.run(scraper.archive_page(url))
+        scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
+        with RequestManager.write_lock:
+            snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
+
+    def _get_hyperlink_rules(self, options: dict) -> HyperlinkRules:
+        crawl_options = options.get("crawl", None)
+        print(f"{crawl_options}")
+        if crawl_options is None or not crawl_options.get("enable", False):
+            return HyperlinkRules(max_depth=0)
+        print(crawl_options.get("depth", f"{-1}"))
+        max_depth = crawl_options.get("depth", 1)
+        if not isinstance(max_depth, int):
+            raise Exception("depth option must be an integer!")
+        top_level_only = crawl_options.get("top_level_only", True)
+        whitelisted = set(crawl_options.get("whitelist_domains", list()))
+        blacklisted = set(crawl_options.get("blacklist_domains", list()))
+
+        return HyperlinkRules(
+            max_depth=max_depth,
+            whitelist_domains=whitelisted,
+            blacklist_domains=blacklisted,
+            top_domain_only=top_level_only 
+        )
+
+
 
 
     def delete_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         try:
-            with db:
+            
+            with db, RequestManager.write_lock:
+                # Was thinking if we need this initial query
+                # It allows us to be informative, but it really doesn't
+                # change behavior
                 row = db.execute(
                     """
                     SELECT * 
@@ -107,12 +133,71 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"delete_snapshot: Encountered unexpected error {e}")
             return self.internal_server_error(f"encountered unexpected error deleting snapshot {snapshot_id}")
-        path = os.path.join(base_dir, snapshot_id)
-        # Should clean up the directory
-        shutil.rmtree(path)
-        logger.info(f"Deleted files on disk for the snapshot {snapshot_id}") 
+
+        self._delete_snapshot_files(snapshot_id)
+
         return ({}, 202)
 
+    def delete_snapshots(self, request) -> (dict, int):
+        payload = request.get_json(silent=True)
+        res = self._json_check(payload)
+        if res: return res
+
+        snapshot_ids = payload.get("ids", None)
+
+        if snapshot_ids is None:
+            return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
+
+        db = self.db
+        list_placeholder = ", ".join("?" * len(snapshot_ids))
+        try:
+            with db, RequestManager.write_lock:
+                db.execute(
+                    f"""
+                    DELETE
+                    FROM files
+                    WHERE snapshot_id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted file entries assosciated with snapshot_ids {snapshot_ids}")
+
+                db.execute(
+                    f"""
+                    DELETE
+                    from snapshots
+                    WHERE id IN ({list_placeholder})
+                    """,
+                    snapshot_ids
+                )
+                logger.info(f"Batch deleted all snapshot entries assosciated with snapshot_ids {snapshot_ids}")
+                db.commit()
+            
+        except Exception as e:
+            logger.warning(f"delete_snapshops: Encountered unexpected error deleting from the database: {e}")
+            return self.internal_server_error(f"Encountered unexpected error deleting from the database")
+
+        for snap_id in snapshot_ids:
+            self._delete_snapshot_files(snap_id)
+        return ({}, 202)
+
+
+    def _delete_snapshot_files(self, snapshot_id: str):
+
+        # There should not be a situation where these characters are in the ID, thus 
+        # they get skipped
+        if "." in snapshot_id or "/" in snapshot_id:
+            logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
+            return
+        path = os.path.join(base_dir, snapshot_id)
+        try:
+            shutil.rmtree(path)
+            logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")
+        except FileNotFoundError:
+            logger.warning(f"delete_snapshots: File path to snapshot {snapshot_id}, {str(path)}, doesn't exist!")
+        except Exception as e:
+            logger.warning(f"delete_snapshots: Encountered unexpected error while deleting files on disk for snapshot {snapshot_id} at {str(path)}: {e}")
+ 
     def get_snapshot(self, snapshot_id: str) -> (dict, int):
         db = self.db 
         db.row_factory = sqlite3.Row
@@ -476,7 +561,7 @@ class RequestManager():
             results = db.execute(
                 f"""
                 SELECT s.id AS snapshot_id, s.url, f.id AS file_id,
-                    f.on_disk_path, f.host
+                    f.on_disk_path, f.host, f.file_size
                 FROM snapshots AS s
                 LEFT JOIN files AS f ON f.snapshot_id = s.id
                 {where_clause}
@@ -501,7 +586,10 @@ class RequestManager():
             if not os.path.isfile(path):
                 logger.warning(f"query_statistics: Unexpected snag: Found file in db {path}, but could not find file on local filesystem")
                 return self.internal_server_error("Hit unexpected error: found path in db not reflected in local storage!")
-            size += os.path.getsize(path)
+            # matches if it is NULL or 0. Good probably
+            if not result["file_size"]: 
+                size += os.path.getsize(path)
+            else: size += result["file_size"]
         return self._build_statistics(interval, len(snap_set), len(file_set), size, len(url_set), len(host_set)), 200
         
 
