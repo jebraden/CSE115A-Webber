@@ -5,7 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
-
+import asyncio
+from PySide6.QtAsyncio import QAsyncioEventLoop
 
 def test_open_archives_and_accept_font_dialog_without_native_crash():
     script = textwrap.dedent("""
@@ -18,6 +19,8 @@ def test_open_archives_and_accept_font_dialog_without_native_crash():
 
         app = QApplication([])
         app.setQuitOnLastWindowClosed(False)
+        loop = QAsyncioEventLoop(app, quit_qapp=False)
+        asyncio.set_event_loop(loop)
         temporary = tempfile.TemporaryDirectory()
         settings = QSettings(temporary.name + "/settings.ini", QSettings.Format.IniFormat)
         window = MainWindow(MockSnapshotService(UI_DEMO_SNAPSHOTS), demo=True, settings=settings)
@@ -31,7 +34,7 @@ def test_open_archives_and_accept_font_dialog_without_native_crash():
             assert window.viewing_preferences["text_size"] == "18 pt"
             completed = True
             window.close()
-            app.quit()
+            loop.stop()
 
         def accept_font():
             dialog = QApplication.activeModalWidget()
@@ -53,8 +56,9 @@ def test_open_archives_and_accept_font_dialog_without_native_crash():
             window.viewer.loadFinished.connect(first_loaded)
 
         QTimer.singleShot(100, begin)
-        QTimer.singleShot(15000, app.quit)
-        app.exec()
+        QTimer.singleShot(15000, loop.stop)
+        loop.run_forever()
+        loop.close()     
         assert completed, "Archive loading/font dialog did not finish"
         print("REAL_ARCHIVE_AND_FONT_DIALOG_OK")
     """)

@@ -7,7 +7,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 from PySide6.QtWidgets import QApplication, QWidget
 from frontend.src.archive_list.service import MockSnapshotService, Snapshot
 from frontend.src import main_window
-from .async_support import until
+from .async_support import until, run
 
 
 class ViewerDouble(QWidget):
@@ -361,28 +361,29 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     assert window._snapshot.id == "missing"
 
 
-@pytest.mark.asyncio
 async def test_US_2_2_T_5_embedded_statistics_generates_table_and_graph(window):
-    window.ui.statisticsButton.click()
-    panel = window.statistics_widget
-    panel.week_radio.click()
-    panel.generate_button.click()
-    assert panel.task is not None
-    await panel.task
-    assert panel.stats is not None
-    assert panel.stacked_content.currentWidget() is panel.stats_page
-    assert panel.generate_button.isEnabled()
-    assert panel.graph._plot_data
-    assert panel.stats_table.item(0, 0).text()
-    for row, field in enumerate(
-        ("snapshots", "files", "size", "urls", "hosts"), start=1
-    ):
-        value = getattr(panel.stats.overall, field)
-        expected = panel._pprint_bytes(value) if field == "size" else str(value)
-        assert panel.stats_table.item(row, 0).text() == expected
-    window.ui.archivesButton.click()
-    window.ui.statisticsButton.click()
-    assert panel.stacked_content.currentWidget() is panel.stats_page
+    async def check():
+        window.ui.statisticsButton.click()
+        panel = window.statistics_widget
+        panel.week_radio.click()
+        panel.generate_button.click()
+        assert panel.task is not None
+        await panel.task
+        assert panel.stats is not None
+        assert panel.stacked_content.currentWidget() is panel.stats_page
+        assert panel.generate_button.isEnabled()
+        assert panel.graph._plot_data
+        assert panel.stats_table.item(0, 0).text()
+        for row, field in enumerate(
+            ("snapshots", "files", "size", "urls", "hosts"), start=1
+        ):
+            value = getattr(panel.stats.overall, field)
+            expected = panel._pprint_bytes(value) if field == "size" else str(value)
+            assert panel.stats_table.item(row, 0).text() == expected
+        window.ui.archivesButton.click()
+        window.ui.statisticsButton.click()
+        assert panel.stacked_content.currentWidget() is panel.stats_page
+    run(QApplication.instance(), check())
 
 
 def test_US_2_2_T_5_sample_label_and_injected_api(window, app, monkeypatch, tmp_path):
@@ -396,29 +397,31 @@ def test_US_2_2_T_5_sample_label_and_injected_api(window, app, monkeypatch, tmp_
     other.close()
 
 
-@pytest.mark.asyncio
+
 @pytest.mark.parametrize("action", ["cancel", "close"])
 async def test_US_2_2_T_5_cancel_generation(window, action):
     import asyncio
 
-    panel = window.statistics_widget
-    started = asyncio.Event()
+    async def check():
+        panel = window.statistics_widget
+        started = asyncio.Event()
 
-    async def wait_for_statistics():
-        started.set()
-        await asyncio.Event().wait()
+        async def wait_for_statistics():
+            started.set()
+            await asyncio.Event().wait()
 
-    panel._get_staistics = wait_for_statistics
-    panel.generate_button.click()
-    task = panel.task
-    await started.wait()
-    if action == "cancel":
-        panel.cancel_button.click()
-    else:
-        window.close()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert panel.task is None
+        panel._get_staistics = wait_for_statistics
+        panel.generate_button.click()
+        task = panel.task
+        await started.wait()
+        if action == "cancel":
+            panel.cancel_button.click()
+        else:
+            window.close()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert panel.task is None
+    run(QApplication.instance(), check())
 
 
 def test_qt_font_chooser_persists_family_style_and_effects(window):
@@ -490,6 +493,7 @@ def test_japanese_preedit_keeps_results_until_commit_and_preserves_url(window):
     QApplication.sendEvent(search, committed)
     assert not search.is_composing
     assert search.text() == "日本"
+    until(QApplication.instance(), lambda: window._search_request is None)
     assert window.ui.snapshotList.count() == 0
     url = window.ui.urlInput
     url.setText("https://")
