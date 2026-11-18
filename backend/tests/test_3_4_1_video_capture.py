@@ -6,11 +6,16 @@ from pathlib import Path
 import sqlite3
 from threading import Thread
 from types import SimpleNamespace
+from urllib.parse import urljoin, urlsplit
 from unittest.mock import AsyncMock
 
+from bs4 import BeautifulSoup
+from flask import Flask, request
 import pytest
 
+from src.request_manager import RequestManager
 from src.scraping import scraper as scraper_module
+from src.urlreplace import relativize_html
 
 
 VIDEO = bytes(range(128))
@@ -23,8 +28,11 @@ def video_origin():
     class VideoSite(BaseHTTPRequestHandler):
         def do_GET(self):
             self.server.requests.append(self.headers)
-            mode = self.path.rsplit("/", 1)[-1]
-            content_type = "video/mp4" if mode.endswith(".mp4") else "video/webm"
+            mode = urlsplit(self.path).path.rsplit("/", 1)[-1]
+            content_type = (
+                "video/mp4" if mode.endswith(".mp4") or mode.startswith("mp4-")
+                else "video/webm"
+            )
             never_complete = mode.startswith("partial") or self.headers.get("Range")
             body = MIDDLE if never_complete else VIDEO
             self.send_response(206 if never_complete else 200)
@@ -99,6 +107,65 @@ def assert_saved_video(db, expected_status):
     assert size == len(VIDEO)
     assert Path(path).read_bytes() == VIDEO
     return json.loads(raw_headers)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "site,path,subtype",
+    [
+        ("127.0.0.1", "/mp4-delivery?id=42", "mp4"),
+        ("example.org", "/mp4-delivery?id=42", "mp4"),
+        ("example.org", "/webm-delivery/", "webm"),
+    ],
+)
+async def test_3_4_1_archives_extensionless_video_and_replays_by_original_url(
+    capture, video_origin, site, path, subtype
+):
+    scraper, db, _ = capture
+    origin, requests = video_origin
+    scraper.set_origin_url(f"http://{site}/index.html")
+    url = origin + path
+    mime = f"video/{subtype}"
+    record_response(scraper, url, mime, MIDDLE, PARTIAL_RANGE)
+    await scraper._drain_tasks()
+
+    assert len(requests) == 1
+    assert_saved_video(db, 200)
+    [(location, *_)] = saved_files(db)
+    assert Path(location).suffix == f".{subtype}"
+    page_url = f"http://{site}/index.html"
+    markup = relativize_html(f'<video controls src="{url}"></video>', page_url)
+    source = BeautifulSoup(markup, "html.parser").video["src"]
+    replay_url = urlsplit(urljoin("http://127.0.0.1:3000/data/snap/" + page_url, source))
+    with Flask(__name__).test_request_context(query_string=replay_url.query):
+        response, status = RequestManager(db).get_file_by_url(
+            "snap", replay_url.path.removeprefix("/data/snap/"), request
+        )
+    assert status == 200
+    assert response["body"] == VIDEO
+    assert response["content_type"] == mime
+
+
+@pytest.mark.asyncio
+async def test_3_4_1_inferred_video_names_do_not_overwrite_existing_urls(capture):
+    scraper, db, _ = capture
+    urls = [
+        "http://127.0.0.1/video",
+        "http://127.0.0.1/video.mp4",
+        "http://127.0.0.1/video?quality=high",
+        "http://127.0.0.1/video/",
+        "http://127.0.0.1/video/index.mp4",
+    ]
+    for index, url in enumerate(urls):
+        body = bytes([index])
+        record_response(scraper, url, "video/mp4", body)
+        await scraper._drain_tasks()
+        assert Path(scraper.saved_resources[url]["path"]).read_bytes() == body
+
+    paths = [Path(path) for path, *_ in saved_files(db)]
+    assert len(set(paths)) == len(urls)
+    assert {p.read_bytes() for p in paths} == {bytes([i]) for i in range(len(urls))}
+    assert all(p.suffix == ".mp4" for p in paths)
 
 
 @pytest.mark.asyncio

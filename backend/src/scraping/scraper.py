@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 RESPONSE_TIMEOUT = 20
-VIDEO_TYPES = {"video/mp4", "video/webm"}
+VIDEO_EXTENSIONS = {"video/mp4": "mp4", "video/webm": "webm"}
 VIDEO_RECOVERY_TIMEOUT = 10
 VIDEO_RECOVERY_MAX_BYTES = 64 * 1024 * 1024
 # Only forward headers relevant to fetching the same resource. Range and
@@ -33,6 +33,7 @@ VIDEO_RECOVERY_MAX_BYTES = 64 * 1024 * 1024
 VIDEO_RECOVERY_REQUEST_HEADERS = {"accept", "authorization", "cookie", "origin", "referer", "user-agent"}
 VIDEO_RANGE = re.compile(r"bytes (\d{1,19})-(\d{1,19})/(\d{1,19})", re.IGNORECASE)
 EXTENSION_MAP = {
+    **VIDEO_EXTENSIONS,
     "text/html":                     "html",
     "text/css":                      "css",
     "application/javascript":        "js",
@@ -268,7 +269,7 @@ class PageScraper():
         try:
             body = None
             recovered = None
-            if mime in VIDEO_TYPES and response_status == 206:
+            if mime in VIDEO_EXTENSIONS and response_status == 206:
                 match = VIDEO_RANGE.fullmatch(headers.get("content-range", "").strip())
                 expected_size = None
                 if match:
@@ -302,7 +303,7 @@ class PageScraper():
                 body = await self._read_response_body(response)
 
             # Other range tasks can finish while the recovery GET is running.
-            if mime in VIDEO_TYPES and url in self.saved_urls:
+            if mime in VIDEO_EXTENSIONS and url in self.saved_urls:
                 return
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
@@ -685,6 +686,14 @@ class PageScraper():
     def data_path(self, url, resource_type: str = None):
         parsed = urlparse(url)
         path = parsed.path.lstrip("/")
+
+        if resource_type in VIDEO_EXTENSIONS.values():
+            suffix = f".{resource_type}"
+            if os.path.splitext(path)[1].lower() != suffix:
+                # Keep inferred names separate from URL-derived paths. Two
+                # distinct resources, such as /video and /video.mp4, may coexist.
+                key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                return os.path.join(self.base_dir, "videos", key + suffix)
 
         if not resource_type and not path or parsed.path.endswith("/"):
             path = os.path.join(path, "index.html")
