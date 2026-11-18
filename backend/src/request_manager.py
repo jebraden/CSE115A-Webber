@@ -115,7 +115,7 @@ class RequestManager():
         db = self.db 
         try:
             
-            with db, RequestManager.write_lock:
+            with db:
                 # Was thinking if we need this initial query
                 # It allows us to be informative, but it really doesn't
                 # change behavior
@@ -170,7 +170,7 @@ class RequestManager():
         db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
-            with db, RequestManager.write_lock:
+            with db:
                 db.execute(
                     f"""
                     DELETE

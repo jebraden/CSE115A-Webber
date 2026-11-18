@@ -2,7 +2,8 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import sqlite3
-from threading import Event, Thread, get_ident
+from threading import Event, Lock, Thread
+from time import sleep
 
 import httpx
 import pytest
@@ -67,12 +68,19 @@ def test_reader_connection_is_reused_and_archive_routes_serve_stored_bytes(live_
     base_url, root = live_backend
     source = seed(root)
     reader_connections = []
+    active_reader = Lock()
     query = RequestManager.query_snapshots
 
     def record_connection(self, request):
-        reader_connections.append((self.db, get_ident()))
-        assert self.db.execute("PRAGMA query_only").fetchone()[0] == 1
-        return query(self, request)
+        assert active_reader.acquire(blocking=False), "Overlapping calls used the shared reader"
+        try:
+            reader_connections.append(self.db)
+            # Release the GIL so concurrent HTTP requests can reach the backend.
+            sleep(0.02)
+            assert self.db.execute("PRAGMA query_only").fetchone()[0] == 1
+            return query(self, request)
+        finally:
+            active_reader.release()
 
     monkeypatch.setattr(RequestManager, "query_snapshots", record_connection)
     with ThreadPoolExecutor(max_workers=4) as workers:
@@ -101,11 +109,11 @@ def test_search_can_read_while_snapshot_is_being_written(live_backend, monkeypat
     delete = RequestManager.delete_snapshot
 
     def record_query(self, request):
-        reader_connections.append((self.db, get_ident()))
+        reader_connections.append(self.db)
         return query(self, request)
 
     def record_delete(self, snapshot_id):
-        writer_connections.append((self.db, get_ident()))
+        writer_connections.append(self.db)
         return delete(self, snapshot_id)
 
     class PausedScraper:
@@ -113,7 +121,7 @@ def test_search_can_read_while_snapshot_is_being_written(live_backend, monkeypat
             self.db = db_conn
 
         async def archive_page(self, url):
-            writer_connections.append((self.db, get_ident()))
+            writer_connections.append(self.db)
             self.db.execute("INSERT INTO snapshots VALUES ('new', ?, 100, 100)", (url,))
             write_started.set()
             if not allow_commit.wait(timeout=5):
@@ -140,6 +148,14 @@ def test_search_can_read_while_snapshot_is_being_written(live_backend, monkeypat
                 before = client.request("QUERY", "/search/snapshots", json={})
                 assert before.status_code == 200
                 assert before.json() == ["snap"]
+                with ThreadPoolExecutor(max_workers=4) as readers:
+                    snapshot, metadata, source, limits = readers.map(client.get, (
+                        "/snapshots/snap", "/files/html",
+                        "/data/snap/https://example.org/index.html", "/statistics/limits",
+                    ))
+                assert all(response.status_code == 200 for response in (snapshot, metadata, source, limits))
+                assert snapshot.json()["id"] == "snap"
+                assert "Offline" in source.text
         finally:
             allow_commit.set()
         assert pending.result().status_code == 201
@@ -150,8 +166,7 @@ def test_search_can_read_while_snapshot_is_being_written(live_backend, monkeypat
         assert client.delete("/snapshots/new").status_code == 202
     assert len(writer_connections) == len(reader_connections) == 2
     assert len(set(writer_connections)) == len(set(reader_connections)) == 1
-    assert writer_connections[0][0] is not reader_connections[0][0]
-    assert writer_connections[0][1] != reader_connections[0][1]
+    assert writer_connections[0] is not reader_connections[0]
 
 
 def test_unexpected_route_failure_uses_flask_default(live_backend, monkeypatch):

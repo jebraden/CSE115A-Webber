@@ -6,13 +6,14 @@ from argparse import ArgumentParser
 import sys
 import os
 import sqlite3
-from contextlib import closing
+from contextlib import ExitStack, closing
 from pathlib import Path
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from .archive_storage import ArchiveDatabaseWorker
+from .archive_storage import archive_directory
 from .request_manager import RequestManager
 
 
@@ -66,16 +67,33 @@ def create_app(
     database = (Path(data_dir).expanduser() / "archive.db" if data_dir else Path(db_path)).resolve()
     database.parent.mkdir(parents=True, exist_ok=True)
     schema = Path(__file__).resolve().parent.parent / "db" / "001_init.sql"
-    with closing(sqlite3.connect(database)) as db:
-        db.executescript(schema.read_text())
+    with ExitStack() as connections:
+        write_db = connections.enter_context(closing(
+            sqlite3.connect(database, timeout=10, check_same_thread=False)
+        ))
+        write_db.executescript(schema.read_text())
+        read_db = connections.enter_context(closing(
+            sqlite3.connect(database, timeout=10, check_same_thread=False)
+        ))
+        read_db.execute("PRAGMA foreign_keys = ON")
+        read_db.execute("PRAGMA query_only = ON")
+        # WAL keeps the writer independent of reads. Guard every operation
+        # on each shared connection, including transaction cleanup.
+        reader = (read_db, Lock())
+        writer = (write_db, RequestManager.write_lock)
+        app.extensions["archive_database"] = (reader, writer)
+        connections.pop_all()
 
-    # WAL allows the reader to see committed snapshots while the writer is busy.
-    reader = ArchiveDatabaseWorker(database, read_only=True)
-    writer = ArchiveDatabaseWorker(database)
-    app.extensions["archive_database"] = (reader, writer)
-
-    def call(worker, method, *args):
-        return worker.run(lambda db: method(RequestManager(db), *args))
+    def call(access, method, *args):
+        db, lock = access
+        with lock:
+            token = archive_directory.set(str(database.parent))
+            try:
+                return method(RequestManager(db), *args)
+            finally:
+                archive_directory.reset(token)
+                if db.in_transaction:
+                    db.rollback()
 
     @app.route("/health")
     def health():
@@ -83,12 +101,12 @@ def create_app(
 
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
-        resp = call(writer, RequestManager.create_snapshot, request._get_current_object())
+        resp = call(writer, RequestManager.create_snapshot, request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/delete", methods=["POST"])
     def delete_snapshots():
-        resp = call(writer, RequestManager.delete_snapshots, request._get_current_object())
+        resp = call(writer, RequestManager.delete_snapshots, request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
@@ -122,7 +140,7 @@ def create_app(
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
         resp = None
-        resp = call(reader, RequestManager.get_file_by_url, snapshot_id, url_path, request._get_current_object())
+        resp = call(reader, RequestManager.get_file_by_url, snapshot_id, url_path, request)
 
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
@@ -138,7 +156,7 @@ def create_app(
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
         resp = None
-        resp = call(reader, RequestManager.query_snapshots, request._get_current_object())
+        resp = call(reader, RequestManager.query_snapshots, request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -147,7 +165,7 @@ def create_app(
     @app.route("/search/files", methods=["QUERY"])
     def query_files():
         resp = None
-        resp = call(reader, RequestManager.query_files, request._get_current_object())
+        resp = call(reader, RequestManager.query_files, request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -156,7 +174,7 @@ def create_app(
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():
         resp = None
-        resp = call(reader, RequestManager.query_statistics, request._get_current_object())
+        resp = call(reader, RequestManager.query_statistics, request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/statistics/limits", methods=["GET"])
@@ -174,8 +192,9 @@ def create_app(
 
 
 def close_archive_database(app: Flask):
-    for worker in app.extensions.pop("archive_database", ()):
-        worker.close()
+    for db, lock in app.extensions.pop("archive_database", ()):
+        with lock:
+            db.close()
 
 
 def _handle_options() -> dict[str, Any]:

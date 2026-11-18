@@ -58,8 +58,8 @@ preserve the URL and show the shared API error message as plain text. No separat
 URL dialog or second HTTP error hierarchy from PR #17 is included.
 
 The backend reuses a read-only SQLite connection and a separate writer.
-Each connection stays on its own worker thread, and WAL lets searches read
-committed snapshots while capture is writing. The backend closes both connections
+Each connection has its own lock so requests cannot use it concurrently.
+WAL lets searches read committed snapshots while capture is writing. The backend closes both connections
 when it stops. Startup selects one collection directory for the database and files.
 Archive operations use that location, including recursive capture and deletion.
 Page mode serves the stored HTML/CSS bytes via the backend, while Raw HTML shows
