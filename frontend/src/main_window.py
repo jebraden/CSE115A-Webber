@@ -3,7 +3,6 @@
 The shell reuses the snapshot service and local archive viewer. Backend capture
 integration can connect capture_requested without changing the Designer layout.
 """
-
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
