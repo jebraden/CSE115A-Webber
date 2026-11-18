@@ -1,4 +1,3 @@
-from flask import Flask, jsonify
 from typing import Optional, Any
 import logging
 import platform
@@ -7,11 +6,14 @@ from argparse import ArgumentParser
 import sys
 import os
 import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager 
+from .archive_storage import ArchiveDatabaseWorker
+from .request_manager import RequestManager
 
 
 
@@ -40,6 +42,7 @@ def create_app(
     die_with_parent: Optional[bool] = False,
     ppid: Optional[int] = None,
     log_level: int = logging.WARN,
+    data_dir: str | None = None,
 ) -> Flask:
     """Create an return a WSGI object to start the server with.
 
@@ -60,16 +63,19 @@ def create_app(
     app = Flask(__name__)
     app.logger.setLevel(log_level)
 
-    snapshot_conn = sqlite3.connect(db_path, check_same_thread=False)
+    database = (Path(data_dir).expanduser() / "archive.db" if data_dir else Path(db_path)).resolve()
+    database.parent.mkdir(parents=True, exist_ok=True)
+    schema = Path(__file__).resolve().parent.parent / "db" / "001_init.sql"
+    with closing(sqlite3.connect(database)) as db:
+        db.executescript(schema.read_text())
 
-    query_conn = sqlite3.connect(db_path, check_same_thread=False)
+    # WAL allows the reader to see committed snapshots while the writer is busy.
+    reader = ArchiveDatabaseWorker(database, read_only=True)
+    writer = ArchiveDatabaseWorker(database)
+    app.extensions["archive_database"] = (reader, writer)
 
-    schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
-    with sqlite3.connect(db_path) as db:
-        with open(schema, "r") as sql_script:
-            schema_data = sql_script.read()
-            snapshot_conn.executescript(schema_data)
-            query_conn.executescript(schema_data)
+    def call(worker, method, *args):
+        return worker.run(lambda db: method(RequestManager(db), *args))
 
     @app.route("/health")
     def health():
@@ -77,41 +83,33 @@ def create_app(
 
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
-        error = None
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.create_snapshot(request)
+        resp = call(writer, RequestManager.create_snapshot, request._get_current_object())
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/delete", methods=["POST"])
     def delete_snapshots():
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.delete_snapshots(request)
+        resp = call(writer, RequestManager.delete_snapshots, request._get_current_object())
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        resp = None
-        if request.method == "GET":
-            manager = RequestManager(db_conn=query_conn)
-            resp = manager.get_snapshot(snapshot_id)
         if request.method == "DELETE":
-            manager = RequestManager(db_conn=snapshot_conn)
-            resp = manager.delete_snapshot(snapshot_id)
+            resp = call(writer, RequestManager.delete_snapshot, snapshot_id)
+        else:
+            resp = call(reader, RequestManager.get_snapshot, snapshot_id)
         return jsonify(resp[0]), resp[1]
 
 
     @app.route("/files/<string:file_id>", methods=["GET"])
     def get_file_info(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_info(file_id)
+        resp = call(reader, RequestManager.get_file_info, file_id)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file(file_id)
+        resp = call(reader, RequestManager.get_file, file_id)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -124,23 +122,23 @@ def create_app(
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_by_url(snapshot_id, url_path, request)
+        resp = call(reader, RequestManager.get_file_by_url, snapshot_id, url_path, request._get_current_object())
 
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
-        return Response(
-            data["body"],
-            status=data["status"],
-            content_type=data["content_type"]
+        response = Response(data["body"], status=data["status"], content_type=data["content_type"])
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' data: blob:; script-src 'none'; "
+            "style-src 'self' 'unsafe-inline' data:; connect-src 'none'; "
+            "base-uri 'none'; form-action 'none'"
         )
+        return response
 
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_snapshots(request)
+        resp = call(reader, RequestManager.query_snapshots, request._get_current_object())
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -149,8 +147,7 @@ def create_app(
     @app.route("/search/files", methods=["QUERY"])
     def query_files():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_files(request) 
+        resp = call(reader, RequestManager.query_files, request._get_current_object())
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -159,15 +156,13 @@ def create_app(
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_statistics(request)
+        resp = call(reader, RequestManager.query_statistics, request._get_current_object())
         return jsonify(resp[0]), resp[1]
 
     @app.route("/statistics/limits", methods=["GET"])
     def get_limits():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_limits()
+        resp = call(reader, RequestManager.get_limits)
         return jsonify(resp[0]), resp[1]
 
     return app
@@ -176,6 +171,11 @@ def create_app(
 
 
 
+
+
+def close_archive_database(app: Flask):
+    for worker in app.extensions.pop("archive_database", ()):
+        worker.close()
 
 
 def _handle_options() -> dict[str, Any]:
@@ -201,6 +201,10 @@ def _handle_options() -> dict[str, Any]:
         default="warning",
     )
 
+    parser.add_argument(
+        "--data-dir", help="directory containing archive.db and saved snapshots",
+        default=None,
+    )
     parser.add_argument(
         "--production",
         help="use the production web server waitress",
@@ -251,6 +255,7 @@ def _handle_options() -> dict[str, Any]:
             "die_with_parent": result.die_with_parent,
             "ppid": result.ppid,
             "log_level": getattr(logging, result.log_level.upper()),
+            "data_dir": result.data_dir,
         },
     }
 
@@ -286,10 +291,13 @@ def main():
     """Main entrypoint."""
     opts = _handle_options()
     app = create_app(**opts["app"])
-    if opts["production"]:
-        _start_waitress(app, **opts["listen"])
-    else:
-        _start_flask(app, opts["debug"], **opts["listen"])
+    try:
+        if opts["production"]:
+            _start_waitress(app, **opts["listen"])
+        else:
+            _start_flask(app, opts["debug"], **opts["listen"])
+    finally:
+        close_archive_database(app)
 
 
 if __name__ == "__main__":

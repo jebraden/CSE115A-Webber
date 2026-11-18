@@ -2,7 +2,7 @@ from src.request_manager import RequestManager
 from src.scraping.scraper import PageScraper, HyperlinkRules
 import src.request_manager
 
-from src.app import create_app
+from src.app import close_archive_database, create_app
 from unittest.mock import AsyncMock, MagicMock, patch
 from flask import Flask, request
 
@@ -991,7 +991,7 @@ class TestGetFileInfo:
             }
         }
         assert resp["response"] == {
-            "recieved_time": {"sec": 101, "nsec": 0},
+            "received_time": {"sec": 101, "nsec": 0},
             "code": 200,
             "headers": {
                 "Content-Type": ["text/html"],
@@ -1008,6 +1008,9 @@ class TestFlaskRoutes:
     def setup(self):
         self.app = create_app()
         self.client = self.app.test_client()
+
+    def teardown_method(self):
+        close_archive_database(self.app)
 
     def test_get_snapshot(self, insert_snapshot):
         self.setup()

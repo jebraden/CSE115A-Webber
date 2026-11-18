@@ -12,6 +12,12 @@ fi
 
 echo "Modules: ${*}"
 
+if command -v python3 >/dev/null 2>&1; then
+    webber_python=python3
+else
+    webber_python=python
+fi
+
 for module; do
     if ! [ -d "${module}" ]; then
         echo "No such module: ${module}"
@@ -20,7 +26,7 @@ for module; do
 
     echo "Setting up Python venv for ${module}"
     set -x
-    python -m venv "${module}/venv"
+    "$webber_python" -m venv "${module}/venv"
     set +x
 
     echo "Installing dependencies..."
