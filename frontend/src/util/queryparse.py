@@ -71,6 +71,7 @@ def _read_quoted_string(text: str, start: int, end: int) -> tuple[int, str]:
     quote = text[start]
     backslash = False
     out: list[str] = []
+    i = start + 1
     for i in range(start + 1, end):
         c = text[i]
         if backslash:
@@ -87,7 +88,7 @@ def _read_quoted_string(text: str, start: int, end: int) -> tuple[int, str]:
             break
         else:
             out.append(c)
-    if start + 1 == end or text[i] != quote:
+    if start + 1 >= end or text[i] != quote:
         raise QuerySyntaxError(text, start, i - start, "Unterminated string")
         return (len(text), text)
     return (i - start + 1, "".join(out))
