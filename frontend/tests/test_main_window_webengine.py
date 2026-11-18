@@ -5,12 +5,12 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
-import asyncio
-from PySide6.QtAsyncio import QAsyncioEventLoop
 
 def test_open_archives_and_accept_font_dialog_without_native_crash():
     script = textwrap.dedent("""
         import tempfile
+        import asyncio
+        from PySide6.QtAsyncio import QAsyncioEventLoop
         from PySide6.QtCore import QSettings, QTimer
         from PySide6.QtGui import QFont
         from PySide6.QtWidgets import QApplication, QFontDialog
@@ -35,6 +35,7 @@ def test_open_archives_and_accept_font_dialog_without_native_crash():
             completed = True
             window.close()
             loop.stop()
+            app.exit(0)
 
         def accept_font():
             dialog = QApplication.activeModalWidget()
@@ -56,7 +57,10 @@ def test_open_archives_and_accept_font_dialog_without_native_crash():
             window.viewer.loadFinished.connect(first_loaded)
 
         QTimer.singleShot(100, begin)
-        QTimer.singleShot(15000, loop.stop)
+        def stop_loop():
+            loop.stop()
+            app.exit()
+        QTimer.singleShot(15000, stop_loop)
         loop.run_forever()
         loop.close()     
         assert completed, "Archive loading/font dialog did not finish"

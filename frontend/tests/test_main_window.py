@@ -361,7 +361,7 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     assert window._snapshot.id == "missing"
 
 
-async def test_US_2_2_T_5_embedded_statistics_generates_table_and_graph(window):
+def test_US_2_2_T_5_embedded_statistics_generates_table_and_graph(window):
     async def check():
         window.ui.statisticsButton.click()
         panel = window.statistics_widget
@@ -399,7 +399,7 @@ def test_US_2_2_T_5_sample_label_and_injected_api(window, app, monkeypatch, tmp_
 
 
 @pytest.mark.parametrize("action", ["cancel", "close"])
-async def test_US_2_2_T_5_cancel_generation(window, action):
+def test_US_2_2_T_5_cancel_generation(window, action):
     import asyncio
 
     async def check():
