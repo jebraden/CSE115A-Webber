@@ -3,3 +3,4 @@ matplotlib>=3.11.0
 respx>=0.23.0
 pytest>=9.1.0
 pytest_asyncio>=1.4.0
+httpx>=0.28.0
