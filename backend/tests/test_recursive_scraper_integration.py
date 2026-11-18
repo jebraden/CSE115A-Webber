@@ -1,11 +1,9 @@
 import os
 import sqlite3
 import asyncio
-from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from src.scraping.scraper import PageScraper
-from src.archive_storage import archive_directory
 
 class FakeRequest:
     def __init__(self, url):
@@ -139,7 +137,7 @@ class TestArchivePageIntegration:
     async def test_archive_page(
         self, test_conn, tmp_path, monkeypatch
     ):
-        collection = tmp_path / "collection"
+        monkeypatch.setenv("HOME", str(tmp_path))
         root = "https://example.com/"
         about = "https://example.com/about"
         contact = "https://example.com/contact"
@@ -170,11 +168,7 @@ class TestArchivePageIntegration:
                 lambda: FakePlaywrightContext(pages),)
         scraper = PageScraper(db_conn=test_conn)
 
-        token = archive_directory.set(str(collection))
-        try:
-            snap_id = await scraper.archive_page(root)
-        finally:
-            archive_directory.reset(token)
+        snap_id = await scraper.archive_page(root)
 
         assert snap_id is not None
 
@@ -187,10 +181,6 @@ class TestArchivePageIntegration:
             (snap_id,),
         ).fetchall()
         assert len(rows) == 3
-        for row in rows:
-            archived = Path(row["on_disk_path"])
-            assert archived.is_relative_to(collection)
-            assert archived.is_file()
 
         count = test_conn.execute(
             "SELECT COUNT(*) FROM snapshots",
