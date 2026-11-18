@@ -310,6 +310,10 @@ class RequestManager():
 
     def get_file_by_url(self, snapshot_id: str, url_path: str, request) -> (dict, int):
         safe_path = unquote(url_path)
+        scheme, separator, address = safe_path.partition("/")
+        # Absolute asset references are rewritten to scheme/host/path.
+        if separator and scheme in ("http", "https"):
+            safe_path = f"{scheme}://{address}"
         comps = urlsplit(safe_path)
         protocol = comps.scheme
         host = comps.hostname
