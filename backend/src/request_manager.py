@@ -148,6 +148,9 @@ class RequestManager():
         if snapshot_ids is None:
             return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
 
+        if not isinstance(snapshot_ids, list):
+            return self.bad_request("Expected a body with 'ids' which is an array containing snapshot ids")
+
         db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
@@ -186,7 +189,7 @@ class RequestManager():
 
         # There should not be a situation where these characters are in the ID, thus 
         # they get skipped
-        if "." in snapshot_id or "/" in snapshot_id:
+        if not snapshot_id or "." in snapshot_id or "/" in snapshot_id:
             logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
             return
         path = os.path.join(base_dir, snapshot_id)

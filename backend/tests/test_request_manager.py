@@ -723,25 +723,25 @@ class TestDeleteSnapshot:
 
         request = MockRequest()
         request.json_dat = {
-            "ids": [".", "/", "snap-1/../"]
+            "ids": ["", ".", "/", "snap-1/../"]
         }
-        
-        insert_snapshot("snap-1")
 
-        path1 = tmp_path / "snap-1" / "test.html"
-        path1.parent.mkdir(parents=True, exist_ok=True)
-        path1.write_bytes(b"test")
+        with patch("src.request_manager.shutil.rmtree") as mock_rmtree:
+            res, status = manager.delete_snapshots(request)
 
-        insert_file(file_id="file-1", snapshot_id="snap-1", on_disk_path=str(path1))
-
-        res, status = manager.delete_snapshots(request)
-       
+        mock_rmtree.assert_not_called()
         assert status == 202
 
-        # IF the evil path was deleted, this should be gone too!
-        assert path1.exists()
-        res, status = manager.get_snapshot("snap-1") 
-        assert status == 200
+
+
+    def test_delete_batch_snapshots_serve_not_a_list(self, monkeypatch):
+        request = MockRequest()
+        request.json_dat = {"ids": 32}
+        
+        manager = RequestManager(test_conn)
+        res, status = manager.delete_snapshots(request)
+        assert status == 400
+
 
     def test_delete_batch_snapshots(self, tmp_path, monkeypatch, insert_snapshot, insert_file, test_conn):
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
