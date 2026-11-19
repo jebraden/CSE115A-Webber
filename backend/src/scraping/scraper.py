@@ -540,11 +540,15 @@ class PageScraper():
                     depth=self.depth+1
             )
 
-            # I'm not a huge fan of doing the below.
-            # However, I felt like my constructors and parameters were getting too long
 
             scraper.video_recovery_attempts = self.video_recovery_attempts
             res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
+
+            new_urls = scraper.saved_urls
+            # Needed so that if there is a recursive reference to another hyperbranch in another, we don't double count it later down the line.
+            # With a max depth limit, it may be prudent to consider processing these in a breadth first manner rather than depth first. 
+            self.saved_urls.update(new_urls)
+
             if res is None: 
                 logger.warning(f"Skipping url: {url}. Failed to download page content") 
                 continue

@@ -3,7 +3,7 @@ import sqlite3
 import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from src.scraping.scraper import PageScraper
+from src.scraping.scraper import PageScraper, HyperlinkRules
 
 class FakeRequest:
     def __init__(self, url):
@@ -188,6 +188,68 @@ class TestArchivePageIntegration:
 
         assert count == 1
 
+    @pytest.mark.asyncio
+    async def test_no_double_counting_recusion(self, test_conn, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        root = "https://example.com/"
+        a = "https://example.com/a"
+        b = "https://example.com/b"
+        c = "https://example.com/c"
+
+        pages = {
+            root: {
+                "body": b"""
+                    <html>
+                        <a href='/a'>A</a>
+                        <a href='/b'>B</a>
+                    </html>
+                """,
+                "links": {
+                    "a[href]": [a, b]
+                },
+            },
+            a: {
+                "body": b"""
+                    <html>
+                        <a href='\c'>C</a>
+                    </html>
+                """,
+                "links": {
+                    "a[href]": [c]
+                },
+            },
+            b: {
+                "body": b"""
+                    <html>
+                        <a href='\c'>C</a>
+                    </html>
+                """,
+                "links": {
+                    "a[href]": [c]
+                },
+            },
+            c: {
+                "body": b"<html><body>C</body></html>",
+                "links": {},
+            },
+        }
+
+        monkeypatch.setattr("src.scraping.scraper.async_playwright",
+                lambda: FakePlaywrightContext(pages),)
+        rules = HyperlinkRules(max_depth=3)
+
+        scraper = PageScraper(db_conn=test_conn, hyperlink_rules=rules)
+        snap_id = await scraper.archive_page(root)
+        assert snap_id is not None
+        rows = test_conn.execute(
+            """
+            SELECT snapshot_id, host, remote_path, on_disk_path
+            FROM files
+            WHERE snapshot_id = ?
+            """,
+            (snap_id,),
+        ).fetchall()
+        assert len(rows) == 4 
 
     @pytest.mark.asyncio
     async def test_enforce_max_depth(
