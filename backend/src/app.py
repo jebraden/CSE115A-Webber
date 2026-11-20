@@ -1,4 +1,3 @@
-from flask import Flask, jsonify
 from typing import Optional, Any
 import logging
 import platform
@@ -11,7 +10,7 @@ import sqlite3
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager 
+from .request_manager import RequestManager
 
 
 
@@ -60,16 +59,23 @@ def create_app(
     app = Flask(__name__)
     app.logger.setLevel(log_level)
 
-    snapshot_conn = sqlite3.connect(db_path, check_same_thread=False)
-
-    query_conn = sqlite3.connect(db_path, check_same_thread=False)
-
-    schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
-    with sqlite3.connect(db_path) as db:
-        with open(schema, "r") as sql_script:
-            schema_data = sql_script.read()
-            snapshot_conn.executescript(schema_data)
-            query_conn.executescript(schema_data)
+    os.makedirs(base_dir, exist_ok=True)
+    write_db = sqlite3.connect(db_path, timeout=10, check_same_thread=False)
+    try:
+        schema = os.path.join(os.path.dirname(__file__), "../db/001_init.sql")
+        with open(schema) as script:
+            write_db.executescript(script.read())
+        read_db = sqlite3.connect(db_path, timeout=10, check_same_thread=False)
+        try:
+            read_db.execute("PRAGMA foreign_keys = ON")
+            read_db.execute("PRAGMA query_only = ON")
+        except Exception:
+            read_db.close()
+            raise
+    except Exception:
+        write_db.close()
+        raise
+    app.extensions["archive_database"] = (read_db, write_db)
 
     @app.route("/health")
     def health():
@@ -77,41 +83,39 @@ def create_app(
 
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
-        error = None
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.create_snapshot(request)
+        with RequestManager.write_lock:
+            resp = RequestManager(write_db).create_snapshot(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/delete", methods=["POST"])
     def delete_snapshots():
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.delete_snapshots(request)
+        with RequestManager.write_lock:
+            resp = RequestManager(write_db).delete_snapshots(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        resp = None
-        if request.method == "GET":
-            manager = RequestManager(db_conn=query_conn)
-            resp = manager.get_snapshot(snapshot_id)
         if request.method == "DELETE":
-            manager = RequestManager(db_conn=snapshot_conn)
-            resp = manager.delete_snapshot(snapshot_id)
+            with RequestManager.write_lock:
+                resp = RequestManager(write_db).delete_snapshot(snapshot_id)
+        else:
+            with RequestManager.read_lock:
+                resp = RequestManager(read_db).get_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
 
     @app.route("/files/<string:file_id>", methods=["GET"])
     def get_file_info(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_info(file_id)
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).get_file_info(file_id)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file(file_id)
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).get_file(file_id)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -124,23 +128,25 @@ def create_app(
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_by_url(snapshot_id, url_path, request)
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).get_file_by_url(snapshot_id, url_path, request)
 
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
-        return Response(
-            data["body"],
-            status=data["status"],
-            content_type=data["content_type"]
+        response = Response(data["body"], status=data["status"], content_type=data["content_type"])
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' data: blob:; script-src 'none'; "
+            "style-src 'self' 'unsafe-inline' data:; connect-src 'none'; "
+            "base-uri 'none'; form-action 'none'"
         )
+        return response
 
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_snapshots(request)
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).query_snapshots(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -149,8 +155,8 @@ def create_app(
     @app.route("/search/files", methods=["QUERY"])
     def query_files():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_files(request) 
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).query_files(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -159,15 +165,15 @@ def create_app(
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_statistics(request)
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).query_statistics(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/statistics/limits", methods=["GET"])
     def get_limits():
         resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_limits()
+        with RequestManager.read_lock:
+            resp = RequestManager(read_db).get_limits()
         return jsonify(resp[0]), resp[1]
 
     return app
@@ -176,6 +182,17 @@ def create_app(
 
 
 
+
+
+def close_archive_database(app: Flask):
+    """Close both shared connections after the server has stopped accepting requests."""
+    connections = app.extensions.pop("archive_database", None)
+    if connections is not None:
+        read_db, write_db = connections
+        with RequestManager.read_lock:
+            read_db.close()
+        with RequestManager.write_lock:
+            write_db.close()
 
 
 def _handle_options() -> dict[str, Any]:
@@ -286,10 +303,13 @@ def main():
     """Main entrypoint."""
     opts = _handle_options()
     app = create_app(**opts["app"])
-    if opts["production"]:
-        _start_waitress(app, **opts["listen"])
-    else:
-        _start_flask(app, opts["debug"], **opts["listen"])
+    try:
+        if opts["production"]:
+            _start_waitress(app, **opts["listen"])
+        else:
+            _start_flask(app, opts["debug"], **opts["listen"])
+    finally:
+        close_archive_database(app)
 
 
 if __name__ == "__main__":

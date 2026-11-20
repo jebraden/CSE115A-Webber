@@ -18,9 +18,10 @@ from playwright.async_api import async_playwright, Error as PlaywrightError
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
-from src.urlreplace import relativize_html, relativize_stylesheet 
+from ..urlreplace import relativize_html, relativize_stylesheet
 
-db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
+base_dir = os.path.join(os.getenv("HOME"), ".webber")
+db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
 
@@ -609,8 +610,7 @@ class PageScraper():
         elif host is None:
             logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
             return None
-        path = os.path.join(os.path.join(os.getenv("HOME"), ".webber",
-                    self.snap_id, host))
+        path = os.path.join(base_dir, self.snap_id, host)
         return path
 
 
