@@ -25,6 +25,12 @@ class SnapshotService(Protocol):
         ...
 
 
+class EditableSnapshotService(SnapshotService, Protocol):
+    def delete_snapshots(self, snapshot_ids: Sequence[str]) -> None:
+        """Delete the named snapshots as a batch. Raise on failure."""
+        ...
+
+
 _ASSETS = Path(__file__).resolve().parent / "assets"
 # Locate bundled sample HTML relative to this file, independent of
 # the directory from which the application is launched.
@@ -70,4 +76,11 @@ class MockSnapshotService:
             (snapshot for snapshot in self._snapshots if needle in snapshot.url.casefold()),
             key=lambda snapshot: snapshot.archived_at,
             reverse=True,
+        )
+
+    def delete_snapshots(self, snapshot_ids: Sequence[str]) -> None:
+        """Remove sample entries for this session."""
+        removed = set(snapshot_ids)
+        self._snapshots = tuple(
+            snapshot for snapshot in self._snapshots if snapshot.id not in removed
         )
