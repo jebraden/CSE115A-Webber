@@ -84,6 +84,8 @@ def stylesheet_for(light_stylesheet: str, mode: str) -> str:
     light_stylesheet = light_stylesheet.replace("url(icons/chevron-light.svg)", f'url("{icon.as_posix()}")')
     close_icon = icon.with_name("close-dark.svg" if mode == "dark" else "close-light.svg")
     light_stylesheet = light_stylesheet.replace("url(icons/close-light.svg)", 'url("%s")' % close_icon.as_posix())
+    check_icon = icon.with_name("check.svg")
+    light_stylesheet = light_stylesheet.replace("url(icons/check.svg)", f'url("{check_icon.as_posix()}")')
     if mode != "dark":
         return light_stylesheet
     stylesheet = re.sub(r"#[0-9a-fA-F]{6}\b", lambda match: DARK_COLORS.get(match[0].lower(), match[0]), light_stylesheet)
