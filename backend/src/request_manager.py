@@ -8,7 +8,6 @@ import re
 import asyncio
 import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from .archive_storage import archive_directory
 from .scraping.scraper import PageScraper, HyperlinkRules
 from playwright.async_api import TimeoutError as ScrapeTimeout
 
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
 class RequestManager():
+    read_lock = threading.Lock()
     write_lock = threading.Lock()
 
     def __init__(self, db_conn=None):
@@ -208,7 +208,7 @@ class RequestManager():
         if "." in snapshot_id or "/" in snapshot_id:
             logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
             return
-        path = os.path.join(archive_directory.get() or base_dir, snapshot_id)
+        path = os.path.join(base_dir, snapshot_id)
         try:
             shutil.rmtree(path)
             logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")

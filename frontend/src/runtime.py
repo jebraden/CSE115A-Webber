@@ -11,21 +11,9 @@ from .backend import WebberBackend
 from .integration_errors import BackendUnavailable
 
 
-class LocalBackend(WebberBackend):
-    def __init__(self, data_dir=None):
-        super().__init__()
-        self.data_dir = data_dir
-
-    def _build_arguments(self):
-        args = super()._build_arguments()
-        if self.data_dir is not None:
-            args += ["--data-dir", str(self.data_dir)]
-        return args
-
-
 class BackendRuntime:
-    def __init__(self, data_dir=None):
-        self.backend = LocalBackend(data_dir)
+    def __init__(self):
+        self.backend = WebberBackend()
         self.backend.auto_restart = False
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))

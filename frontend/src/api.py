@@ -133,11 +133,21 @@ class APIError(Exception):
             def wrap_init(self: BaseException, *args, **kwargs):
                 match args:
                     case () if "body" in kwargs:
-                        real_init(self, json.loads(kwargs["body"]))
+                        body = kwargs["body"]
                     case (body,):
-                        real_init(self, json.loads(body))
+                        pass
                     case (_, body):
-                        real_init(self, json.loads(body))
+                        pass
+                    case _:
+                        raise TypeError("Expected an HTTP error body")
+                self.body = body
+                try:
+                    real_init(self, json.loads(body))
+                    if not isinstance(self.message, str):
+                        raise ValueError("Expected a string error message")
+                except (ValueError, TypeError, KeyError):
+                    # Flask and proxies may return HTML or malformed JSON.
+                    self.message = "Could not complete the request. Check your archives before retrying."
 
             cls.__init__ = wrap_init  # type: ignore[method-assign, assignment]
 
@@ -407,12 +417,7 @@ class WebberAPI:
 
     def _check_status_code(self, resp: httpx.Response, expected_status: int):
         if resp.status_code != expected_status:
-            try:
-                error = APIError(resp.status_code, resp.text)
-            except (ValueError, TypeError, KeyError) as parsing_error:
-                # Framework and proxy errors can have an HTML body.
-                raise UnknownAPIError(resp.status_code, resp.text) from parsing_error
-            raise error
+            raise APIError(resp.status_code, resp.text)
 
     def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
         self._check_status_code(resp, expected_status)

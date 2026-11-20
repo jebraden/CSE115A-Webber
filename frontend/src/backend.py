@@ -61,6 +61,11 @@ type ExitStatus = NotStarted | Exited | Signaled | ExecFailed
 type StateChangeFunction = Callable[[State], bool | None]
 
 
+class _WriterState(local):
+    # A class default is visible in every thread's local state.
+    value = False
+
+
 class ReadersWriterLock:
     """Lock allowing many readers or a single writer."""
 
@@ -68,12 +73,11 @@ class ReadersWriterLock:
         self._n_readers = 0
         self._vars = Lock()
         self._global = Lock()
-        self._is_writing = local()
-        self._is_writing.__dict__.setdefault("value", False)
+        self._is_writing = _WriterState()
 
     def aquire_read(self):
         """Acquire the lock for reading."""
-        if getattr(self._is_writing, "value", False):
+        if self._is_writing.value:
             return
         with self._vars:
             self._n_readers += 1
@@ -82,7 +86,7 @@ class ReadersWriterLock:
 
     def release_read(self):
         """Release the lock for reading."""
-        if getattr(self._is_writing, "value", False):
+        if self._is_writing.value:
             return
         with self._vars:
             if self._n_readers == 1:
@@ -217,7 +221,8 @@ class WebberBackend:
         "_lock", read_only=True
     )
 
-    def _build_arguments(self) -> list[str]:
+    def build_arguments(self) -> list[str]:
+        """Build backend launch arguments; subclasses may extend the returned list."""
         ppid = os.getpid()
         out: list[str] = [
             sys.executable,
@@ -247,7 +252,7 @@ class WebberBackend:
         try:
             self._state = State.RUNNING
             self._proc = Popen(
-                self._build_arguments(),
+                self.build_arguments(),
                 shell=False,
                 creationflags=flags,
             )

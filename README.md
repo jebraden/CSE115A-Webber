@@ -39,5 +39,5 @@ Tentatively, we'll probably use Electron for the browser, React or HTML for the 
 
 After `make setup` and `make install-browser`, run `make run-frontend` to save,
 search and view real archives, or `make run-demo` for bundled samples. See
-[the integration guide](docs/FRONTEND_INTEGRATION.md) for collection options,
+[the integration guide](docs/FRONTEND_INTEGRATION.md) for launch options,
 QtAsyncio execution, dependencies, tests and current limitations.

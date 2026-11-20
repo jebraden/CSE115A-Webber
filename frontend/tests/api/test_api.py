@@ -159,6 +159,18 @@ class TestAPIError:
         assert "oops" in str(err)
 
 
+    @pytest.mark.parametrize("code,error_type", [(400, BadRequestError), (500, InternalServerError)])
+    @pytest.mark.parametrize("body", ["<html>Proxy error</html>", "{", "{}", "[]", "null", '{"message": null}', '{"message": 12}'])
+    def test_malformed_body_can_be_constructed_and_raised(self, code, error_type, body):
+        for error in (APIError(code, body), error_type(body), error_type(body=body)):
+            assert isinstance(error, error_type)
+            assert error.code == code
+            assert error.body == body
+            assert "Check your archives" in str(error)
+            with pytest.raises(error_type):
+                raise error
+
+
 # Test JSON Encoder
 class TestToJson:
     def test_encodes_namedtuple(self):

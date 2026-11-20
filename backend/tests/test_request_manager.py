@@ -19,6 +19,7 @@ def test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_archive.db"
     monkeypatch.setattr(src.request_manager, "db_path", str(db_file))
     monkeypatch.setattr(src.app, "db_path", str(db_file))
+    monkeypatch.setattr(src.app, "base_dir", str(tmp_path))
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_file) as db:

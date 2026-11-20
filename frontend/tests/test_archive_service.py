@@ -6,7 +6,7 @@ import re
 import httpx
 import pytest
 
-from frontend.src.api import APIError, Timespec, UnknownAPIError, WebberAPI
+from frontend.src.api import APIError, Timespec, InternalServerError, WebberAPI
 from frontend.src.archive_service import ArchiveService
 from frontend.src.integration_errors import error_text
 
@@ -53,7 +53,7 @@ async def test_flask_default_error_gets_a_plain_generic_message():
         ),
     )
     try:
-        with pytest.raises(UnknownAPIError) as failure:
+        with pytest.raises(InternalServerError) as failure:
             await service.create_snapshot("https://example.org")
         assert failure.value.code == 500
         assert error_text(failure.value) == (

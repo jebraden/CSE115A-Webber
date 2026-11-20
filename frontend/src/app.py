@@ -1,6 +1,5 @@
 """Compose the central UI, shared API and owned backend on QtAsyncio."""
 import argparse
-from pathlib import Path
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -19,7 +18,6 @@ def main(argv=None):
         args.pop(0)
     parser = argparse.ArgumentParser(description="Webber local webpage archive")
     parser.add_argument("--demo", action="store_true", help="show bundled sample archives")
-    parser.add_argument("--data-dir", type=Path, help="archive database and files directory")
     parser.add_argument("--backend-url", help="connect to an existing backend")
     options = parser.parse_args(args)
     if options.demo and options.backend_url:
@@ -39,7 +37,7 @@ def main(argv=None):
             if options.backend_url:
                 base_url = options.backend_url
             else:
-                runtime = BackendRuntime(options.data_dir)
+                runtime = BackendRuntime()
                 runtime.start()
                 app.aboutToQuit.connect(runtime.stop_async)
                 base_url = runtime.base_url

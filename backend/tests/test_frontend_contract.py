@@ -16,8 +16,12 @@ from src.request_manager import RequestManager
 
 
 @pytest.fixture
-def live_backend(tmp_path):
-    app = create_app(data_dir=str(tmp_path))
+def live_backend(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.app.base_dir", str(tmp_path))
+    monkeypatch.setattr("src.app.db_path", str(tmp_path / "archive.db"))
+    monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+    monkeypatch.setattr("src.scraping.scraper.base_dir", str(tmp_path))
+    app = create_app()
     server = make_server("127.0.0.1", 0, app, threaded=True)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -183,7 +187,7 @@ def test_unexpected_route_failure_uses_flask_default(live_backend, monkeypatch):
     assert "Private backend diagnostic" not in response.text
 
 
-def test_statistics_limits_use_the_configured_collection(live_backend):
+def test_statistics_limits_use_the_archive_database(live_backend):
     base_url, root = live_backend
     seed(root)
     response = httpx.get(base_url + "/statistics/limits", trust_env=False)
@@ -250,11 +254,22 @@ def test_failed_scrape_rolls_back_snapshot(live_backend, monkeypatch, failure, s
     response = httpx.post(base_url + "/snapshots/create", json={"url":"https://example.org/"}, trust_env=False)
     assert response.status_code == status
     assert response.json()["message"].startswith(message)
+    # A subsequent successful capture must not inherit the failed transaction.
+    class SuccessfulScraper(FailedScraper):
+        async def archive_page(self, url):
+            self.db.execute("INSERT INTO snapshots VALUES ('success', ?, 100, 101)", (url,))
+            self.db.commit()
+            return "success"
+    monkeypatch.setattr(request_manager, "PageScraper", SuccessfulScraper)
+    response = httpx.post(base_url + "/snapshots/create", json={"url": "https://example.org/retry"}, trust_env=False)
+    assert response.status_code == 201
     with sqlite3.connect(root / "archive.db") as db:
-        assert db.execute("SELECT count(*) FROM snapshots").fetchone()[0] == 0
+        assert db.execute("SELECT id FROM snapshots").fetchall() == [("success",)]
+    found = httpx.request("QUERY", base_url + "/search/snapshots", json={}, trust_env=False)
+    assert found.json() == ["success"]
 
 
-def test_delete_uses_the_configured_collection(live_backend):
+def test_delete_uses_the_archive_directory(live_backend):
     base_url, root = live_backend
     seed(root)
     directory = root / "snap"
@@ -266,7 +281,7 @@ def test_delete_uses_the_configured_collection(live_backend):
         assert db.execute("SELECT count(*) FROM snapshots").fetchone()[0] == 0
 
 
-def test_batch_delete_uses_the_configured_collection(live_backend):
+def test_batch_delete_uses_the_archive_directory(live_backend):
     base_url, root = live_backend
     seed(root)
     directory = root / "snap"

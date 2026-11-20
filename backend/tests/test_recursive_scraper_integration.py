@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from src.scraping.scraper import PageScraper
-from src.archive_storage import archive_directory
 
 class FakeRequest:
     def __init__(self, url):
@@ -170,11 +169,8 @@ class TestArchivePageIntegration:
                 lambda: FakePlaywrightContext(pages),)
         scraper = PageScraper(db_conn=test_conn)
 
-        token = archive_directory.set(str(collection))
-        try:
-            snap_id = await scraper.archive_page(root)
-        finally:
-            archive_directory.reset(token)
+        monkeypatch.setattr("src.scraping.scraper.base_dir", str(collection))
+        snap_id = await scraper.archive_page(root)
 
         assert snap_id is not None
 

@@ -19,10 +19,28 @@ from PySide6.QtWidgets import QApplication
 from frontend.src.archive_service import ArchiveService
 from frontend.src.main_window import MainWindow
 from frontend.src.runtime import BackendRuntime
+from frontend.src.backend import WebberBackend
 
 
 @pytest.mark.skipif(os.environ.get("WEBBER_RUN_ARCHIVE_E2E") != "1", reason="Opt-in real browser integration")
-def test_2_2_1_capture_search_offline_view_and_restart(tmp_path):
+def test_2_2_1_capture_search_offline_view_and_restart(tmp_path, monkeypatch):
+    # Override fixed module paths only in the test's backend subprocess.
+    # Production continues to use the team's ~/.webber constants.
+    build_arguments = WebberBackend.build_arguments
+    archive_dir = str(tmp_path / "archives")
+    bootstrap = (
+        "from backend.src import app, request_manager; "
+        "from backend.src.scraping import scraper; "
+        f"app.base_dir = request_manager.base_dir = scraper.base_dir = {archive_dir!r}; "
+        f"app.db_path = request_manager.db_path = scraper.db_path = {archive_dir + '/archive.db'!r}; "
+        "app.main()"
+    )
+
+    def isolated_arguments(self):
+        args = build_arguments(self)
+        return [args[0], "-c", bootstrap, *args[3:]]
+
+    monkeypatch.setattr(WebberBackend, "build_arguments", isolated_arguments)
     source = b'''<!doctype html><html><head><link rel="stylesheet" href="/style.css"></head>
         <body><h1 id="title">Integration Archive</h1><img id="picture" src="/picture.svg"></body></html>'''
     assets = {
@@ -50,7 +68,7 @@ def test_2_2_1_capture_search_offline_view_and_restart(tmp_path):
         thread = Thread(target=origin.serve_forever, daemon=True)
         thread.start()
         origin_url = f"http://127.0.0.1:{origin.server_port}/page.html"
-        runtime = BackendRuntime(tmp_path / "archives")
+        runtime = BackendRuntime()
         runtime.start()
         service = ArchiveService(runtime.base_url, wait_ready=runtime.wait_ready)
         window = MainWindow(service, create_snapshot=service.create_snapshot, debounce_ms=10,
@@ -133,7 +151,7 @@ def test_2_2_1_capture_search_offline_view_and_restart(tmp_path):
             await asyncio.to_thread(origin.shutdown)
             origin.server_close()
         assert not runtime.backend.running
-        restarted = BackendRuntime(tmp_path / "archives")
+        restarted = BackendRuntime()
         restarted.start()
         persisted = ArchiveService(restarted.base_url, wait_ready=restarted.wait_ready)
         try:

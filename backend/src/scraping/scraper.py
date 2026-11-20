@@ -18,10 +18,10 @@ from playwright.async_api import async_playwright, Error as PlaywrightError
 
 from urllib.parse import urlparse, urljoin, parse_qs
 
-from ..archive_storage import archive_directory
 from ..urlreplace import relativize_html, relativize_stylesheet
 
-db_path = os.path.join(os.getenv("HOME"), ".webber", "archive.db")
+base_dir = os.path.join(os.getenv("HOME"), ".webber")
+db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +80,7 @@ class PageScraper():
             debug=False, 
             hyperlink_rules=None,
             snapshot_url=None,
-            depth=0,
+            depth=0
         ):
 
         self.saved_urls = set()
@@ -538,7 +538,7 @@ class PageScraper():
                     debug=self.debug, 
                     hyperlink_rules=self.hyperlink_rules,
                     snapshot_url=self.snapshot_url,
-                    depth=self.depth+1,
+                    depth=self.depth+1
             )
 
             # I'm not a huge fan of doing the below.
@@ -610,8 +610,7 @@ class PageScraper():
         elif host is None:
             logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
             return None
-        archive_dir = archive_directory.get() or os.path.join(os.getenv("HOME"), ".webber")
-        path = os.path.join(archive_dir, self.snap_id, host)
+        path = os.path.join(base_dir, self.snap_id, host)
         return path
 
 
