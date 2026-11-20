@@ -1,27 +1,29 @@
-"""Designer-backed central UI for task 2.2.2.
-
-The shell reuses the snapshot service and local archive viewer. Backend capture
-integration can connect capture_requested without changing the Designer layout.
-"""
+"""Central UI with injected archive services and QtAsyncio-owned UI tasks."""
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
+import inspect
+import asyncio
+import logging
 
 from PySide6.QtCore import QFile, QDir, QEvent, QIODevice, QSize, Qt, Signal, QSettings, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor
+from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QLabel, QListWidgetItem,
     QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect,
+    QPushButton, QProgressBar,
 )
 
 from .archive_list.service import SnapshotService
 from .archive_viewer import ArchiveViewer
-from .themes import (
-    BUTTON_CHARCOAL, BUTTON_GRAY_BORDER, DARK_SAGE, LIGHT_GREEN, LIGHT_MOSS,
-    OFF_WHITE, OLIVE, PALE_SAGE, SAGE, WARM_GRAY_BORDER, stylesheet_for,
-)
+from .themes import stylesheet_for
 from .viewing import DEFAULTS, normalize_preferences
+from .archive_list.loader import load_snapshots
+from .archive_document import load_archive, display_archive
+from .integration_errors import error_text, snapshot_id
+
+logger = logging.getLogger(__name__)
 
 
 class _NumericInput(QSpinBox):
@@ -85,10 +87,20 @@ class MainWindow(QMainWindow):
     snapshot_requested = Signal(object)
     capture_requested = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo=False, settings=None):
+    def __init__(self, service: SnapshotService, *, demo=False, settings=None,
+                 create_snapshot=None, debounce_ms=200):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("Webber", "Webber")
         self._service = service
+        self._create_snapshot = create_snapshot
+        self._closed = False
+        self._search_request = self._capture_request = None
+        self._document_requests = {}
+        self._tasks = set()
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(debounce_ms)
+        self._debounce.timeout.connect(self.search)
         self._snapshot = None
         self._snapshots = []
         self._windows = {}
@@ -161,7 +173,18 @@ class MainWindow(QMainWindow):
         u.cancelCaptureButton.clicked.connect(lambda: u.savePageButton.setChecked(False))
         u.captureButton.clicked.connect(self.request_capture)
         u.urlInput.returnPressed.connect(self.request_capture)
-        u.searchInput.textChanged.connect(self.search)
+        u.searchInput.textChanged.connect(self._schedule_search)
+        u.searchInput.returnPressed.connect(self.search)
+        self.retry_search_button = QPushButton("Retry search", u.archivePanel)
+        self.retry_search_button.clicked.connect(self.search)
+        self.retry_search_button.hide()
+        u.archivePanel.layout().insertWidget(3, self.retry_search_button)
+        self.capture_progress = QProgressBar(u.capturePanel)
+        self.capture_progress.setRange(0, 0)
+        self.capture_progress.hide()
+        u.capturePanel.layout().addWidget(self.capture_progress)
+        u.captureStatus.setTextFormat(Qt.TextFormat.PlainText)
+        u.urlInput.textChanged.connect(self._capture_input_changed)
         u.snapshotList.currentItemChanged.connect(self._select_item)
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
@@ -200,6 +223,23 @@ class MainWindow(QMainWindow):
         u.resetSettingsButton.clicked.connect(self.reset_all_settings)
         self.update_viewing_preferences(persist=False)
         self.search()
+
+    def _start_task(self, coroutine, on_result, on_error):
+        task = asyncio.get_event_loop().create_task(coroutine)
+        self._tasks.add(task)
+        def completed(task):
+            self._tasks.discard(task)
+            if task.cancelled():
+                return
+            error = task.exception()
+            if self._closed:
+                return
+            if error is not None:
+                on_error(task, error)
+            else:
+                on_result(task, task.result())
+        task.add_done_callback(completed)
+        return task
 
     def set_sidebar_visible(self, visible):
         u = self.ui
@@ -267,11 +307,8 @@ class MainWindow(QMainWindow):
         close_icon = QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg"))
         for button in self.findChildren(_TabCloseButton):
             button.setIcon(close_icon)
-        foreground, background, border = (
-            (LIGHT_GREEN, BUTTON_CHARCOAL, BUTTON_GRAY_BORDER)
-            if mode == "dark" else (OLIVE, OFF_WHITE, WARM_GRAY_BORDER)
-        )
-        hover, focus = (DARK_SAGE, LIGHT_MOSS) if mode == "dark" else (PALE_SAGE, SAGE)
+        foreground, background, border = ("#b6d1aa", "#1c1c1c", "#3b3b3b") if mode == "dark" else ("#566446", "#f8f8f6", "#cececa")
+        hover, focus = ("#293629", "#8ca37b") if mode == "dark" else ("#e9ecdf", "#879b76")
         self.popout.setStyleSheet(
             f"QToolButton {{ color: {foreground}; background: {background}; border: 1px solid {border}; border-radius: 8px; }}"
             f"QToolButton:hover, QToolButton:focus {{ background: {hover}; border-color: {focus}; }}"
@@ -286,48 +323,125 @@ class MainWindow(QMainWindow):
         if visible:
             self.ui.urlInput.setFocus()
 
+    def _capture_input_changed(self):
+        if self._capture_request is None:
+            self.ui.captureStatus.clear()
+            self.ui.captureButton.setText("Save page")
+            self.ui.captureButton.setEnabled(True)
+
     def request_capture(self):
+        if self._closed or self._capture_request is not None or not self.ui.captureButton.isEnabled():
+            return
         url = self.ui.urlInput.text().strip()
-        try:
-            parts = urlsplit(url)
-            valid = parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
-            # Accessing port also validates malformed port values.
-            parts.port
-        except ValueError:
-            valid = False
-        if not valid:
-            self.ui.captureStatus.setText("Invalid URL.")
-            self.ui.urlInput.setFocus()
+        if not url:
+            return
+        if self._create_snapshot is None:
+            # Keep the Designer/demo seam explicit; demo saves never pretend
+            # to persist a webpage.
+            try:
+                parts = urlsplit(url)
+                valid = parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
+                parts.port
+            except ValueError:
+                valid = False
+            if not valid:
+                self.ui.captureStatus.setText("Invalid URL.")
+                return
+            self.capture_requested.emit(url)
+            self.ui.captureStatus.setText("Saving is unavailable.")
             return
         self.capture_requested.emit(url)
-        self.ui.captureStatus.setText("Saving is unavailable.")
+        create = self._create_snapshot
+        async def operation():
+            result = await create(url) if inspect.iscoroutinefunction(create) else await asyncio.to_thread(create, url)
+            return snapshot_id(result)
+        self.ui.urlInput.setEnabled(False)
+        self.ui.captureButton.setEnabled(False)
+        self.capture_progress.show()
+        self.ui.captureStatus.setText("Saving page…")
+        self._capture_request = self._start_task(operation(), self._capture_result, self._capture_error)
+
+    def _capture_result(self, request_id, value):
+        if self._closed or request_id != self._capture_request:
+            return
+        self._capture_request = None
+        self.capture_progress.hide()
+        self.ui.urlInput.setEnabled(True)
+        self.ui.captureButton.setText("Saved")
+        self.ui.captureButton.setEnabled(False)
+        self.ui.captureStatus.setText("Page saved. Snapshot: " + value)
+        self.search()
+
+    def _capture_error(self, request_id, failure):
+        if self._closed or request_id != self._capture_request:
+            return
+        self._capture_request = None
+        self.capture_progress.hide()
+        self.ui.urlInput.setEnabled(True)
+        self.ui.captureButton.setEnabled(True)
+        self.ui.captureButton.setText("Retry")
+        self.ui.captureStatus.setText(error_text(failure) + " URL kept.")
+        self.ui.urlInput.setFocus()
+        logger.debug("Archive request failed", exc_info=failure)
+
+    def _invalidate_search(self):
+        if self._search_request is not None:
+            self._search_request.cancel()
+            self._search_request = None
+        self.ui.snapshotList.setEnabled(False)
+
+    def _schedule_search(self):
+        self._invalidate_search()
+        self.ui.archiveCount.setText("Searching…")
+        self._debounce.start()
 
     def search(self, *_):
+        if self._closed:
+            return
+        self._debounce.stop()
+        self._invalidate_search()
+        self.retry_search_button.hide()
+        self.ui.archiveCount.setText("Searching…")
+        query = self.ui.searchInput.text().strip()
+        self._search_request = self._start_task(
+            load_snapshots(self._service, query), self._search_result, self._search_error,
+        )
+
+    def _search_error(self, request_id, failure):
+        if self._closed or request_id != self._search_request:
+            return
+        self._search_request = None
+        self._snapshots = []
+        self.ui.snapshotList.clear()
+        self.ui.snapshotList.setEnabled(True)
+        self.ui.archiveCount.setText("Could not load archives")
+        self.retry_search_button.show()
+        self.statusBar().showMessage(error_text(failure))
+        logger.debug("Search failed", exc_info=failure)
+
+    def _search_result(self, request_id, result):
+        if self._closed or request_id != self._search_request:
+            return
+        self._search_request = None
         u = self.ui
         self._hover_item = None
         self.popout.hide()
         u.snapshotList.blockSignals(True)
         u.snapshotList.clear()
-        try:
-            self._snapshots = list(self._service.search_snapshots(u.searchInput.text().strip()))
-        except Exception:
-            self._snapshots = []
-            u.snapshotList.blockSignals(False)
-            u.archiveCount.setText("Could not load snapshots")
-            if not self._tabs:
-                u.emptyMessage.setText("Could not load archives.")
-            self.statusBar().clearMessage()
-            return
-        for snapshot in self._snapshots:
+        self._snapshots = list(result.snapshots)
+        fallback = QIcon(str(Path(__file__).parent / "archive_list" / "assets" / "webpage.svg"))
+        for snapshot, image in zip(self._snapshots, result.icons):
             date = snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p")
-            item = QListWidgetItem(f"{snapshot.url}\n{date}")
+            item = QListWidgetItem(f"{snapshot.url}\n{date}\nID: {snapshot.id}")
             item.setData(Qt.ItemDataRole.UserRole, snapshot)
-            item.setToolTip(f"{snapshot.url}\n{date}")
-            item.setSizeHint(QSize(230, 76))
+            item.setIcon(QIcon(QPixmap.fromImage(image)) if not image.isNull() else fallback)
+            item.setToolTip(f"{snapshot.url}\n{date}\nID: {snapshot.id}")
+            item.setSizeHint(QSize(230, 96))
             u.snapshotList.addItem(item)
         count = len(self._snapshots)
         u.archiveCount.setText(f"{count} snapshot{'s' if count != 1 else ''}")
         u.snapshotList.blockSignals(False)
+        u.snapshotList.setEnabled(True)
         if self._active_tab_id is not None:
             self._sync_list_selection()
         else:
@@ -350,17 +464,13 @@ class MainWindow(QMainWindow):
         viewer.apply_viewing_preferences(self.viewing_preferences)
         viewer.setHtml("")
         self._browser_pages.addWidget(viewer)
-        source, available = "", False
-        try:
-            path = self._local_path(snapshot)
-            source = path.read_text(encoding="utf-8", errors="replace")
-            viewer.open_archive(str(path))
-            available = True
-        except (OSError, ValueError):
-            pass
         self._tabs[snapshot.id] = {"snapshot": snapshot, "viewer": viewer,
-                                   "source": source, "available": available,
-                                   "raw": False, "raw_scroll": 0}
+                                   "source": "", "available": False, "loading": True,
+                                   "document": None, "raw": False, "raw_scroll": 0}
+        request_id = self._start_task(
+            load_archive(self._service, snapshot), self._document_result, self._document_error,
+        )
+        self._document_requests[request_id] = snapshot.id
         parts = urlsplit(snapshot.url)
         title = (parts.path.rstrip("/").rsplit("/", 1)[-1] or parts.hostname or snapshot.url)
         self.tab_bar.blockSignals(True)
@@ -380,6 +490,29 @@ class MainWindow(QMainWindow):
         self.tab_bar.setCurrentIndex(index)
         self._activate_tab(index)
         self.snapshot_requested.emit(snapshot)
+
+    def _document_result(self, request_id, document):
+        key = self._document_requests.pop(request_id, None)
+        if self._closed or key not in self._tabs:
+            return
+        state = self._tabs[key]
+        state.update(source=document.source, document=document, available=True, loading=False)
+        display_archive(state["viewer"], document)
+        if key == self._active_tab_id:
+            self._active_tab_id = None
+            self._activate_tab(self.tab_bar.currentIndex())
+        if state.pop("popout", False):
+            self.open_in_window(state["snapshot"])
+
+    def _document_error(self, request_id, failure):
+        key = self._document_requests.pop(request_id, None)
+        if self._closed or key not in self._tabs:
+            return
+        self._tabs[key]["loading"] = False
+        if key == self._active_tab_id:
+            self.ui.emptyMessage.setText("Archived file is unavailable.")
+            self.statusBar().showMessage(error_text(failure))
+        logger.debug("Open archive failed", exc_info=failure)
 
     def _save_tab_state(self):
         state = self._tabs.get(self._active_tab_id)
@@ -413,7 +546,7 @@ class MainWindow(QMainWindow):
         if state["available"]:
             self._show_content()
         else:
-            self.ui.emptyMessage.setText("Archived file is unavailable.")
+            self.ui.emptyMessage.setText("Loading archive…" if state.get("loading") else "Archived file is unavailable.")
             self.ui.viewerStack.setCurrentWidget(self.ui.emptyPage)
         self._sync_list_selection()
         self.statusBar().clearMessage()
@@ -454,6 +587,10 @@ class MainWindow(QMainWindow):
             return
         key = self.tab_bar.tabData(index)
         state = self._tabs.pop(key)
+        for request_id, tab_id in tuple(self._document_requests.items()):
+            if tab_id == key:
+                request_id.cancel()
+                self._document_requests.pop(request_id)
         self.tab_bar.removeTab(index)
         self._browser_pages.removeWidget(state["viewer"])
         state["viewer"].deleteLater()
@@ -500,9 +637,18 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def open_in_window(self, snapshot):
-        try:
-            path = self._local_path(snapshot)
-        except (OSError, ValueError) as exc:
+        if snapshot is None:
+            return
+        state = self._tabs.get(snapshot.id)
+        if state is None:
+            self.open_in_tab(snapshot)
+            self._tabs[snapshot.id]["popout"] = True
+            return
+        if state.get("loading"):
+            state["popout"] = True
+            return
+        document = state.get("document")
+        if document is None:
             self.statusBar().showMessage("Archived file is unavailable.")
             return
         if snapshot.id in self._windows:
@@ -517,13 +663,21 @@ class MainWindow(QMainWindow):
         window.resize(1000, 720)
         viewer = ArchiveViewer(window)
         viewer.apply_viewing_preferences(self.viewing_preferences)
-        viewer.open_archive(str(path))
+        display_archive(viewer, document)
         window.setCentralWidget(viewer)
         self._windows[snapshot.id] = window
         window.destroyed.connect(lambda _obj=None, key=snapshot.id: self._windows.pop(key, None))
         window.show()
 
     def closeEvent(self, event):
+        self._closed = True
+        self._debounce.stop()
+        for task in tuple(self._tasks):
+            task.cancel()
+        self._document_requests.clear()
+        close_service = getattr(self._service, "close", None)
+        if close_service is not None:
+            close_service()
         for window in list(self._windows.values()):
             window.close()
         super().closeEvent(event)

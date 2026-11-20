@@ -1,0 +1,117 @@
+"""Adapt the shared API to the UI contract without opening the database."""
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+import re
+from urllib.parse import urlsplit
+
+import httpx
+
+from .api import APIError, WebberAPI
+from .archive_document import ArchiveDocument
+from .archive_list.service import Snapshot
+from .integration_errors import InvalidArchiveResponse
+
+
+class ArchiveService:
+    def __init__(self, base_url: str, *, wait_ready=None, api_factory=WebberAPI):
+        self.base_url = base_url
+        self.api_factory = api_factory
+        self.wait_ready = wait_ready
+        self._http_workers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webber-http")
+
+    def close(self):
+        self._http_workers.shutdown(wait=False, cancel_futures=True)
+
+    async def _ready(self):
+        if self.wait_ready is not None:
+            await self.wait_ready()
+
+    async def _network(self, method, *args):
+        await self._ready()
+        # QtAsyncio implements task/executor APIs, not socket transports.
+        # A bounded standard executor avoids QtAsyncio's executor wrapper,
+        # which installs a Qt loop in its worker. Clients stay on a normal loop.
+        def request():
+            async def run():
+                api = self.api_factory(
+                    self.base_url, timeout=httpx.Timeout(150, connect=5), trust_env=False
+                )
+                try:
+                    return await getattr(self, method)(api, *args)
+                finally:
+                    await api.aclose()
+            return asyncio.run(run(), loop_factory=asyncio.SelectorEventLoop)
+        return await asyncio.wrap_future(self._http_workers.submit(request))
+
+    async def search_snapshots(self, query):
+        return await self._network("_search_snapshots", query)
+
+    async def load_archive(self, snapshot):
+        return await self._network("_load_archive", snapshot)
+
+    async def _search_snapshots(self, api, query):
+        # The UI promises literal, case-insensitive substrings. The backend
+        # accepts a regex; escape user input before crossing that boundary.
+        pattern = "(?i)" + re.escape(query.strip())
+        ids = await api.search_snapshots(url=pattern)
+        semaphore = asyncio.Semaphore(8)
+
+        async def fetch(snapshot_id):
+            async with semaphore:
+                try:
+                    value = await api.get_snapshot_info(snapshot_id)
+                except APIError as error:
+                    if error.code == 404:
+                        return None  # Another request may have deleted it.
+                    raise
+            timestamp = value.end_time or value.start_time
+            if timestamp is None:
+                raise InvalidArchiveResponse()
+            date = datetime.fromtimestamp(timestamp.sec + timestamp.nsec / 1e9, timezone.utc)
+            host = urlsplit(value.url).hostname or ""
+            assets = Path(__file__).parent / "archive_list" / "assets"
+            icon = (assets / "ucsc.ico" if host == "ucsc.edu" or host.endswith(".ucsc.edu")
+                    else assets / "python.svg" if host == "python.org" or host.endswith(".python.org")
+                    else None)
+            return Snapshot(value.id, value.url, date, favicon_path=icon)
+
+        snapshots = await asyncio.gather(*(fetch(value) for value in ids))
+        return sorted((value for value in snapshots if value is not None),
+                      key=lambda value: (value.archived_at, value.id), reverse=True)
+
+    async def create_snapshot(self, url):
+        return await self._network("_create_snapshot", url)
+
+    async def _create_snapshot(self, api, url):
+        return await api.create_snapshot(url, "GET")
+
+    async def _load_archive(self, api, snapshot):
+        details = await api.get_snapshot_info(snapshot.id)
+        semaphore = asyncio.Semaphore(8)
+
+        async def fetch(file_id):
+            async with semaphore:
+                return await api.get_file_info(file_id)
+
+        files = await asyncio.gather(*(fetch(value) for value in details.files))
+        html = [value for value in files if 200 <= value.response.code < 300 and any(
+            name.lower() == "content-type" and any("text/html" in entry.lower() for entry in values)
+            for name, values in value.response.headers.items())]
+        if not html:
+            raise FileNotFoundError("This snapshot has no saved HTML page.")
+        original = urlsplit(snapshot.url)
+        html.sort(key=lambda value: (
+            value.host != original.hostname,
+            value.path.lstrip("/") != original.path.lstrip("/"),
+            ((value.request.sent_time.sec, value.request.sent_time.nsec)
+             if value.request.sent_time is not None else (0, 0)),
+        ))
+        page = html[0]
+        if not page.url.startswith("/data/" + snapshot.id + "/"):
+            raise InvalidArchiveResponse()
+        response = await api.get_file_data(page.id)
+        if response.status_code != 200:
+            raise APIError(response.status_code, response.text)
+        return ArchiveDocument(response.text, url=self.base_url.rstrip("/") + page.url)
