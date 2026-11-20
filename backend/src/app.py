@@ -10,7 +10,7 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
-from flask import Flask, jsonify, Response, request
+from flask import Flask, jsonify, Response, request, send_file
 from src.request_manager import RequestManager 
 
 
@@ -87,6 +87,27 @@ def create_app(
         manager = RequestManager(db_conn=snapshot_conn)
         resp = manager.delete_snapshots(request)
         return jsonify(resp[0]), resp[1]
+
+    @app.route("/snapshots/archive", methods=["POST"])
+    def archive_snapshots():
+        manager = RequestManager(db_conn=snapshot_conn)
+        resp = manager.export_archive(request)
+        status = resp[1]
+        if status != 200:
+           return jsonify(resp[0]), status
+        tmp_archive = resp[0]["res"]
+        archived = resp[0]["option"]
+        constructed_name = f"archive_{archived}.zip"
+        response = send_file(
+                # Not using keywords because it breaks for attachement_name (4th) and filename_or_fp (1st)
+                tmp_archive,
+                "application/zip",
+                True,
+                constructed_name,
+        )
+        response.call_on_close(tmp_archive.close)
+        return response, 200 
+
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):

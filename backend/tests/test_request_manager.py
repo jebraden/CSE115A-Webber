@@ -1124,6 +1124,7 @@ class TestExportArchive:
         res, status = manager.export_archive(request)
         assert status == 200
         assert res["res"].read() == b"Fake Archive"
+        assert res["option"] == "ALL"
 
     def test_200_for_str_ids(self, tmp_path, monkeypatch, insert_snapshot, test_db):
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
@@ -1145,6 +1146,7 @@ class TestExportArchive:
         res, status = manager.export_archive(request)
         assert status == 200
         assert res["res"].read() == b"Fake Archive"
+        assert res["option"] == "snap-1"
 
     def test_400_for_non_str_input(self, tmp_path, monkeypatch, insert_snapshot, test_db):
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
@@ -1165,16 +1167,6 @@ class TestExportArchive:
         res, status = manager.export_archive(request)
         assert status == 400
 
-
-
-
-
-            
-
-
-
-
-        
 class TestFlaskRoutes:
     def setup(self):
         self.app = create_app()
@@ -1227,6 +1219,43 @@ class TestFlaskRoutes:
 
         resp = self.client.delete("snapshots/snap-1")
         assert resp.status_code == 404
+
+    def test_archive_snapsot(self, insert_snapshot, tmp_path, monkeypatch):
+        self.setup()
+
+        body = {"archive": "snap-1"}
+
+        def mock_export_archive(self, request):
+            return {
+                "res": io.BytesIO(b"hello"), 
+                "option": request.get_json(silent=True).get("archive", None),
+            }, 200
+
+        monkeypatch.setattr(
+            RequestManager, "export_archive", mock_export_archive
+        )
+
+
+        resp = self.client.post("snapshots/archive", json=body)
+
+        assert resp.status_code == 200
+        assert "attachment" in resp.headers.get("Content-Disposition")
+        assert "archive_snap-1" in resp.headers.get("Content-Disposition")
+
+    def test_archive_snapshot_non_200(self, insert_snapshot, test_db):
+        self.setup()
+
+        body = {"archive": 34}
+
+        resp = self.client.post("snapshots/archive", json=body)
+
+        assert resp.status_code == 400
+
+
+
+
+
+
 
 
 

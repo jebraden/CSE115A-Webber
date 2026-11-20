@@ -511,7 +511,7 @@ class RequestManager():
         return {"content": data}, 200
 
 
-    def query_statistics(self, request):
+    def query_statistics(self, request) -> (dict, int):
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -532,7 +532,7 @@ class RequestManager():
             results.append(resp)
         return {"statistics": results}, 200
 
-    def export_archive(self, request):
+    def export_archive(self, request) -> (dict, int):
         payload = request.get_json(silent=True)
         to_archive = "ALL"
         if payload:
@@ -550,7 +550,7 @@ class RequestManager():
             case 404:
                 return self.not_found("The provided archive option was not found as a snapshot-id")
             case 200:
-                return ({"res": tmp_archive}, status) 
+                return ({"res": tmp_archive, "option": to_archive}, status) 
             case _:
                 return self.internal_server_error("Encountered unexpected error producing the zip archive!")
 
