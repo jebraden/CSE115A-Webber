@@ -368,14 +368,14 @@ class StatisticsLimitsResponse(StrictNamedTuple):
 # The API #
 ###########
 class WebberAPI:
-    def __init__(self, base_url: str, **client_options):
+    def __init__(self, base_url: str):
         """Construct the API object.
 
         Arguments:
         base_url -- the base URL of the backend
         """
         self.base_url = base_url.removesuffix("/")
-        self.client = httpx.AsyncClient(**client_options)
+        self.client = httpx.AsyncClient()
 
     async def aclose(self):
         """Close the client associated with this instance."""
@@ -407,12 +407,7 @@ class WebberAPI:
 
     def _check_status_code(self, resp: httpx.Response, expected_status: int):
         if resp.status_code != expected_status:
-            try:
-                error = APIError(resp.status_code, resp.text)
-            except (ValueError, TypeError, KeyError) as parsing_error:
-                # Framework and proxy errors can have an HTML body.
-                raise UnknownAPIError(resp.status_code, resp.text) from parsing_error
-            raise error
+            raise APIError(resp.status_code, resp.text)
 
     def _body_json(self, resp: httpx.Response, expected_status: int) -> Any:
         self._check_status_code(resp, expected_status)

@@ -8,9 +8,7 @@ import re
 import asyncio
 import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from .archive_storage import archive_directory
-from .scraping.scraper import PageScraper, HyperlinkRules
-from playwright.async_api import TimeoutError as ScrapeTimeout
+from src.scraping.scraper import PageScraper, HyperlinkRules
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
@@ -46,14 +44,8 @@ class RequestManager():
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        try:
-            parsed = urlsplit(url)
-            if not isinstance(url, str) or parsed.scheme not in ("http", "https") or not parsed.hostname:
-                return self.bad_request("Enter a complete http:// or https:// URL.")
-            parsed.port
-        except (TypeError, ValueError, AttributeError):
-            return self.bad_request("Enter a valid http:// or https:// URL.")
-        options_dict = payload.get("request_options")
+        options_dict = payload.get("request_options", None)
+        # Assume that options parameters are... optional
         if options_dict:
             method = options_dict.get("method", None)
             headers = options_dict.get("headers", None)
@@ -69,21 +61,9 @@ class RequestManager():
 
         # Parameters validated
         # Currently on GET explicitly supported
-        scraper = PageScraper(db_conn=self.db, hyperlink_rules=rules)
-        try:
+        scraper = PageScraper(db_conn = self.db, hyperlink_rules = rules)
+        with RequestManager.write_lock:
             snap_id = asyncio.run(scraper.archive_page(url))
-        except (TimeoutError, ScrapeTimeout):
-            self.db.rollback()
-            return {"message": "Archiving timed out. Check your archives before retrying."}, 504
-        except Exception:
-            self.db.rollback()
-            logger.exception("Unable to archive URL")
-            return self.internal_server_error(
-                "Could not archive this page. Check the URL and connection, then retry."
-            )
-        if not isinstance(snap_id, str) or not snap_id:
-            self.db.rollback()
-            return self.internal_server_error("The scraper did not return a snapshot ID.")
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
@@ -115,7 +95,7 @@ class RequestManager():
         db = self.db 
         try:
             
-            with db:
+            with db, RequestManager.write_lock:
                 # Was thinking if we need this initial query
                 # It allows us to be informative, but it really doesn't
                 # change behavior
@@ -129,6 +109,7 @@ class RequestManager():
                 ).fetchone()
                 if row is None:
                     return self.not_found(f"{snapshot_id} is not a valid snapshot id")
+                path = os.path.join(base_dir, snapshot_id)
                 # Delete file rows
                 db.execute(
                     """
@@ -170,7 +151,7 @@ class RequestManager():
         db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
-            with db:
+            with db, RequestManager.write_lock:
                 db.execute(
                     f"""
                     DELETE
@@ -208,7 +189,7 @@ class RequestManager():
         if "." in snapshot_id or "/" in snapshot_id:
             logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
             return
-        path = os.path.join(archive_directory.get() or base_dir, snapshot_id)
+        path = os.path.join(base_dir, snapshot_id)
         try:
             shutil.rmtree(path)
             logger.info(f"delete_snapshots: Deleted files on disk for the snapshot {snapshot_id}")
@@ -300,7 +281,7 @@ class RequestManager():
                 "parameters": params,
             },
             "response": {
-                "received_time": self._time_spec(row["response_recieved_time"]),
+                "recieved_time": self._time_spec(row["response_recieved_time"]),
                 "code": row["response_code"],
                 "headers": response_headers,
             },
@@ -537,7 +518,7 @@ class RequestManager():
             return self.bad_request("query_statistics requires payloads consisting of an array of interval objects")
 
         db = self.db
-        db.row_factory = sqlite3.Row
+        db.row_factory(sqlite3.Row)
         results = []
         for interval in intervals:
             resp, status = self._process_interval(interval, db) 
@@ -617,7 +598,7 @@ class RequestManager():
         
 
     def get_limits(self) -> (dict, int):
-        db = self.db
+        db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         results = None
         try:

@@ -73,7 +73,7 @@ class ReadersWriterLock:
 
     def aquire_read(self):
         """Acquire the lock for reading."""
-        if getattr(self._is_writing, "value", False):
+        if self._is_writing.value:
             return
         with self._vars:
             self._n_readers += 1
@@ -82,7 +82,7 @@ class ReadersWriterLock:
 
     def release_read(self):
         """Release the lock for reading."""
-        if getattr(self._is_writing, "value", False):
+        if self._is_writing.value:
             return
         with self._vars:
             if self._n_readers == 1:
@@ -218,7 +218,7 @@ class WebberBackend:
     )
 
     def _build_arguments(self) -> list[str]:
-        ppid = os.getpid()
+        ppid = os.getppid()
         out: list[str] = [
             sys.executable,
             "-m",
@@ -291,7 +291,6 @@ class WebberBackend:
         assert self._proc is not None
         _, status = os.waitpid(self._proc.pid, 0)
         code = os.waitstatus_to_exitcode(status)
-        self._proc.returncode = code
 
         # needs to come before state is updated
         with self._lock.write():
@@ -317,7 +316,7 @@ class WebberBackend:
         timeout -- maximum number of seconds (possibly fractional) to wait
         """
         if self._thread:
-            self._thread.join(timeout)
+            self._thread.join()
 
     def stop(self):
         """Stop the backend.
