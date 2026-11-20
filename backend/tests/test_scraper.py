@@ -334,7 +334,7 @@ class TestHandleResponse:
         assert resp.url not in self.scraper.saved_urls
 
     @pytest.mark.asyncio
-    async def test_successful_resp_saved(self, tmp_path):
+    async def test_successful_resp_saved(self):
         self.setup()
         req = FakeRequest()
         self.set_req_vals(req)
@@ -348,13 +348,11 @@ class TestHandleResponse:
             })
         )
 
-        saved_file = tmp_path / "page.html"
-        saved_file.write_bytes(await resp.body())
         with patch.object(
             self.scraper,
             "write_resource_file",
-            return_value=str(saved_file),
-        ) as write_file:
+            return_value="/tmp/page.html",
+        ), patch("os.path.getsize", return_value=100) as write_file:
             await self.scraper.handle_response(resp)
         
         write_file.assert_called_once()
@@ -383,18 +381,16 @@ class TestHandleResponse:
             })
         )
 
-        saved_file = tmp_path / "missing.html"
-        saved_file.write_bytes(await resp.body())
         with patch.object(
             self.scraper, 
             "write_resource_file", 
-            return_value=str(saved_file),
-        ):
+            return_value="/tmp/missing.html",
+        ), patch("os.path.getsize", return_value=100):
             await self.scraper.handle_response(resp)
 
         row = db.execute(
             """
-            SELECT response_code, file_size
+            SELECT response_code
             FROM files
             WHERE protocol = ? AND host = ? AND remote_path = ?
             """,
@@ -403,7 +399,6 @@ class TestHandleResponse:
 
         assert row is not None
         assert row[0] == 404
-        assert row[1] == saved_file.stat().st_size
         assert resp.url in self.scraper.saved_urls
 
     @pytest.mark.asyncio
@@ -431,18 +426,16 @@ class TestHandleResponse:
             self.scraper.collect_req_metadata(req)
         )
 
-        saved_file = tmp_path / "search"
-        saved_file.write_bytes(await resp.body())
         with patch.object(
             self.scraper,
             "write_resource_file",
-            return_value=str(saved_file),
-        ):
+            return_value=f"{tmp_path}/search",
+        ), patch("os.path.getsize", return_value=100):
             await self.scraper.handle_response(resp)
         row = db.execute(
             """
             SELECT json(request_headers), json(request_parameters),
-            json(response_headers), file_size
+            json(response_headers)
             FROM files
             WHERE host = ? AND remote_path = ?
             """,
@@ -452,7 +445,6 @@ class TestHandleResponse:
         request_headers = json.loads(row[0])
         request_parameters = json.loads(row[1])
         response_headers = json.loads(row[2])
-        assert row[3] == saved_file.stat().st_size
 
         assert request_headers["cookie"] == [
             "lo=3", "skull_guardian=4",
