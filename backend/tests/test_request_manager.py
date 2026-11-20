@@ -1225,9 +1225,11 @@ class TestFlaskRoutes:
 
         body = {"archive": "snap-1"}
 
+        stream = []
         def mock_export_archive(self, request):
+            stream.append(io.BytesIO(b"hello"))
             return {
-                "res": io.BytesIO(b"hello"), 
+                "res": stream[0], 
                 "option": request.get_json(silent=True).get("archive", None),
             }, 200
 
@@ -1241,6 +1243,11 @@ class TestFlaskRoutes:
         assert resp.status_code == 200
         assert "attachment" in resp.headers.get("Content-Disposition")
         assert "archive_snap-1" in resp.headers.get("Content-Disposition")
+        data = resp.get_data()
+        resp.close()
+        assert data == b"hello"
+        assert stream[0].closed
+
 
     def test_archive_snapshot_non_200(self, insert_snapshot, test_db):
         self.setup()
