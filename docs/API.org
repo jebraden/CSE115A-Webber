@@ -164,6 +164,28 @@
 *** Error Responses
     Only the global error responses defined above apply
 
+** POST =/snapshots/archive
+    Creates a Zip archive of the entire web archive. Or potentially specific snapshots
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string optional) What we want to be in our archive. Present in case archival wants to be extended to specific snapshots
+          // default: "ALL"
+          // NOTE "ALL" refers to the entire web archive collection, including the db file!
+          "archive": "ALL"
+      }
+    #+end_src
+*** Success Response
+    Code: 200 \\
+    Content-Type: application/zip \\
+    Content-Disposition: attatchment; filename="archive.zip"
+
+    The response body contains the zip archive as binary data that gets streamed to the reciever.
+
+*** Error Responses
+    Only the global error responses defined above apply
+
 
 ** GET =/snapshots/{SNAPSHOT_ID}=
    Get information about the snapshot =SNAPSHOT_ID=.
@@ -179,7 +201,7 @@
           // (string) URL that triggered the snapshot
           "url": "https://www.example.com/path/to/file?param1=val&param2=val",
           // (timespec) time the snapshot creation was requested
-          "start_time": { ... },
+          "start_time": { ... }/,
           // (timespec) time the snapshot creation was finished
           "end_time": { ... },
           // (array of strings) IDs of files in this snapshot
