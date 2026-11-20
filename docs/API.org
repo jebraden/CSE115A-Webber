@@ -184,7 +184,15 @@
     The response body contains the zip archive as binary data that gets streamed to the reciever.
 
 *** Error Responses
-    Only the global error responses defined above apply
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the provided "archive" payload item is not "ALL" or refers to a non-existent snapshot.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
 
 
 ** GET =/snapshots/{SNAPSHOT_ID}=

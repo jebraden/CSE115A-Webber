@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import tempfile
+import zipfile
 import json
 import uuid
 import logging
@@ -9,10 +11,13 @@ import asyncio
 import threading
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from src.scraping.scraper import PageScraper, HyperlinkRules
+from typing import BinaryIO
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")
 db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
+
+# hm I think this file is starting to get a big large...
 
 # Please note db = self.db usage is due to this member var not existing before
 # And I am too lazy to insert self.db everywhere
@@ -186,7 +191,7 @@ class RequestManager():
 
         # There should not be a situation where these characters are in the ID, thus 
         # they get skipped
-        if "." in snapshot_id or "/" in snapshot_id:
+        if self._malicious_id(snapshot_id):
             logger.warning(f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}")
             return
         path = os.path.join(base_dir, snapshot_id)
@@ -527,6 +532,29 @@ class RequestManager():
             results.append(resp)
         return {"statistics": results}, 200
 
+    def export_archive(self, request):
+        payload = request.get_json(silent=True)
+        to_archive = "ALL"
+        if payload:
+            res = self._json_check(payload)
+            if res: return res
+            raw_to_archive = payload.get("archive", None)
+            if not isinstance(raw_to_archive, str):
+                return self.bad_request("export_archive expects the archive field (if provided) to be a string")
+            to_archive = raw_to_archive
+
+        tmp_archive, status = self._gen_temp_archive(to_archive)
+        match status:
+            case 400:
+                return self.bad_request("The provided archive options supplied an invalid or malicious option/snapshot-id")
+            case 404:
+                return self.not_found("The provided archive option was not found as a snapshot-id")
+            case 200:
+                return ({"res": tmp_archive}, status) 
+            case _:
+                return self.internal_server_error("Encountered unexpected error producing the zip archive!")
+
+
     def _build_url(self, row) -> str:
         params = json.loads(row["request_parameters"])
 
@@ -708,6 +736,72 @@ class RequestManager():
             "urls": urls,
             "hosts": hosts,
         }
+
+    def _gen_temp_archive(self, to_archive: str) -> (BinaryIO, int):
+        """
+            Callers must eventually close the returned TempFile,
+            or propogate that responsibility
+        """
+        if self._malicious_id(to_archive):
+            return (None, 400)
+
+        path = base_dir
+        archiving_all = True
+
+        if to_archive.upper() != "ALL":
+            path = os.path.join(base_dir, to_archive)
+            archiving_all = False
+            if not os.path.isdir(path):
+                return (None, 404)
+
+        zip_archive = tempfile.TemporaryFile(mode="w+b")
+
+        try:
+            with zipfile.ZipFile(
+                zip_archive, "w", compression=zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                if archiving_all:
+                    backup_db_file = self._temp_db_backup()
+                    try:
+                        zip_file.write(backup_db_file.name, "archive.db")
+                    finally:
+                        backup_db_file.close()
+
+                for root, dirs, files in os.walk(path):
+                    at_base = root == base_dir
+                    for filename in files:
+                        if at_base and ".db" in filename:
+                            continue
+                        path = os.path.join(root, filename)
+                        zip_path = os.path.relpath(path, base_dir)
+                        zip_file.write(path, zip_path)
+
+            zip_archive.seek(0)
+            return (zip_archive, 200)
+        except Exception as e:
+            zip_archive.close()
+            logger.warning(f"_gen_temp_archive: Encountered unexpected error {e}")
+            return (None, 500)
+
+    def _temp_db_backup(self) -> BinaryIO:
+        """
+        Callers must ensure they close the returned file
+        """
+
+        with RequestManager.write_lock:
+            tmp_file = tempfile.NamedTemporaryFile(mode="w+b")
+            with sqlite3.connect(tmp_file.name) as dest_db:
+                self.db.backup(dest_db)
+        return tmp_file
+
+
+
+    def _malicious_id(self, snapshot_id:str) -> bool:
+        return not snapshot_id or "/" in snapshot_id or "." in snapshot_id
+       
+
+        
 
 
         
