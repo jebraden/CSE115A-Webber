@@ -9,6 +9,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox, QStyle, QStyleOptionViewItem
 
 from frontend.src.api import InternalServerError, WebberAPI
+from frontend.src.archive_list.service import UI_DEMO_SNAPSHOTS
 from frontend.tests.test_main_window import app, select, window
 
 
@@ -26,7 +27,7 @@ def _click_checkbox(snapshot_list, row):
     QTest.mouseClick(snapshot_list.viewport(), Qt.MouseButton.LeftButton, pos=indicator.center())
 
 
-def _answer_confirmation(window, text):
+def _answer_confirmation(window, text, trigger=None):
     observed = []
 
     def answer():
@@ -35,8 +36,14 @@ def _answer_confirmation(window, text):
         observed.append((dialog.text(), dialog.standardButton(dialog.defaultButton())))
         next(button for button in dialog.buttons() if button.text() == text).click()
 
-    QTimer.singleShot(0, answer)
-    window.ui.deleteSnapshotsButton.click()
+    timer = QTimer()
+    timer.setSingleShot(True)
+    timer.timeout.connect(answer)
+    timer.start(0)
+    if trigger is None:
+        trigger = window.ui.deleteSnapshotsButton.click
+    trigger()
+    timer.stop()
     return observed
 
 
@@ -137,6 +144,88 @@ def test_us_3_3_t_2_batch_delete_failure_keeps_results_and_marks(window, monkeyp
     assert window.ui.deleteSnapshotsButton.text() == "Delete selected (2)"
     assert snapshots.count() == 2
     assert window.statusBar().currentMessage() == ""
+
+
+@pytest.mark.parametrize("select_mode", [False, True])
+def test_us_3_3_t_2_shift_click_checks_range_without_opening_archive(window, monkeypatch, select_mode):
+    monkeypatch.setattr(window._service, "_snapshots", UI_DEMO_SNAPSHOTS[:5])
+    window.search()
+    window.show()
+    QApplication.processEvents()
+    snapshots = window.ui.snapshotList
+    start_row = 3 if select_mode else 0
+    QTest.mouseClick(
+        snapshots.viewport(), Qt.MouseButton.LeftButton,
+        pos=snapshots.visualItemRect(snapshots.item(start_row)).center(),
+    )
+    opened = window._active_tab_id
+    assert opened is not None
+    assert snapshots.currentRow() == start_row
+    if select_mode:
+        window.ui.selectSnapshotsButton.click()
+        _click_checkbox(snapshots, 4)
+        _click_checkbox(snapshots, 0)
+
+    QTest.mouseClick(
+        snapshots.viewport(), Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.ShiftModifier, snapshots.visualItemRect(snapshots.item(2)).center(),
+    )
+
+    assert [
+        row for row in range(snapshots.count())
+        if snapshots.item(row).checkState() == Qt.CheckState.Checked
+    ] == ([0, 1, 2, 4] if select_mode else [0, 1, 2])
+    assert window.ui.selectSnapshotsButton.isChecked()
+    assert window._active_tab_id == opened
+    assert snapshots.currentRow() == start_row
+    assert snapshots.hasFocus()
+
+
+@pytest.mark.parametrize("select_mode", [False, True])
+def test_us_3_3_t_2_backspace_confirms_deletion_from_archive_list(window, select_mode):
+    window.show()
+    window.activateWindow()
+    snapshots = window.ui.snapshotList
+    search = window.ui.searchInput
+    search.setText("e")
+    search.setFocus()
+    QApplication.processEvents()
+
+    select(window, "valid")
+    if select_mode:
+        window.ui.selectSnapshotsButton.click()
+        snapshots.setFocus()
+        assert snapshots.currentItem().isSelected()
+        assert _answer_confirmation(
+            window, "Cancel", lambda: QTest.keyClick(snapshots, Qt.Key.Key_Backspace)
+        ) == []
+        for row in range(snapshots.count()):
+            snapshots.item(row).setCheckState(Qt.CheckState.Checked)
+
+    search.setFocus()
+    assert _answer_confirmation(
+        window, "Cancel", lambda: QTest.keyClick(search, Qt.Key.Key_Backspace)
+    ) == []
+    assert search.text() == ""
+    assert snapshots.count() == 2
+
+    snapshots.setFocus()
+    QApplication.processEvents()
+    count = 2 if select_mode else 1
+    noun = "snapshots" if select_mode else "snapshot"
+    confirmation = [(f"Permanently delete {count} {noun}?", QMessageBox.StandardButton.Cancel)]
+    assert _answer_confirmation(
+        window, "Cancel", lambda: QTest.keyClick(snapshots, Qt.Key.Key_Backspace)
+    ) == confirmation
+    assert snapshots.count() == 2
+    window.activateWindow()
+    snapshots.setFocus()
+    QApplication.processEvents()
+    assert _answer_confirmation(
+        window, "Delete", lambda: QTest.keyClick(snapshots, Qt.Key.Key_Backspace)
+    ) == confirmation
+    assert [snapshot.id for snapshot in window._snapshots] == ([] if select_mode else ["missing"])
+    assert not window.ui.selectSnapshotsButton.isChecked()
 
 
 @pytest.mark.asyncio
