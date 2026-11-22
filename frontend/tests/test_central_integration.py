@@ -151,3 +151,84 @@ def test_search_error_allows_an_explicit_retry(windows):
     window.retry_search_button.click()
     until(app, lambda: window.ui.snapshotList.count() == 4)
     assert not window.retry_search_button.isVisible()
+
+
+def test_4_6_1_options_defaults_and_window_lifetime(windows):
+    app, make = windows
+    window = make(MockSnapshotService([]))
+    ui = window.ui
+    ui.savePageButton.click()
+    assert not ui.captureOptionsPanel.isVisible()
+    assert not ui.crawlEnabledCheck.isChecked()
+    assert ui.crawlDepthInput.value() == 1
+    assert ui.crawlSameDomainCheck.isChecked()
+    assert not ui.crawlDepthInput.isEnabled()
+    assert not ui.crawlSameDomainCheck.isEnabled()
+    ui.captureOptionsButton.click()
+    assert ui.captureOptionsPanel.isVisible()
+    ui.crawlEnabledCheck.setChecked(True)
+    assert ui.crawlDepthInput.isEnabled()
+    assert ui.crawlSameDomainCheck.isEnabled()
+    ui.crawlDepthInput.setValue(0)
+    assert ui.crawlDepthInput.value() == 1
+    ui.crawlDepthInput.setValue(3)
+    ui.savePageButton.click()
+    ui.savePageButton.click()
+    assert ui.captureOptionsPanel.isVisible()
+    assert ui.crawlDepthInput.value() == 3
+    fresh = make(MockSnapshotService([]))
+    until(app, lambda: fresh._search_request is None)
+    assert not fresh.ui.captureOptionsButton.isChecked()
+    assert not fresh.ui.crawlEnabledCheck.isChecked()
+    assert fresh.ui.crawlDepthInput.value() == 1
+
+
+def test_4_6_1_capture_options_survive_failure_and_allow_same_url_resave(windows):
+    app, make = windows
+    release = asyncio.Event()
+    calls = []
+
+    async def create(url, *, crawl=None):
+        calls.append((url, crawl))
+        await release.wait()
+        if len(calls) == 1:
+            raise BadRequestError('{"message":"Capture failed"}')
+        return "saved"
+
+    window = make(MockSnapshotService([]), create_snapshot=create)
+    ui = window.ui
+    ui.savePageButton.click()
+    ui.captureOptionsButton.click()
+    ui.crawlEnabledCheck.setChecked(True)
+    ui.crawlDepthInput.setValue(2)
+    ui.crawlSameDomainCheck.setChecked(False)
+    ui.urlInput.setText("https://example.org/")
+    ui.captureButton.click()
+    until(app, lambda: bool(calls))
+    assert not ui.crawlEnabledCheck.isEnabled()
+    assert not ui.crawlDepthInput.isEnabled()
+    assert not ui.crawlSameDomainCheck.isEnabled()
+    assert calls == [("https://example.org/", {
+        "enable": True, "depth": 2, "top_level_only": False,
+    })]
+    release.set()
+    until(app, lambda: window._capture_request is None)
+    assert ui.captureButton.isEnabled()
+    assert ui.crawlEnabledCheck.isEnabled()
+    assert ui.crawlDepthInput.isEnabled()
+    assert ui.urlInput.text() == "https://example.org/"
+    assert ui.crawlDepthInput.value() == 2
+    assert not ui.crawlSameDomainCheck.isChecked()
+    assert "Capture failed" in ui.captureStatus.text()
+    ui.captureButton.click()
+    until(app, lambda: window._capture_request is None)
+    assert len(calls) == 2
+    assert calls[1] == calls[0]
+    assert not ui.captureButton.isEnabled()
+    ui.crawlEnabledCheck.setChecked(False)
+    assert ui.captureButton.isEnabled()
+    assert not ui.crawlDepthInput.isEnabled()
+    ui.captureButton.click()
+    until(app, lambda: window._capture_request is None)
+    assert calls[-1] == ("https://example.org/", None)
+    until(app, lambda: window._search_request is None)

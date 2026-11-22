@@ -81,11 +81,12 @@ class ArchiveService:
         return sorted((value for value in snapshots if value is not None),
                       key=lambda value: (value.archived_at, value.id), reverse=True)
 
-    async def create_snapshot(self, url):
-        return await self._network("_create_snapshot", url)
+    async def create_snapshot(self, url, *, crawl=None):
+        """Save a URL with optional backend crawl rules."""
+        return await self._network("_create_snapshot", url, crawl)
 
-    async def _create_snapshot(self, api, url):
-        return await api.create_snapshot(url, "GET")
+    async def _create_snapshot(self, api, url, crawl):
+        return await api.create_snapshot(url, "GET", crawl=crawl)
 
     async def _load_archive(self, api, snapshot):
         details = await api.get_snapshot_info(snapshot.id)
