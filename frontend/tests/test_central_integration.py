@@ -169,7 +169,11 @@ def test_4_6_1_options_defaults_and_window_lifetime(windows):
     ui.crawlEnabledCheck.setChecked(True)
     assert ui.crawlDepthInput.isEnabled()
     assert ui.crawlSameDomainCheck.isEnabled()
-    ui.crawlDepthInput.setValue(0)
+    assert not ui.crawlDepthDecrease.isEnabled()
+    ui.crawlDepthIncrease.click()
+    assert ui.crawlDepthInput.value() == 2
+    assert ui.crawlDepthDecrease.isEnabled()
+    ui.crawlDepthDecrease.click()
     assert ui.crawlDepthInput.value() == 1
     ui.crawlDepthInput.setValue(3)
     ui.savePageButton.click()

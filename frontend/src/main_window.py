@@ -76,7 +76,7 @@ class _WindowLoader(QUiLoader):
         if parent is None and class_name == "QMainWindow":
             self.window.setObjectName(name)
             return self.window
-        if class_name == "QSpinBox" and name != "crawlDepthInput":
+        if class_name == "QSpinBox":
             widget = _NumericInput(parent)
             widget.setObjectName(name)
             return widget
@@ -222,7 +222,8 @@ class MainWindow(QMainWindow):
             signal = combo.valueChanged if isinstance(combo, QSpinBox) else combo.currentTextChanged
             signal.connect(self.update_viewing_preferences)
         for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
             decrease.clicked.connect(spin.stepDown)
             increase.clicked.connect(spin.stepUp)
             spin.valueChanged.connect(self._update_stepper_buttons)
@@ -275,7 +276,8 @@ class MainWindow(QMainWindow):
     def _update_stepper_buttons(self, *_args):
         u = self.ui
         for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
             decrease.setEnabled(spin.value() > spin.minimum())
             increase.setEnabled(spin.value() < spin.maximum())
 
