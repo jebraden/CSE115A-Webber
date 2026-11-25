@@ -7,24 +7,74 @@ import shutil
 import re
 import asyncio
 import threading
+import uuid
+from typing import Any
+from types import UnionType
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from src.scraping.scraper import PageScraper, HyperlinkRules
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
-db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
+DB_PATH = os.path.join(base_dir, "archive.db")
+CONNECTION_INIT_CODE = """
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+"""
 
-# Please note db = self.db usage is due to this member var not existing before
-# And I am too lazy to insert self.db everywhere
+_TCG_CANARY = object()
+
+
+def _type_checked_get(
+    body: dict[str, Any],
+    name: str,
+    kind: type | UnionType,
+    default: Any = _TCG_CANARY,
+):
+    if name not in body:
+        if default is _TCG_CANARY:
+            raise KeyError(f"{name!r} must be included in the request body")
+        return default
+    val = body[name]
+    if not isinstance(val, kind):
+        raise TypeError(f"{name!r} must be of type {kind}")
+    return val
+
+
+def _sql_regexp(pattern, url):
+    if url is None:
+        return False
+    return re.search(pattern, url) is not None
+
+
 class RequestManager:
-    write_lock = threading.Lock()
+    def __init__(self, db_path):
+        self.db_path = db_path
+        self._db: sqlite3.Connection | None = None
 
-    def __init__(self, db_conn=None):
-        if db_conn is None:
-            db_conn = sqlite3.connect(db_path)
-        self.db = db_conn
-        pass
+    @property
+    def db(self) -> sqlite3.Connection:
+        if self._db:
+            return self._db
+        raise ValueError("RequestManager not opened")
+
+    @db.setter
+    def db(self, new_db: sqlite3.Connection):
+        # facilitate testing
+        self._db = new_db
+
+    def open(self):
+        self._db = sqlite3.connect(self.db_path)
+        self._db.row_factory = sqlite3.Row
+        self._db.create_function("REGEXP", 2, _sql_regexp)
+        self._db.executescript(CONNECTION_INIT_CODE)
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.db.close()
 
     def _json_check(self, payload):
         if not isinstance(payload, dict):
@@ -68,8 +118,7 @@ class RequestManager:
         # Parameters validated
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn=self.db, hyperlink_rules=rules)
-        with RequestManager.write_lock:
-            snap_id = asyncio.run(scraper.archive_page(url))
+        snap_id = asyncio.run(scraper.archive_page(url))
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)
@@ -95,14 +144,12 @@ class RequestManager:
         )
 
     def delete_snapshot(self, snapshot_id: str) -> tuple[dict, int]:
-        db = self.db
         try:
-
-            with db, RequestManager.write_lock:
+            with self.db:
                 # Was thinking if we need this initial query
                 # It allows us to be informative, but it really doesn't
                 # change behavior
-                row = db.execute(
+                row = self.db.execute(
                     """
                     SELECT *
                     FROM snapshots
@@ -116,7 +163,7 @@ class RequestManager:
                     )
                 path = os.path.join(base_dir, snapshot_id)
                 # Delete file rows
-                db.execute(
+                self.db.execute(
                     """
                     DELETE
                     FROM files
@@ -127,7 +174,7 @@ class RequestManager:
                 logger.info(
                     f"Deleted file entries assosciated with snapshot_id {snapshot_id}"
                 )
-                db.execute(
+                self.db.execute(
                     """
                     DELETE
                     FROM snapshots
@@ -138,7 +185,7 @@ class RequestManager:
                 logger.info(
                     f"Deleted snapshot ({snapshot_id}) entry from snapshots table "
                 )
-                db.commit()
+                self.db.commit()
         except Exception as e:
             logger.warning(
                 f"delete_snapshot: Encountered unexpected error {e}"
@@ -164,11 +211,10 @@ class RequestManager:
                 "Expected a body with 'ids' which is an array containing snapshot ids"
             )
 
-        db = self.db
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
-            with db, RequestManager.write_lock:
-                db.execute(
+            with self.db:
+                self.db.execute(
                     f"""
                     DELETE
                     FROM files
@@ -180,7 +226,7 @@ class RequestManager:
                     f"Batch deleted file entries assosciated with snapshot_ids {snapshot_ids}"
                 )
 
-                db.execute(
+                self.db.execute(
                     f"""
                     DELETE
                     from snapshots
@@ -191,7 +237,7 @@ class RequestManager:
                 logger.info(
                     f"Batch deleted all snapshot entries assosciated with snapshot_ids {snapshot_ids}"
                 )
-                db.commit()
+                self.db.commit()
 
         except Exception as e:
             logger.warning(
@@ -230,13 +276,11 @@ class RequestManager:
             )
 
     def get_snapshot(self, snapshot_id: str) -> tuple[dict, int]:
-        db = self.db
-        db.row_factory = sqlite3.Row
         row = None
         file_ids = None
         try:
-            with db:
-                row = db.execute(
+            with self.db:
+                row = self.db.execute(
                     """
                     SELECT *
                     FROM snapshots
@@ -248,9 +292,9 @@ class RequestManager:
                     return self.not_found(
                         f"{snapshot_id} is not a valid snapshot id"
                     )
-                file_rows = db.execute(
+                file_rows = self.db.execute(
                     """
-                    SELECT id 
+                    SELECT id
                     FROM files
                     WHERE snapshot_id = ?
                     """,
@@ -272,13 +316,10 @@ class RequestManager:
         return (resp, 200)
 
     def get_file_info(self, file_id: str) -> tuple[dict, int]:
-        db = self.db
-        db.row_factory = sqlite3.Row
-
         row = None
         try:
-            with db:
-                row = db.execute(
+            with self.db:
+                row = self.db.execute(
                     f"""
                     SELECT id, snapshot_id, protocol, port,
                         host, remote_path, request_sent_time, request_method,
@@ -334,12 +375,10 @@ class RequestManager:
         )
 
     def get_file(self, file_id: str) -> tuple[dict, int]:
-        db = self.db
-        db.row_factory = sqlite3.Row
         row = None
         try:
-            with db:
-                row = db.execute(
+            with self.db:
+                row = self.db.execute(
                     f"""
                     SELECT {self._file_params()}
                     FROM files
@@ -385,12 +424,10 @@ class RequestManager:
         )
         print(query_values)
 
-        db = self.db
-        db.row_factory = sqlite3.Row
         row = None
         try:
-            with db:
-                row = db.execute(
+            with self.db:
+                row = self.db.execute(
                     f"""
                     SELECT {self._file_params()}
                     FROM files
@@ -418,11 +455,6 @@ class RequestManager:
         return """
             id, on_disk_path, json(response_headers) AS response_headers, response_code
         """
-
-    def regexp(self, pattern, url):
-        if url is None:
-            return False
-        return re.search(pattern, url) is not None
 
     def query_snapshots(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
@@ -462,14 +494,11 @@ class RequestManager:
                 f"The provided url-regex represents an invalid pattern {url_reg}"
             )
 
-        db = self.db
-        db.row_factory = sqlite3.Row
         results = None
         try:
-            with db:
-                db.create_function("REGEXP", 2, self.regexp)
+            with self.db:
 
-                results = db.execute(
+                results = self.db.execute(
                     """
                     SELECT *
                     FROM snapshots
@@ -583,17 +612,14 @@ class RequestManager:
             )
         conditions_string = " AND ".join(other_conds)
 
-        db = self.db
-        db.row_factory = sqlite3.Row
         where_clause = (
             f"WHERE {conditions_string}" if conditions_string else ""
         )
         print(where_clause)
         print(other_vals)
         try:
-            with db:
-                db.create_function("REGEXP", 2, self.regexp)
-                results = db.execute(
+            with self.db:
+                results = self.db.execute(
                     f"""
                     SELECT snapshot_id, id
                     FROM files
@@ -626,15 +652,115 @@ class RequestManager:
                 "query_statistics requires payloads consisting of an array of interval objects"
             )
 
-        db = self.db
-        db.row_factory(sqlite3.Row)
         results = []
         for interval in intervals:
-            resp, status = self._process_interval(interval, db)
+            resp, status = self._process_interval(interval)
             if status != 200:
                 return (resp, status)
             results.append(resp)
         return {"statistics": results}, 200
+
+    def create_bookmark(self, request):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return self.bad_request("expected JSON request body")
+        try:
+            name = _type_checked_get(body, "name", str)
+            file_id = _type_checked_get(body, "file_id", str, None)
+            snapshot_id = _type_checked_get(body, "snapshot_id", str, None)
+        except (KeyError, TypeError) as e:
+            return self.bad_request(str(e))
+        if (file_id is None) == (snapshot_id is None):
+            return self.bad_request(
+                'cannot have both "file_id" and "snapshot_id" set'
+            )
+
+        bookmark_id = str(uuid.uuid4())
+        try:
+            with self.db:
+                self.db.execute(
+                    """
+                    INSERT INTO bookmarks (id, name, file_id, snapshot_id)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (bookmark_id, name, file_id, snapshot_id),
+                )
+                self.db.commit()
+        except sqlite3.IntegrityError:
+            return self.bad_request(
+                "bookmark points to non-existent file or snapshot"
+            )
+        except Exception:
+            return self.internal_server_error(
+                "unexpected error while creating bookmark"
+            )
+        return {"id": bookmark_id}, 201
+
+    def query_bookmarks(self, request):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return self.bad_request("expected JSON request body")
+        try:
+            bm_id = _type_checked_get(body, "id", str, None)
+            name = _type_checked_get(body, "name", str, None)
+            snapshot_id = _type_checked_get(body, "snapshot_id", str, None)
+            file_id = _type_checked_get(body, "file_id", str, None)
+        except (KeyError, TypeError) as e:
+            return self.bad_request(str(e))
+
+        # empty name is a valid search query
+        if name is not None:
+            try:
+                re.compile(name)
+            except re.error:
+                return self.bad_request('invalid regexp pattern for "name"')
+
+        try:
+            rows = list(
+                self.db.execute(
+                    """
+                SELECT
+                id
+                FROM
+                bookmarks
+                WHERE
+                (:id IS NULL or id == :id)
+                AND (:name IS NULL or name REGEXP :name)
+                AND (:snapshot_id IS NULL or snapshot_id == :snapshot_id)
+                AND (:file_id IS NULL or file_id == :file_id)
+                """,
+                    {
+                        "id": bm_id,
+                        "name": name,
+                        "snapshot_id": snapshot_id,
+                        "file_id": file_id,
+                    },
+                )
+            )
+        except Exception:
+            return self.internal_server_error(
+                "unexpected error while querying bookmarks"
+            )
+        return [row["id"] for row in rows], 200
+
+    def delete_bookmark(self, bookmark_id: str):
+        try:
+            with self.db:
+                change_count = self.db.execute(
+                    """
+                    DELETE FROM bookmarks
+                    WHERE id = ?
+                    """,
+                    (bookmark_id,),
+                ).rowcount
+                self.db.commit()
+        except Exception:
+            return self.internal_server_error(
+                "unexpected error while deleting bookmark"
+            )
+        if not change_count:
+            return self.not_found(f"no bookmark for ID {bookmark_id!r}")
+        return {}, 202
 
     def _build_url(self, row) -> str:
         params = json.loads(row["request_parameters"])
@@ -654,7 +780,7 @@ class RequestManager:
             url += "?" + urlencode(params, doseq=True)
         return url
 
-    def _process_interval(self, interval: dict, db) -> tuple[dict, int]:
+    def _process_interval(self, interval: dict) -> tuple[dict, int]:
         numeric = self._numeric_interval(interval)
         if numeric[0] and numeric[1] and numeric[0] > numeric[1]:
             return self.bad_request(
@@ -671,8 +797,8 @@ class RequestManager:
         condition_str = " AND ".join(conditions)
         where_clause = f"WHERE {condition_str}" if conditions else ""
         results = None
-        with db:
-            results = db.execute(
+        with self.db:
+            results = self.db.execute(
                 f"""
                 SELECT s.id AS snapshot_id, s.url, f.id AS file_id,
                     f.on_disk_path, f.host, f.file_size
@@ -723,11 +849,9 @@ class RequestManager:
         )
 
     def get_limits(self) -> tuple[dict, int]:
-        db = sqlite3.connect(db_path)
-        db.row_factory = sqlite3.Row
         results = None
         try:
-            results = db.execute("""
+            results = self.db.execute("""
                 SELECT MIN(start_time) AS first_snapshot, MAX(start_time) AS last_snapshot
                 FROM snapshots
                 """).fetchone()

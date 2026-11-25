@@ -57,11 +57,11 @@ file_id TEXT,
 
 FOREIGN KEY (snapshot_id) REFERENCES snapshots (id)
     ON UPDATE CASCADE
-    ON UPDATE CASCADE,
+    ON DELETE CASCADE,
 
 FOREIGN KEY (file_id) REFERENCES files (id)
     ON UPDATE CASCADE
-    ON UPDATE CASCADE,
+    ON DELETE CASCADE,
 
 CHECK (
     (snapshot_id IS NOT NULL and file_id IS NULL)

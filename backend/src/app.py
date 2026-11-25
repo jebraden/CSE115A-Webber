@@ -7,14 +7,14 @@ from argparse import ArgumentParser
 import sys
 import os
 import sqlite3
+import re
 
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager
+from src.request_manager import RequestManager, DB_PATH
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
-db_path = os.path.join(base_dir, "archive.db")
 
 
 def _setup_die_with_parent(ppid: int | None):
@@ -59,16 +59,10 @@ def create_app(
     app = Flask(__name__)
     app.logger.setLevel(log_level)
 
-    snapshot_conn = sqlite3.connect(db_path, check_same_thread=False)
-
-    query_conn = sqlite3.connect(db_path, check_same_thread=False)
-
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
-    with sqlite3.connect(db_path) as db:
+    with sqlite3.connect(DB_PATH) as db:
         with open(schema, "r") as sql_script:
-            schema_data = sql_script.read()
-            snapshot_conn.executescript(schema_data)
-            query_conn.executescript(schema_data)
+            db.executescript(sql_script.read())
 
     @app.route("/health")
     def health():
@@ -77,38 +71,35 @@ def create_app(
     @app.route("/snapshots/create", methods=["POST"])
     def create_snapshot():
         error = None
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.create_snapshot(request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.create_snapshot(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/delete", methods=["POST"])
     def delete_snapshots():
-        manager = RequestManager(db_conn=snapshot_conn)
-        resp = manager.delete_snapshots(request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.delete_snapshots(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/snapshots/<string:snapshot_id>", methods=["GET", "DELETE"])
     def snapshot_view(snapshot_id: str):
-        if request.method == "GET":
-            manager = RequestManager(db_conn=query_conn)
-            resp = manager.get_snapshot(snapshot_id)
-        if request.method == "DELETE":
-            manager = RequestManager(db_conn=snapshot_conn)
-            resp = manager.delete_snapshot(snapshot_id)
+        with RequestManager(DB_PATH) as manager:
+            if request.method == "GET":
+                resp = manager.get_snapshot(snapshot_id)
+            if request.method == "DELETE":
+                resp = manager.delete_snapshot(snapshot_id)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/files/<string:file_id>", methods=["GET"])
     def get_file_info(file_id: str):
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_info(file_id)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.get_file_info(file_id)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/files/<string:file_id>/data", methods=["GET"])
     def get_file(file_id: str):
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file(file_id)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.get_file(file_id)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -120,9 +111,8 @@ def create_app(
 
     @app.route("/data/<string:snapshot_id>/<path:url_path>", methods=["GET"])
     def file_by_url(snapshot_id: str, url_path: str):
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_file_by_url(snapshot_id, url_path, request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.get_file_by_url(snapshot_id, url_path, request)
 
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
@@ -135,9 +125,8 @@ def create_app(
 
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_snapshots(request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.query_snapshots(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -145,9 +134,8 @@ def create_app(
 
     @app.route("/search/files", methods=["QUERY"])
     def query_files():
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_files(request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.query_files(request)
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
@@ -155,16 +143,32 @@ def create_app(
 
     @app.route("/statistics", methods=["QUERY"])
     def query_statistics():
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.query_statistics(request)
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.query_statistics(request)
         return jsonify(resp[0]), resp[1]
 
     @app.route("/statistics/limits", methods=["GET"])
     def get_limits():
-        resp = None
-        manager = RequestManager(db_conn=query_conn)
-        resp = manager.get_limits()
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.get_limits()
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/bookmarks/create", methods=["POST"])
+    def create_bookmark():
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.create_bookmark(request)
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/search/bookmarks", methods=["QUERY"])
+    def query_bookmarks():
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.query_bookmarks(request)
+        return jsonify(resp[0]), resp[1]
+
+    @app.route("/bookmarks/<string:bookmark_id>", methods=["DELETE"])
+    def delete_bookmark(bookmark_id: str):
+        with RequestManager(DB_PATH) as manager:
+            resp = manager.delete_bookmark(bookmark_id)
         return jsonify(resp[0]), resp[1]
 
     return app

@@ -525,7 +525,7 @@
           // (string, optional) snapshot ID the bookmark points to
           "snapshot_id": "",
           // (string, optional) file ID the bookmark points to
-          "file_id": "",
+          "file_id": ""
       }
     #+end_src
 *** Success Response
