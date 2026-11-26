@@ -36,7 +36,7 @@ class RequestManager():
         else:
             return None
 
-    def create_snapshot(self, request) -> (dict, int):
+    def create_snapshot(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -96,7 +96,7 @@ class RequestManager():
 
 
 
-    def delete_snapshot(self, snapshot_id: str) -> (dict, int):
+    def delete_snapshot(self, snapshot_id: str) -> tuple[dict, int]:
         db = self.db 
         try:
             
@@ -143,7 +143,7 @@ class RequestManager():
 
         return ({}, 202)
 
-    def delete_snapshots(self, request) -> (dict, int):
+    def delete_snapshots(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -203,7 +203,7 @@ class RequestManager():
         except Exception as e:
             logger.warning(f"delete_snapshots: Encountered unexpected error while deleting files on disk for snapshot {snapshot_id} at {str(path)}: {e}")
  
-    def get_snapshot(self, snapshot_id: str) -> (dict, int):
+    def get_snapshot(self, snapshot_id: str) -> tuple[dict, int]:
         db = self.db 
         db.row_factory = sqlite3.Row
         row = None
@@ -241,7 +241,7 @@ class RequestManager():
         }
         return (resp, 200)
 
-    def get_file_info(self, file_id: str) -> (dict, int):
+    def get_file_info(self, file_id: str) -> tuple[dict, int]:
         db = self.db
         db.row_factory = sqlite3.Row
 
@@ -292,7 +292,7 @@ class RequestManager():
             },
         }, 200)
 
-    def get_file(self, file_id: str) -> (dict, int):
+    def get_file(self, file_id: str) -> tuple[dict, int]:
         db = self.db
         db.row_factory = sqlite3.Row
         row = None
@@ -313,7 +313,7 @@ class RequestManager():
             return self.internal_server_error("Encountered unexpected error when getting file data")
         return self._file_from_row(row)  
 
-    def get_file_by_url(self, snapshot_id: str, url_path: str, request) -> (dict, int):
+    def get_file_by_url(self, snapshot_id: str, url_path: str, request) -> tuple[dict, int]:
         safe_path = unquote(url_path)
         scheme, separator, address = safe_path.partition("/")
         # Absolute asset references are rewritten to scheme/host/path.
@@ -367,7 +367,7 @@ class RequestManager():
         if url is None: return False
         return re.search(pattern, url) is not None
 
-    def query_snapshots(self, request) -> (dict, int):
+    def query_snapshots(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -421,7 +421,7 @@ class RequestManager():
         ids = [row["id"] for row in results]
         return ({"content": ids}, 200)
 
-    def query_files(self, request) -> (dict, int):
+    def query_files(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -511,7 +511,7 @@ class RequestManager():
         return {"content": data}, 200
 
 
-    def query_statistics(self, request) -> (dict, int):
+    def query_statistics(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         res = self._json_check(payload)
         if res: return res
@@ -532,12 +532,13 @@ class RequestManager():
             results.append(resp)
         return {"statistics": results}, 200
 
-    def export_archive(self, request) -> (dict, int):
+    def export_archive(self, request) -> tuple[dict, int]:
         payload = request.get_json(silent=True)
         to_archive = "ALL"
         if payload:
             res = self._json_check(payload)
-            if res: return res
+            if res: 
+                return res
             raw_to_archive = payload.get("archive", None)
             if not isinstance(raw_to_archive, str):
                 return self.bad_request("export_archive expects the archive field (if provided) to be a string")
@@ -574,7 +575,7 @@ class RequestManager():
             url += "?" + urlencode(params, doseq=True)
         return url
 
-    def _process_interval(self,interval: dict, db) -> (dict, int):
+    def _process_interval(self,interval: dict, db) -> tuple[dict, int]:
         numeric = self._numeric_interval(interval)
         if numeric[0] and numeric[1] and numeric[0] > numeric[1]:
             return self.bad_request("Encountered bad interval object, start time > end time")
@@ -625,7 +626,7 @@ class RequestManager():
         return self._build_statistics(interval, len(snap_set), len(file_set), size, len(url_set), len(host_set)), 200
         
 
-    def get_limits(self) -> (dict, int):
+    def get_limits(self) -> tuple[dict, int]:
         db = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         results = None
@@ -679,7 +680,7 @@ class RequestManager():
         values.append(raw_pattern)
 
 
-    def _file_from_row(self, row: dict) -> (dict, int):
+    def _file_from_row(self, row: dict) -> tuple[dict, int]:
         file_id = row["id"]
         disk_path = row["on_disk_path"]
         if not os.path.isfile(disk_path):
@@ -714,7 +715,7 @@ class RequestManager():
             "sec": total_ns // 1_000_000_000,
             "nsec": total_ns % 1_000_000_000,
         }
-    def _numeric_interval(self, interval_dict: dict) -> (float, float):
+    def _numeric_interval(self, interval_dict: dict) -> tuple[float, float]:
         raw_start = interval_dict.get("start", None)
         raw_end = interval_dict.get("end", None)
         if raw_start == 'null': raw_start = None
@@ -737,7 +738,7 @@ class RequestManager():
             "hosts": hosts,
         }
 
-    def _gen_temp_archive(self, to_archive: str) -> (BinaryIO, int):
+    def _gen_temp_archive(self, to_archive: str) -> tuple[BinaryIO, int]:
         """
             Callers must eventually close the returned TempFile,
             or propogate that responsibility
@@ -806,11 +807,11 @@ class RequestManager():
 
         
 
-    def internal_server_error(self, msg: str) -> (dict, int):
+    def internal_server_error(self, msg: str) -> tuple[dict, int]:
         return ({ "message": f"Internal Server Error: {msg}"}, 500) 
 
-    def bad_request(self, msg: str) -> (dict, int):
+    def bad_request(self, msg: str) -> tuple[dict, int]:
         return ({"message": f"Bad Request: {msg}"}, 400)
-    def not_found(self, msg: str) -> (dict, int):
+    def not_found(self, msg: str) -> tuple[dict, int]:
         return ({"message": msg}, 404)
 

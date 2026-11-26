@@ -1104,6 +1104,25 @@ class TestGenTempArchive:
 
 class TestExportArchive:
 
+
+    def test_ALL_default(self, tmp_path, monkeypatch, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+        manager = RequestManager()
+        request = MockRequest()
+        request.json_dat = dict()
+
+        def mock_gen_tmp_archive(to_archive):
+            assert to_archive == "ALL"
+            return (io.BytesIO(b"Fake Archive"), 200)
+
+        monkeypatch.setattr(
+            manager, "_gen_temp_archive", mock_gen_tmp_archive
+        )
+
+        res, status = manager.export_archive(request)
+        assert status == 200
+        assert res["option"] == "ALL"
+
     def test_200_for_ALL(self, tmp_path, monkeypatch, insert_snapshot, test_db):
         monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
     
