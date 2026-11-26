@@ -209,7 +209,7 @@
           // (string) URL that triggered the snapshot
           "url": "https://www.example.com/path/to/file?param1=val&param2=val",
           // (timespec) time the snapshot creation was requested
-          "start_time": { ... }/,
+          "start_time": { ... },
           // (timespec) time the snapshot creation was finished
           "end_time": { ... },
           // (array of strings) IDs of files in this snapshot

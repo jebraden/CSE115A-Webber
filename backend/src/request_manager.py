@@ -540,6 +540,8 @@ class RequestManager():
             if res: 
                 return res
             raw_to_archive = payload.get("archive", None)
+            if raw_to_archive is None:
+                return self.bad_request("export_archive expects request body to contain 'archive: <export-type>' if non-empty body is provided")
             if not isinstance(raw_to_archive, str):
                 return self.bad_request("export_archive expects the archive field (if provided) to be a string")
             to_archive = raw_to_archive
