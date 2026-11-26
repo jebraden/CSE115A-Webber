@@ -1093,7 +1093,7 @@ class TestFlaskRoutes:
         assert resp.status_code == 404
 
 
-class TestCreateBookmark:
+class Task_4_5_1_TestCreateBookmark:
     def test_create_snapshot_bookmark(self, manager, insert_snapshot):
         insert_snapshot(snapshot_id="snap-1")
         request = MockRequest()
@@ -1193,7 +1193,9 @@ class TestCreateBookmark:
         resp, status = manager.create_bookmark(request)
         assert status == 400
 
-    def test_create_bookmark_file_id_not_string(self, manager, insert_snapshot):
+    def test_create_bookmark_file_id_not_string(
+        self, manager, insert_snapshot
+    ):
         """Test that non-string file_id returns 400"""
         insert_snapshot(snapshot_id="snap-1")
         request = MockRequest()
@@ -1238,7 +1240,7 @@ class TestCreateBookmark:
         assert status == 400
 
 
-class TestQueryBookmarks:
+class Task_4_5_1_TestQueryBookmarks:
     def test_query_by_id(self, manager, insert_snapshot):
         insert_snapshot(snapshot_id="snap-1")
         request = MockRequest()
@@ -1360,7 +1362,9 @@ class TestQueryBookmarks:
         assert status == 200
         assert result == []
 
-    def test_query_empty_string_name_matches_all(self, manager, insert_snapshot):
+    def test_query_empty_string_name_matches_all(
+        self, manager, insert_snapshot
+    ):
         """Test that empty string name matches all bookmarks (regex behavior)"""
         insert_snapshot(snapshot_id="snap-1")
 
@@ -1443,7 +1447,7 @@ class TestQueryBookmarks:
         assert result == []
 
 
-class TestDeleteBookmark:
+class Task_4_5_1_TestDeleteBookmark:
     def test_delete_existing_bookmark(self, manager, insert_snapshot):
         insert_snapshot(snapshot_id="snap-1")
 
