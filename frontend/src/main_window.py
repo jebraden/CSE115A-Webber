@@ -704,3 +704,13 @@ class MainWindow(QMainWindow):
         for window in list(self._windows.values()):
             window.close()
         super().closeEvent(event)
+
+    def open_file_broswer_dialog(self):
+        directory = QFileDialog.getExistingDirectory(
+                self, 
+                "Select a Directory to export to", 
+                ""
+        )
+
+        if directory:
+            # TODO: The thing

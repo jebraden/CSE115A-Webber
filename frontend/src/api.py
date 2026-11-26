@@ -245,6 +245,14 @@ class GetSnapshotResponse(StrictNamedTuple):
     # IDs of files in this snapshot
     files: list[str]
 
+# /snapshots/export
+class ExportArchiveResponse(StrictNamedTuple):
+    # What the recieved file should be named
+    filename: str
+
+    # The bytes that make up the file. Should be a zip.
+    file_dat: bytes
+
 
 # /files/{FILE_ID}
 class FileRequestInformation(StrictNamedTuple):
@@ -701,3 +709,42 @@ class WebberAPI:
             return obj
         except Exception as e:
             raise BadResponseError(resp.text) from e
+
+class ExportArchiveResponse(StrictNamedTuple):
+    # What the recieved file should be named
+    filename: str
+
+    # The bytes that make up the file. Should be a zip.
+    file_dat: bytes
+def _check_status_code(self, resp: httpx.Response, expected_status: int):
+
+
+    async def export_archive(self, export_options="ALL") -> ExportArchiveResponse:
+        """ Make a request to the /snapshots/export endpoint
+        Arguments: 
+        -- export_options: either 'ALL' or a snapshot ID. Determines what snapshots will be in our returned export. 'ALL' also includes a DB backup.
+        
+        Returns: ExportArchiveResponse consisting of the filename and bytes in the response
+        """
+        resp = await self._rquest(
+            "POST",
+            "/snapshots/export",
+            ContentType.JSON,
+            {"archive": export_options},
+        )
+
+        self._check_status_code(resp, 200)
+
+        name = resp.headers.get("Content-Disposition", None)
+        file_dat = resp.content
+
+        if name is None or file_dat is None:
+            raise BadResponseError("Did not recieve filename and/or file data in response!")
+
+        return ExportArchiveResponse(
+            filename=name,
+            file_dat=file_dat
+        )
+
+        
+
