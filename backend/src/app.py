@@ -30,6 +30,10 @@ def _setup_die_with_parent(ppid: int | None):
         from .platforms import linux
 
         linux.die_with_parent(signal.SIGTERM, ppid)
+    elif system in ("Darwin", "FreeBSD"):
+        from .platforms import bsd
+
+        bsd.die_with_parent(signal.SIGTERM, ppid)
     else:
         logger.warn(
             'The os "%s" does not support `die_with_parent=True`.', system
