@@ -11,6 +11,9 @@ import sqlite3
 import json
 import time
 import os
+import zipfile
+import tempfile
+import io
 
 
 
@@ -999,11 +1002,190 @@ class TestGetFileInfo:
             },
         }
 
+class TestGenTempArchive:
+    def test_archive_snapshot(self, tmp_path, monkeypatch, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
 
-            
+        path = tmp_path / "snap-1" / "test.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"hello")
+
+        manager = RequestManager()
+        tmp_archive, status = manager._gen_temp_archive("snap-1")
+
+        try:
+            assert status == 200
+
+            with zipfile.ZipFile(tmp_archive) as zip_file:
+                assert zip_file.namelist() == [
+                    "snap-1/test.html"
+                ]
+                assert zip_file.read("snap-1/test.html") == b"hello"
+        finally:
+            tmp_archive.close()
+
+    def test_archive_evil_snapshot(self, tmp_path, monkeypatch, insert_snapshot, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager()
+        _, status = manager._gen_temp_archive("./../escaped")
+        assert status == 400
+
+    def test_archive_no_exist_snapshot(self, tmp_path, monkeypatch, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        manager = RequestManager()
+        _, status = manager._gen_temp_archive("not-found")
+        assert status == 404
+
+    def test_archive_all(self, tmp_path, monkeypatch, insert_snapshot, test_conn, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        snaps = 4
+
+        for i in range(4):
+            path1 = tmp_path / f"snap-{i}" / "somedir" / "test.html"
+            path2 = tmp_path / f"snap-{i}" / "somedir2"/ "test2.html"
+
+            path1.parent.mkdir(parents=True, exist_ok=True)
+            path1.write_bytes(b"hello")
+            path2.parent.mkdir(parents=True, exist_ok=True)
+            path2.write_bytes(b"hello")
+
+        manager = RequestManager(db_conn=test_conn)
+        tmp_archive, status = manager._gen_temp_archive("ALL")
+
+        try:
+            assert status == 200
+
+            with zipfile.ZipFile(tmp_archive) as zip_file:
+                expected = ["archive.db"]
+                for i in range(snaps):
+                    expected.append(str(f"snap-{i}/somedir/test.html"))
+                    expected.append(str(f"snap-{i}/somedir2/test2.html"))
+
+                assert set(zip_file.namelist()) == set(expected)
+                
+                for i in range(snaps):
+                    assert zip_file.read(f"snap-{i}/somedir/test.html") == b"hello"
+        finally:
+            tmp_archive.close()
+
+    def test_archive_snapshot_only_take_specificed(
+            self, tmp_path, monkeypatch, insert_snapshot, test_conn, test_db
+        ):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+
+        snaps = 4
+
+        for i in range(4):
+            path1 = tmp_path / f"snap-{i}" / "somedir" / "test.html"
+            path2 = tmp_path / f"snap-{i}" / "somedir2"/ "test2.html"
+
+            path1.parent.mkdir(parents=True, exist_ok=True)
+            path1.write_bytes(b"hello")
+            path2.parent.mkdir(parents=True, exist_ok=True)
+            path2.write_bytes(b"hello")
+
+        manager = RequestManager(db_conn=test_conn)
+        tmp_archive, status = manager._gen_temp_archive("snap-1")
+
+        try:
+            assert status == 200
+            expected = []
+
+            with zipfile.ZipFile(tmp_archive) as zip_file:
+                expected.append(str(f"snap-1/somedir/test.html"))
+                expected.append(str(f"snap-1/somedir2/test2.html"))
+                assert set(zip_file.namelist()) == set(expected)
+        finally:
+            tmp_archive.close()
 
 
-        
+class TestExportArchive:
+
+
+    def test_ALL_default(self, tmp_path, monkeypatch, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+        manager = RequestManager()
+        request = MockRequest()
+        request.json_dat = dict()
+
+        def mock_gen_tmp_archive(to_archive):
+            assert to_archive == "ALL"
+            return (io.BytesIO(b"Fake Archive"), 200)
+
+        monkeypatch.setattr(
+            manager, "_gen_temp_archive", mock_gen_tmp_archive
+        )
+
+        res, status = manager.export_archive(request)
+        assert status == 200
+        assert res["option"] == "ALL"
+
+    def test_200_for_ALL(self, tmp_path, monkeypatch, insert_snapshot, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+    
+        manager = RequestManager()
+        request = MockRequest()
+        request.json_dat = {
+            "archive": "ALL"
+        }
+
+        def mock_gen_temp_archive(to_archive):
+            assert to_archive == "ALL"
+            return (io.BytesIO(b"Fake Archive"), 200)
+
+        monkeypatch.setattr(
+            manager, "_gen_temp_archive", mock_gen_temp_archive
+        )
+
+        res, status = manager.export_archive(request)
+        assert status == 200
+        assert res["res"].read() == b"Fake Archive"
+        assert res["option"] == "ALL"
+
+    def test_200_for_str_ids(self, tmp_path, monkeypatch, insert_snapshot, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+    
+        manager = RequestManager()
+        request = MockRequest()
+        request.json_dat = {
+            "archive": "snap-1"
+        }
+
+        def mock_gen_temp_archive(to_archive):
+            assert to_archive == "snap-1"
+            return (io.BytesIO(b"Fake Archive"), 200)
+
+        monkeypatch.setattr(
+            manager, "_gen_temp_archive", mock_gen_temp_archive
+        )
+
+        res, status = manager.export_archive(request)
+        assert status == 200
+        assert res["res"].read() == b"Fake Archive"
+        assert res["option"] == "snap-1"
+
+    def test_400_for_non_str_input(self, tmp_path, monkeypatch, insert_snapshot, test_db):
+        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
+    
+        manager = RequestManager()
+        request = MockRequest()
+        request.json_dat = {
+            "archive": 32
+        }
+
+        def mock_gen_temp_archive(to_archive):
+            return None, 400 
+
+        monkeypatch.setattr(
+            manager, "_gen_temp_archive", mock_gen_temp_archive
+        )
+
+        res, status = manager.export_archive(request)
+        assert status == 400
+
 class TestFlaskRoutes:
     def setup(self):
         self.app = create_app()
@@ -1056,6 +1238,50 @@ class TestFlaskRoutes:
 
         resp = self.client.delete("snapshots/snap-1")
         assert resp.status_code == 404
+
+    def test_archive_snapsot(self, insert_snapshot, tmp_path, monkeypatch):
+        self.setup()
+
+        body = {"archive": "snap-1"}
+
+        stream = []
+        def mock_export_archive(self, request):
+            stream.append(io.BytesIO(b"hello"))
+            return {
+                "res": stream[0], 
+                "option": request.get_json(silent=True).get("archive", None),
+            }, 200
+
+        monkeypatch.setattr(
+            RequestManager, "export_archive", mock_export_archive
+        )
+
+
+        resp = self.client.post("snapshots/archive", json=body)
+
+        assert resp.status_code == 200
+        assert "attachment" in resp.headers.get("Content-Disposition")
+        assert "archive_snap-1" in resp.headers.get("Content-Disposition")
+        data = resp.get_data()
+        resp.close()
+        assert data == b"hello"
+        assert stream[0].closed
+
+
+    def test_archive_snapshot_non_200(self, insert_snapshot, test_db):
+        self.setup()
+
+        body = {"archive": 34}
+
+        resp = self.client.post("snapshots/archive", json=body)
+
+        assert resp.status_code == 400
+
+
+
+
+
+
 
 
 
