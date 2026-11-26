@@ -770,6 +770,7 @@ class TestHyperlinkProcessing:
                 self.archive_page = AsyncMock(return_value="snap-1")
                 self.snapshot_url = snapshot_url
                 self.depth = depth
+                self.saved_urls = set()
                 instances.append(self)
 
         monkeypatch.setattr("src.scraping.scraper.PageScraper", MockScraper)
