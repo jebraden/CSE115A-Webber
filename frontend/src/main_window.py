@@ -3,25 +3,30 @@
 The shell reuses the snapshot service and local archive viewer. Backend capture
 integration can connect capture_requested without changing the Designer layout.
 """
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QFile, QDir, QEvent, QIODevice, QSize, Qt, Signal, QSettings, QTimer
+from PySide6.QtCore import QFile, QDir, QEvent, QIODevice, QSize, QSignalBlocker, Qt, Signal, QSettings, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QLabel, QListWidgetItem,
-    QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect,
+    QMainWindow, QMessageBox, QToolButton, QWidget, QSpinBox, QTabBar,
+    QStackedWidget, QGraphicsDropShadowEffect,
 )
 
-from .archive_list.service import SnapshotService
+from .archive_list.service import EditableSnapshotService
 from .archive_viewer import ArchiveViewer
 from .themes import (
     BUTTON_CHARCOAL, BUTTON_GRAY_BORDER, DARK_SAGE, LIGHT_GREEN, LIGHT_MOSS,
     OFF_WHITE, OLIVE, PALE_SAGE, SAGE, WARM_GRAY_BORDER, stylesheet_for,
 )
 from .viewing import DEFAULTS, normalize_preferences
+
+
+logger = logging.getLogger(__name__)
 
 
 class _NumericInput(QSpinBox):
@@ -85,7 +90,7 @@ class MainWindow(QMainWindow):
     snapshot_requested = Signal(object)
     capture_requested = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo=False, settings=None):
+    def __init__(self, service: EditableSnapshotService, *, demo=False, settings=None):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("Webber", "Webber")
         self._service = service
@@ -93,6 +98,8 @@ class MainWindow(QMainWindow):
         self._snapshots = []
         self._windows = {}
         self._hover_item = None
+        self._snapshot_range_anchor = None
+        self._shift_clicked_snapshot = False
         source = QFile(str(Path(__file__).with_name("ui") / "main_window.ui"))
         if not source.open(QIODevice.OpenModeFlag.ReadOnly):
             raise OSError(source.errorString())
@@ -163,6 +170,13 @@ class MainWindow(QMainWindow):
         u.urlInput.returnPressed.connect(self.request_capture)
         u.searchInput.textChanged.connect(self.search)
         u.snapshotList.currentItemChanged.connect(self._select_item)
+        u.snapshotList.itemChanged.connect(self._snapshot_check_changed)
+        u.selectSnapshotsButton.toggled.connect(self._set_snapshot_selection_mode)
+        u.deleteSnapshotsButton.clicked.connect(self._delete_checked_snapshots)
+        self._delete_snapshot_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Backspace), u.snapshotList)
+        self._delete_snapshot_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self._delete_snapshot_shortcut.setAutoRepeat(False)
+        self._delete_snapshot_shortcut.activated.connect(self._delete_snapshots_from_shortcut)
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
         u.openWindowButton.clicked.connect(lambda: self.open_in_window(self._snapshot))
@@ -304,6 +318,8 @@ class MainWindow(QMainWindow):
 
     def search(self, *_):
         u = self.ui
+        checked_ids = set(self._checked_snapshot_ids())
+        self._snapshot_range_anchor = None
         self._hover_item = None
         self.popout.hide()
         u.snapshotList.blockSignals(True)
@@ -313,6 +329,7 @@ class MainWindow(QMainWindow):
         except Exception:
             self._snapshots = []
             u.snapshotList.blockSignals(False)
+            self._update_delete_button()
             u.archiveCount.setText("Could not load snapshots")
             if not self._tabs:
                 u.emptyMessage.setText("Could not load archives.")
@@ -322,18 +339,121 @@ class MainWindow(QMainWindow):
             date = snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p")
             item = QListWidgetItem(f"{snapshot.url}\n{date}")
             item.setData(Qt.ItemDataRole.UserRole, snapshot)
+            if u.selectSnapshotsButton.isChecked():
+                item.setCheckState(
+                    Qt.CheckState.Checked if snapshot.id in checked_ids else Qt.CheckState.Unchecked
+                )
             item.setToolTip(f"{snapshot.url}\n{date}")
             item.setSizeHint(QSize(230, 76))
             u.snapshotList.addItem(item)
         count = len(self._snapshots)
         u.archiveCount.setText(f"{count} snapshot{'s' if count != 1 else ''}")
         u.snapshotList.blockSignals(False)
+        self._update_delete_button()
         if self._active_tab_id is not None:
             self._sync_list_selection()
         else:
             self._clear_reader()
             u.emptyMessage.setText("No archive open." if count else "No matching archives." if u.searchInput.text() else "No archived webpages yet.")
         self.statusBar().clearMessage()
+
+    def _set_snapshot_selection_mode(self, active):
+        u = self.ui
+        self._snapshot_range_anchor = None
+        u.selectSnapshotsButton.setText("Cancel" if active else "Select")
+        u.deleteSnapshotsButton.setVisible(active)
+        check_state = Qt.CheckState.Unchecked if active else None
+        with QSignalBlocker(u.snapshotList):
+            for row in range(u.snapshotList.count()):
+                u.snapshotList.item(row).setData(Qt.ItemDataRole.CheckStateRole, check_state)
+        self._update_delete_button()
+
+    def _snapshot_check_changed(self, item):
+        row = self.ui.snapshotList.row(item)
+        if item.checkState() == Qt.CheckState.Checked:
+            self._snapshot_range_anchor = row
+        elif row == self._snapshot_range_anchor:
+            self._snapshot_range_anchor = None
+        self._update_delete_button()
+
+    def _check_snapshot_range(self, item):
+        u = self.ui
+        snapshots = u.snapshotList
+        row = snapshots.row(item)
+        u.selectSnapshotsButton.setChecked(True)
+        if self._snapshot_range_anchor is None:
+            current = snapshots.currentItem()
+            self._snapshot_range_anchor = (
+                snapshots.row(current) if current is not None and current.isSelected() else row
+            )
+        start, end = sorted((self._snapshot_range_anchor, row))
+        with QSignalBlocker(snapshots):
+            snapshots.setFocus(Qt.FocusReason.MouseFocusReason)
+            for index in range(start, end + 1):
+                snapshots.item(index).setCheckState(Qt.CheckState.Checked)
+        self._update_delete_button()
+
+    def _checked_snapshot_ids(self):
+        if not self.ui.selectSnapshotsButton.isChecked():
+            return []
+        snapshots = self.ui.snapshotList
+        return list(dict.fromkeys(
+            snapshots.item(row).data(Qt.ItemDataRole.UserRole).id
+            for row in range(snapshots.count())
+            if snapshots.item(row).checkState() == Qt.CheckState.Checked
+        ))
+
+    def _update_delete_button(self):
+        count = len(self._checked_snapshot_ids())
+        button = self.ui.deleteSnapshotsButton
+        button.setEnabled(count > 0)
+        button.setText(f"Delete selected ({count})" if count else "Delete selected")
+
+    def _delete_checked_snapshots(self):
+        self._confirm_snapshot_deletion(self._checked_snapshot_ids())
+
+    def _delete_snapshots_from_shortcut(self):
+        if self.ui.selectSnapshotsButton.isChecked():
+            self._delete_checked_snapshots()
+            return
+        snapshot_ids = [
+            item.data(Qt.ItemDataRole.UserRole).id
+            for item in self.ui.snapshotList.selectedItems()
+        ]
+        self._confirm_snapshot_deletion(snapshot_ids)
+
+    def _confirm_snapshot_deletion(self, snapshot_ids):
+        if not snapshot_ids:
+            return
+        count = len(snapshot_ids)
+        noun = "snapshot" if count == 1 else "snapshots"
+        dialog = QMessageBox(
+            QMessageBox.Icon.Warning, "Delete snapshots",
+            f"Permanently delete {count} {noun}?",
+            QMessageBox.StandardButton.Cancel, self,
+        )
+        delete_button = dialog.addButton("Delete", QMessageBox.ButtonRole.DestructiveRole)
+        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        dialog.exec()
+        if dialog.clickedButton() is not delete_button:
+            return
+
+        self.statusBar().clearMessage()
+        try:
+            self._service.delete_snapshots(snapshot_ids)
+        except Exception:
+            logger.exception("Could not delete snapshots")
+            QMessageBox.critical(self, "Deletion failed", f"Could not delete {count} {noun}.")
+            return
+
+        self.ui.selectSnapshotsButton.setChecked(False)
+        for snapshot_id in snapshot_ids:
+            self._close_tab_id(snapshot_id)
+            window = self._windows.get(snapshot_id)
+            if window is not None:
+                window.close()
+        self.search()
+        self.statusBar().showMessage(f"Deleted {count} {noun}.", 5000)
 
     def _select_item(self, item, _previous):
         if item is not None:
@@ -490,11 +610,31 @@ class MainWindow(QMainWindow):
             self.open_in_window(self._hover_item.data(Qt.ItemDataRole.UserRole))
 
     def eventFilter(self, obj, event):
-        if obj is self.ui.snapshotList.viewport() and event.type() == QEvent.Type.Leave:
-            if not self.popout.underMouse() and not self.popout.hasFocus():
-                self.popout.hide()
-        if obj is self.ui.snapshotList and event.type() == QEvent.Type.FocusIn:
-            item = self.ui.snapshotList.currentItem()
+        snapshots = self.ui.snapshotList
+        if obj is snapshots.viewport():
+            if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick):
+                self._shift_clicked_snapshot = False
+                if (
+                    event.button() == Qt.MouseButton.LeftButton
+                    and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+                ):
+                    item = snapshots.itemAt(event.position().toPoint())
+                    if item is not None:
+                        self._shift_clicked_snapshot = True
+                        self._check_snapshot_range(item)
+                        return True
+            if (
+                event.type() == QEvent.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.LeftButton
+                and self._shift_clicked_snapshot
+            ):
+                self._shift_clicked_snapshot = False
+                return True
+            if event.type() == QEvent.Type.Leave:
+                if not self.popout.underMouse() and not self.popout.hasFocus():
+                    self.popout.hide()
+        if obj is snapshots and event.type() == QEvent.Type.FocusIn:
+            item = snapshots.currentItem()
             if item:
                 self._position_popout(item)
         return super().eventFilter(obj, event)

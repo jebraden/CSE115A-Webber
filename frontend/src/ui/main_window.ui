@@ -23,11 +23,16 @@ QPushButton:disabled { color: #92928e; }
 QLineEdit { background: #f1f1ee; border: 1px solid #cececa; border-radius: 8px; padding: 8px 12px; selection-background-color: #d7dfc8; }
 QWidget#archivePanel { background: #f4f4f1; }
 QLabel#archiveHeading { background: transparent; font-size: 18px; font-weight: 500; }
+QPushButton#selectSnapshotsButton { min-width: 48px; min-height: 20px; padding: 0 6px; background: transparent; border-color: transparent; color: #435435; }
+QPushButton#selectSnapshotsButton:hover, QPushButton#selectSnapshotsButton:checked { background: #e9ecdf; }
+QPushButton#selectSnapshotsButton:focus { border-color: #879b76; }
 QLabel#archiveCount, QLabel#snapshotDate, QLabel#offlineLabel, QLabel#previewLabel { background: transparent; color: #737370; font-size: 11px; }
 QListWidget { border: none; background: #f4f4f1; padding: 3px; outline: 0; }
 QListWidget::item { border: 1px solid transparent; border-bottom-color: #dededb; border-radius: 8px; padding: 12px 40px 12px 12px; margin: 3px 0; }
 QListWidget::item:selected { background: #e3e8d6; color: #36442b; border-color: #b7c4a7; }
 QListWidget::item:hover:!selected { background: #e9ecdf; }
+QListWidget#snapshotList::indicator { width: 14px; height: 14px; border: 1px solid #879b76; border-radius: 4px; background: #f8f8f6; }
+QListWidget#snapshotList::indicator:checked { background: #566446; border-color: #566446; image: url(icons/check.svg); }
 QWidget#readerBar, QWidget#addressBar { border-bottom: 1px solid #e3e3df; }
 QLabel#currentUrl { color: #737370; font-size: 12px; }
 QLabel#emptyMessage { color: #737370; font-size: 15px; }
@@ -104,9 +109,21 @@ QToolTip { background: #f8f8f6; color: #292929; border: 1px solid #cececa; borde
      <widget class="QWidget" name="archivesPage"><layout class="QVBoxLayout" name="archivesPageLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
       <item><widget class="QSplitter" name="workspaceSplitter"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="childrenCollapsible"><bool>false</bool></property>
        <widget class="QWidget" name="archivePanel"><property name="minimumSize"><size><width>240</width><height>0</height></size></property><layout class="QVBoxLayout" name="archiveLayout"><property name="leftMargin"><number>16</number></property><property name="topMargin"><number>20</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>12</number></property>
-        <property name="spacing"><number>8</number></property><item><widget class="QLabel" name="archiveHeading"><property name="text"><string>Archives</string></property></widget></item>
+        <property name="spacing"><number>8</number></property>
+        <item><layout class="QHBoxLayout" name="archiveHeadingRow" stretch="1,0">
+         <item><widget class="QLabel" name="archiveHeading"><property name="text"><string>Archives</string></property></widget></item>
+         <item><widget class="QPushButton" name="selectSnapshotsButton">
+          <property name="text"><string>Select</string></property>
+          <property name="checkable"><bool>true</bool></property>
+         </widget></item>
+        </layout></item>
         <item><widget class="QLabel" name="archiveCount"><property name="text"><string>0 snapshots</string></property></widget></item>
         <item><widget class="QLineEdit" name="searchInput"><property name="placeholderText"><string>Search by URL…</string></property><property name="clearButtonEnabled"><bool>true</bool></property><property name="accessibleName"><string>Search snapshots by URL</string></property></widget></item>
+        <item><widget class="QPushButton" name="deleteSnapshotsButton">
+         <property name="visible"><bool>false</bool></property>
+         <property name="enabled"><bool>false</bool></property>
+         <property name="text"><string>Delete selected</string></property>
+        </widget></item>
         <item><widget class="QListWidget" name="snapshotList"><property name="mouseTracking"><bool>true</bool></property><property name="accessibleName"><string>Archived snapshots</string></property></widget></item>
        </layout></widget>
        <widget class="QWidget" name="readerPanel"><layout class="QVBoxLayout" name="readerLayout"><property name="spacing"><number>0</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
@@ -152,7 +169,7 @@ QToolTip { background: #f8f8f6; color: #292929; border: 1px solid #cececa; borde
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
- <tabstops><tabstop>archivesButton</tabstop><tabstop>statisticsButton</tabstop><tabstop>settingsButton</tabstop><tabstop>savePageButton</tabstop><tabstop>searchInput</tabstop><tabstop>snapshotList</tabstop><tabstop>sidebarToggle</tabstop><tabstop>pageButton</tabstop><tabstop>rawButton</tabstop><tabstop>openWindowButton</tabstop></tabstops>
+ <tabstops><tabstop>archivesButton</tabstop><tabstop>statisticsButton</tabstop><tabstop>settingsButton</tabstop><tabstop>savePageButton</tabstop><tabstop>selectSnapshotsButton</tabstop><tabstop>searchInput</tabstop><tabstop>snapshotList</tabstop><tabstop>deleteSnapshotsButton</tabstop><tabstop>sidebarToggle</tabstop><tabstop>pageButton</tabstop><tabstop>rawButton</tabstop><tabstop>openWindowButton</tabstop></tabstops>
  <resources/>
  <connections>
   <connection><sender>savePageButton</sender><signal>toggled(bool)</signal><receiver>capturePanel</receiver><slot>setVisible(bool)</slot><hints><hint type="sourcelabel"><x>0</x><y>0</y></hint><hint type="destinationlabel"><x>0</x><y>0</y></hint></hints></connection>

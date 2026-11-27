@@ -468,6 +468,13 @@ class WebberAPI:
         )
         self._check_status_code(resp, 202)
 
+    async def delete_snapshots(self, snapshot_ids: Iterable[str]) -> None:
+        """Submit the snapshot IDs to the backend's batch deletion endpoint."""
+        resp = await self._request(
+            "POST", "/snapshots/delete", ContentType.JSON, {"ids": list(snapshot_ids)}
+        )
+        self._check_status_code(resp, 202)
+
     async def get_snapshot_info(self, id: str) -> GetSnapshotResponse:
         """Get information about the snapshot named by ID.
 
