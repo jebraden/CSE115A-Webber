@@ -1,4 +1,5 @@
 """Central-shell interaction tests; Chromium itself is tested by a GUI smoke run."""
+
 from datetime import datetime, timezone
 from pathlib import Path
 import pytest
@@ -34,7 +35,9 @@ def window(app, monkeypatch, tmp_path):
         Snapshot("missing", "https://missing.example/", datetime.now(timezone.utc)),
     ]
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
-    win = main_window.MainWindow(MockSnapshotService(snapshots), demo=True, settings=settings)
+    win = main_window.MainWindow(
+        MockSnapshotService(snapshots), demo=True, settings=settings
+    )
     yield win
     win.close()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -48,10 +51,15 @@ def select(window, snapshot_id):
     raise AssertionError(snapshot_id)
 
 
-def test_navigation_keeps_statistics_empty(window):
+def test_US_2_2_T_5_navigation_embeds_statistics_panel(window):
     window.ui.statisticsButton.click()
     assert window.ui.mainStack.currentWidget() is window.ui.statisticsPage
-    assert window.ui.statisticsPage.findChildren(QWidget) == []
+    assert window.statistics_widget is not None
+    assert window.statistics_widget.parent() is window.ui.statisticsPage
+    assert (
+        window.statistics_widget.stacked_content.currentWidget()
+        is window.statistics_widget.init_page
+    )
     window.ui.archivesButton.click()
     assert window.ui.mainStack.currentWidget() is window.ui.archivesPage
 
@@ -79,10 +87,12 @@ def test_missing_file_clears_previous_content(window):
 def test_search_keeps_open_tab_and_filters(window):
     select(window, "valid")
     window.ui.searchInput.setText("missing.example")
+    window.ui.searchInput.returnPressed.emit()
     assert window.ui.snapshotList.count() == 1
     assert window._snapshot.id == "valid"
     assert window.ui.openWindowButton.isEnabled()
     window.ui.searchInput.setText("no-match")
+    window.ui.searchInput.returnPressed.emit()
     assert window.ui.snapshotList.count() == 0
     assert window._snapshot.id == "valid"
     assert window.ui.viewerStack.currentWidget() is window.ui.webPage
@@ -180,6 +190,7 @@ def test_viewing_settings_reach_current_and_new_windows_and_restore(window):
         assert restored.ui.fontCombo.currentText() == "Serif"
         restored.ui.resetSettingsButton.click()
         from frontend.src.viewing import DEFAULTS
+
         assert restored.viewer.viewing_preferences == DEFAULTS
     finally:
         restored.close()
@@ -187,7 +198,11 @@ def test_viewing_settings_reach_current_and_new_windows_and_restore(window):
 
 def test_corrupt_viewing_settings_fall_back_to_defaults():
     from frontend.src.viewing import normalize_preferences, DEFAULTS
-    assert normalize_preferences({"zoom": "bad", "font": "unknown", "text_size": -1}) == DEFAULTS
+
+    assert (
+        normalize_preferences({"zoom": "bad", "font": "unknown", "text_size": -1})
+        == DEFAULTS
+    )
 
 
 def test_numeric_point_size_is_saved_and_reset(window):
@@ -211,6 +226,7 @@ def test_reset_all_settings_restores_theme_and_viewing_in_existing_windows(windo
     window.ui.lineSpacingCombo.setCurrentText("Comfortable")
     window.ui.resetSettingsButton.click()
     from frontend.src.viewing import DEFAULTS
+
     assert window.theme == "light"
     assert window.settings.value("appearance/theme") == "light"
     assert window.viewing_preferences == DEFAULTS
@@ -293,7 +309,10 @@ def test_tabs_keep_independent_viewers_and_content_modes(window):
     window.open_in_tab(window._snapshot)
     assert window.tab_bar.count() == 2
     window.ui.textSizeInput.setValue(18)
-    assert all(tab["viewer"].viewing_preferences["text_size"] == "18 pt" for tab in window._tabs.values())
+    assert all(
+        tab["viewer"].viewing_preferences["text_size"] == "18 pt"
+        for tab in window._tabs.values()
+    )
 
 
 def test_tab_closing_and_reordering_preserve_identity(window):
@@ -319,6 +338,7 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     from frontend.src.main_window import _TabCloseButton
     from PySide6.QtWidgets import QTabBar
     from PySide6.QtCore import QEvent
+
     window.show()
     select(window, "valid")
     select(window, "missing")
@@ -329,6 +349,7 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     assert abs(button.geometry().center().y() - host.rect().center().y()) <= 1
     from PySide6.QtGui import QEnterEvent
     from PySide6.QtCore import QPointF
+
     button.enterEvent(QEnterEvent(QPointF(), QPointF(), QPointF()))
     assert button.graphicsEffect().isEnabled()
     button.leaveEvent(QEvent(QEvent.Type.Leave))
@@ -337,3 +358,215 @@ def test_tab_close_icon_is_centered_and_closes_correct_tab_after_move(window):
     button.click()
     assert window.tab_bar.count() == 1
     assert window._snapshot.id == "missing"
+
+
+@pytest.mark.asyncio
+async def test_US_2_2_T_5_embedded_statistics_generates_table_and_graph(window):
+    window.ui.statisticsButton.click()
+    panel = window.statistics_widget
+    panel.week_radio.click()
+    panel.generate_button.click()
+    assert panel.task is not None
+    await panel.task
+    assert panel.stats is not None
+    assert panel.stacked_content.currentWidget() is panel.stats_page
+    assert panel.generate_button.isEnabled()
+    assert panel.graph._plot_data
+    assert panel.stats_table.item(0, 0).text()
+    for row, field in enumerate(
+        ("snapshots", "files", "size", "urls", "hosts"), start=1
+    ):
+        value = getattr(panel.stats.overall, field)
+        expected = panel._pprint_bytes(value) if field == "size" else str(value)
+        assert panel.stats_table.item(row, 0).text() == expected
+    window.ui.archivesButton.click()
+    window.ui.statisticsButton.click()
+    assert panel.stacked_content.currentWidget() is panel.stats_page
+
+
+def test_US_2_2_T_5_sample_label_and_injected_api(window, app, monkeypatch, tmp_path):
+    assert window.statistics_sample_label.text() == "Statistics: sample data"
+    assert window.statusBar().isAncestorOf(window.statistics_sample_label)
+    api = object()
+    settings = QSettings(str(tmp_path / "other.ini"), QSettings.Format.IniFormat)
+    other = main_window.MainWindow(MockSnapshotService([]), demo=True, settings=settings, statistics_api=api)
+    assert other.statistics_widget.api is api
+    assert other.statistics_sample_label is None
+    other.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["cancel", "close"])
+async def test_US_2_2_T_5_cancel_generation(window, action):
+    import asyncio
+
+    panel = window.statistics_widget
+    started = asyncio.Event()
+
+    async def wait_for_statistics():
+        started.set()
+        await asyncio.Event().wait()
+
+    panel._get_staistics = wait_for_statistics
+    panel.generate_button.click()
+    task = panel.task
+    await started.wait()
+    if action == "cancel":
+        panel.cancel_button.click()
+    else:
+        window.close()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert panel.task is None
+
+
+def test_qt_font_chooser_persists_family_style_and_effects(window):
+    from PySide6.QtGui import QFont, QFontDatabase
+    from frontend.src.viewing import DEFAULTS, reading_script
+
+    select(window, "valid")
+    window.open_in_window(window._snapshot)
+    family = next(
+        name
+        for name in ("Arial", "DejaVu Sans", "Liberation Sans", "Helvetica")
+        if name in QFontDatabase.families()
+    )
+    font = QFont(family, 18)
+    font.setWeight(QFont.Weight.Bold)
+    font.setItalic(True)
+    font.setUnderline(True)
+    from PySide6.QtCore import QTimer
+
+    def accept_dialog():
+        dialog = QApplication.activeModalWidget()
+        assert isinstance(dialog, main_window.QFontDialog)
+        dialog.setCurrentFont(font)
+        dialog.accept()
+
+    QTimer.singleShot(0, accept_dialog)
+    window.ui.addFontButton.click()
+    assert window.viewing_preferences["font"] == font.family()
+    assert window.viewing_preferences["text_size"] == "18 pt"
+    saved_font = QFont()
+    assert saved_font.fromString(window.viewing_preferences["font_details"])
+    assert saved_font.family() == font.family()
+    assert saved_font.bold() and saved_font.italic() and saved_font.underline()
+    assert window.viewer.viewing_preferences == window.viewing_preferences
+    assert (
+        window._windows["valid"].centralWidget().viewing_preferences
+        == window.viewing_preferences
+    )
+    script = reading_script(window.viewing_preferences)
+    assert '"weight": 700' in script and '"italic": true' in script
+    assert '"decoration": "underline"' in script
+    restored = main_window.MainWindow(MockSnapshotService([]), settings=window.settings)
+    try:
+        assert restored.viewing_preferences == window.viewing_preferences
+    finally:
+        restored.close()
+    before = dict(window.viewing_preferences)
+    QTimer.singleShot(0, lambda: QApplication.activeModalWidget().reject())
+    window.ui.addFontButton.click()
+    assert window.viewing_preferences == before
+    window.reset_viewing_preferences()
+    assert window.viewing_preferences == DEFAULTS
+    assert not window.settings.contains("viewing/font_details")
+
+
+def test_japanese_preedit_keeps_results_until_commit_and_preserves_url(window):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QInputMethodEvent
+    from PySide6.QtWidgets import QApplication
+
+    search = window.ui.searchInput
+    assert search.testAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled)
+    original_count = window.ui.snapshotList.count()
+    QApplication.sendEvent(search, QInputMethodEvent("にほん", []))
+    assert search.is_composing and search.text() == ""
+    assert window.ui.snapshotList.count() == original_count
+    committed = QInputMethodEvent()
+    committed.setCommitString("日本")
+    QApplication.sendEvent(search, committed)
+    assert not search.is_composing
+    assert search.text() == "日本"
+    assert window.ui.snapshotList.count() == 0
+    url = window.ui.urlInput
+    url.setText("https://")
+    QApplication.sendEvent(url, QInputMethodEvent("にほん", []))
+    requests = []
+    window.capture_requested.connect(requests.append)
+    window.request_capture()
+    assert requests == []
+    committed = QInputMethodEvent()
+    committed.setCommitString("日本.example/")
+    QApplication.sendEvent(url, committed)
+    window.request_capture()
+    assert requests == ["https://日本.example/"]
+
+
+def test_tab_drag_outside_strip_preserves_tabs_and_close_identity(window):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    window.show()
+    select(window, "valid")
+    select(window, "missing")
+    bar = window.tab_bar
+    QApplication.instance().processEvents()
+    QTest.mousePress(bar, Qt.MouseButton.LeftButton, pos=bar.tabRect(0).center())
+    QTest.mouseMove(bar, QPoint(bar.width() + 300, -100))
+    QTest.mouseRelease(
+        bar, Qt.MouseButton.LeftButton, pos=QPoint(bar.width() + 300, -100)
+    )
+    assert {bar.tabData(i) for i in range(bar.count())} == {"valid", "missing"}
+    assert bar._drag_offset is None
+    window._close_tab_id("valid")
+    assert bar.count() == 1 and bar.tabData(0) == "missing"
+
+
+def test_statistics_focus_outline_tracks_keyboard_and_mouse(window):
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt
+
+    window.show()
+    window.ui.statisticsButton.click()
+    panel = window.statistics_widget
+    QTest.mouseClick(panel.month_radio, Qt.MouseButton.LeftButton)
+    assert panel.month_radio.isChecked()
+    assert panel.property("keyboardNavigation") is False
+    QTest.keyClick(panel.month_radio, Qt.Key.Key_Tab)
+    assert panel.property("keyboardNavigation") is True
+    QTest.mouseClick(panel.month_radio, Qt.MouseButton.LeftButton)
+    assert panel.property("keyboardNavigation") is False
+    assert panel.month_radio.isChecked()
+
+
+def test_drag_reorders_complete_tabs_immediately(window):
+    from PySide6.QtCore import Qt, QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtTest import QTest
+
+    window.show()
+    select(window, "valid")
+    select(window, "missing")
+    bar = window.tab_bar
+    QApplication.instance().processEvents()
+    QTest.mousePress(bar, Qt.MouseButton.LeftButton, pos=bar.tabRect(0).center())
+    position = QPointF(bar.tabRect(1).center())
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        position,
+        position,
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(bar, event)
+    assert [bar.tabData(i) for i in range(2)] == ["missing", "valid"]
+    assert window._snapshot.id == "valid"
+    QTest.mouseRelease(bar, Qt.MouseButton.LeftButton, pos=position.toPoint())
+    QApplication.instance().processEvents()
+    assert [bar.tabData(i) for i in range(2)] == ["missing", "valid"]
+    close_host = bar.tabButton(1, bar.ButtonPosition.LeftSide)
+    close_host.findChild(main_window._TabCloseButton).click()
+    assert bar.count() == 1 and bar.tabData(0) == "missing"
