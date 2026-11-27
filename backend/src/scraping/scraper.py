@@ -10,6 +10,7 @@ import hashlib
 import tinycss2
 import sqlite3
 import logging
+import httpx
 
 from tld import get_tld
 from datetime import datetime
@@ -24,7 +25,15 @@ logger = logging.getLogger(__name__)
 
 
 RESPONSE_TIMEOUT = 20
+VIDEO_EXTENSIONS = {"video/mp4": "mp4", "video/webm": "webm"}
+VIDEO_RECOVERY_TIMEOUT = 10
+VIDEO_RECOVERY_MAX_BYTES = 64 * 1024 * 1024
+# Only forward headers relevant to fetching the same resource. Range and
+# conditional request headers would prevent us from getting the complete body.
+VIDEO_RECOVERY_REQUEST_HEADERS = {"accept", "authorization", "cookie", "origin", "referer", "user-agent"}
+VIDEO_RANGE = re.compile(r"bytes (\d{1,19})-(\d{1,19})/(\d{1,19})", re.IGNORECASE)
 EXTENSION_MAP = {
+    **VIDEO_EXTENSIONS,
     "text/html":                     "html",
     "text/css":                      "css",
     "application/javascript":        "js",
@@ -74,6 +83,7 @@ class PageScraper():
         ):
 
         self.saved_urls = set()
+        self.video_recovery_attempts: set[str] = set()
         self.saved_resources = dict()
         self.style_sheets = set()
         self.req_metadata = dict()
@@ -160,6 +170,59 @@ class PageScraper():
         else:
             logger.info("response task complete")
 
+    @staticmethod
+    async def _read_response_body(response):
+        started = time.perf_counter()
+        try:
+            return await response.body()
+        finally:
+            logger.debug("Response body read for %s took %.3f s", response.url, time.perf_counter() - started)
+
+    async def _recover_video(self, url, mime, request_headers, expected_size):
+        """Try to obtain a complete video without buffering an unbounded response."""
+        if expected_size is not None and not 0 < expected_size <= VIDEO_RECOVERY_MAX_BYTES:
+            return None
+        headers = [
+            (name, value)
+            for name in VIDEO_RECOVERY_REQUEST_HEADERS
+            for value in request_headers.get(name, [])
+        ]
+        headers.append(("accept-encoding", "identity"))
+        started = time.perf_counter()
+        try:
+            async with asyncio.timeout(VIDEO_RECOVERY_TIMEOUT):
+                async with httpx.AsyncClient() as client:
+                    async with client.stream("GET", url, headers=headers, follow_redirects=False) as download:
+                        received_type, _, _ = download.headers.get("content-type", "").partition(";")
+                        encoding = download.headers.get("content-encoding", "identity").strip().lower()
+                        if (
+                            download.status_code != 200
+                            or "content-range" in download.headers
+                            or received_type.strip().lower() != mime
+                            or encoding != "identity"
+                        ):
+                            return None
+                        declared = download.headers.get("content-length")
+                        if declared is not None:
+                            size = int(declared)
+                            if not 0 < size <= VIDEO_RECOVERY_MAX_BYTES or (
+                                expected_size is not None and size != expected_size
+                            ):
+                                return None
+                        body = bytearray()
+                        async for chunk in download.aiter_raw(chunk_size=64 * 1024):
+                            if len(body) + len(chunk) > VIDEO_RECOVERY_MAX_BYTES:
+                                return None
+                            body.extend(chunk)
+                        if not body or (expected_size is not None and len(body) != expected_size):
+                            return None
+                        return body, download
+        except (TimeoutError, httpx.HTTPError, ValueError) as error:
+            logger.debug("Full video request failed for %s: %s", url, error)
+            return None
+        finally:
+            logger.debug("Full video recovery for %s took %.3f s", url, time.perf_counter() - started)
+
     async def handle_response(self, response):
         """
             Handles the response we get for a page
@@ -192,6 +255,8 @@ class PageScraper():
         headers = await response.all_headers()
         content_type = headers.get("content-type", "")
         res_type = self.resource_type(content_type)
+        mime = content_type.split(";", 1)[0].strip().lower()
+        response_status = response.status
 
         path = self.data_path(url, resource_type=res_type)
         if path is None:
@@ -202,10 +267,44 @@ class PageScraper():
 
 
         try:
-            logger.info(f"Starting response awaiting at {time.time()}")
-            body = await response.body()
-            logger.info(f"Finished response awaiting at {time.time()}")
+            body = None
+            recovered = None
+            if mime in VIDEO_EXTENSIONS and response_status == 206:
+                match = VIDEO_RANGE.fullmatch(headers.get("content-range", "").strip())
+                expected_size = None
+                if match:
+                    start, end, expected_size = map(int, match.groups())
+                    if start == 0 and end + 1 == expected_size:
+                        complete_range = await self._read_response_body(response)
+                        if len(complete_range) == expected_size:
+                            body = complete_range
+                if body is None:
+                    if url in self.saved_urls or url in self.video_recovery_attempts:
+                        return
+                    self.video_recovery_attempts.add(url)
+                    sent_time = time.time()
+                    recovered = await self._recover_video(
+                        url, mime, req_data["request_headers"], expected_size
+                    )
+                    if recovered is None:
+                        if url not in self.saved_urls:
+                            logger.warning("Could not save the complete video: %s", url)
+                        return
+                    body, download = recovered
+                    retry_headers = {}
+                    for name, value in download.request.headers.multi_items():
+                        retry_headers.setdefault(name, []).append(value)
+                    req_data["request_sent_time"] = sent_time
+                    req_data["request_method"] = "GET"
+                    req_data["request_headers"] = retry_headers
+                    response_status = download.status_code
+                    content_type = download.headers["content-type"]
+            else:
+                body = await self._read_response_body(response)
 
+            # Other range tasks can finish while the recovery GET is running.
+            if mime in VIDEO_EXTENSIONS and url in self.saved_urls:
+                return
             local_path = self.write_resource_file(url, body, res_type)
         except Exception as e:
             logger.info(f"Failed to save url {url}: {e}")
@@ -218,17 +317,17 @@ class PageScraper():
         # keep track of this so that we dont need to dig into the DB later when we need to relativize everything
         self.saved_resources[url] = {"path": local_path, "content_type": content_type}
 
-        headers = dict()
-
-
-        for header in await response.headers_array():
-            name = header["name"].lower()
-            value = header["value"]
+        headers = {}
+        response_headers = (
+            download.headers.multi_items() if recovered is not None else
+            [(header["name"].lower(), header["value"]) for header in await response.headers_array()]
+        )
+        for name, value in response_headers:
             headers.setdefault(name, []).append(value)
 
         resp_data = {
             "response_recieved_time": time.time(),
-            "response_code": response.status,
+            "response_code": response_status,
             "response_headers": headers,
         }
         default_port = 443 if parsed.scheme == "https" else 80
@@ -287,6 +386,7 @@ class PageScraper():
         self.time = time.time()
         update_db = snap_id is None
         if update_db:
+            self.video_recovery_attempts.clear()
             self.snap_id = str(uuid.uuid4())
             self.snapshot_url = url
             self.db.execute(
@@ -440,10 +540,15 @@ class PageScraper():
                     depth=self.depth+1
             )
 
-            # I'm not a huge fan of doing the below.
-            # However, I felt like my constructors and parameters were getting too long
 
+            scraper.video_recovery_attempts = self.video_recovery_attempts
             res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
+
+            new_urls = scraper.saved_urls
+            # Needed so that if there is a recursive reference to another hyperbranch in another, we don't double count it later down the line.
+            # With a max depth limit, it may be prudent to consider processing these in a breadth first manner rather than depth first. 
+            self.saved_urls.update(new_urls)
+
             if res is None: 
                 logger.warning(f"Skipping url: {url}. Failed to download page content") 
                 continue
@@ -585,6 +690,14 @@ class PageScraper():
     def data_path(self, url, resource_type: str = None):
         parsed = urlparse(url)
         path = parsed.path.lstrip("/")
+
+        if resource_type in VIDEO_EXTENSIONS.values():
+            suffix = f".{resource_type}"
+            if os.path.splitext(path)[1].lower() != suffix:
+                # Keep inferred names separate from URL-derived paths. Two
+                # distinct resources, such as /video and /video.mp4, may coexist.
+                key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                return os.path.join(self.base_dir, "videos", key + suffix)
 
         if not resource_type and not path or parsed.path.endswith("/"):
             path = os.path.join(path, "index.html")

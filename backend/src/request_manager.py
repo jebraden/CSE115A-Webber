@@ -211,6 +211,10 @@ class RequestManager:
                 "Expected a body with 'ids' which is an array containing snapshot ids"
             )
 
+        if not isinstance(snapshot_ids, list):
+            return self.bad_request(
+                "Expected a body with 'ids' which is an array containing snapshot ids"
+            )
         list_placeholder = ", ".join("?" * len(snapshot_ids))
         try:
             with self.db:
@@ -252,10 +256,9 @@ class RequestManager:
         return ({}, 202)
 
     def _delete_snapshot_files(self, snapshot_id: str):
-
         # There should not be a situation where these characters are in the ID, thus
         # they get skipped
-        if "." in snapshot_id or "/" in snapshot_id:
+        if not snapshot_id or "." in snapshot_id or "/" in snapshot_id:
             logger.warning(
                 f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}"
             )
@@ -403,6 +406,10 @@ class RequestManager:
         self, snapshot_id: str, url_path: str, request
     ) -> tuple[dict, int]:
         safe_path = unquote(url_path)
+        scheme, separator, address = safe_path.partition("/")
+        # Absolute asset references are rewritten to scheme/host/path.
+        if separator and scheme in ("http", "https"):
+            safe_path = f"{scheme}://{address}"
         comps = urlsplit(safe_path)
         protocol = comps.scheme
         host = comps.hostname
@@ -412,7 +419,6 @@ class RequestManager:
         remote_path = comps.path or "/"
 
         params = request.args.to_dict(flat=False)
-        print(params)
 
         query_values = (
             snapshot_id,
@@ -422,7 +428,6 @@ class RequestManager:
             remote_path,
             json.dumps(params),
         )
-        print(query_values)
 
         row = None
         try:
