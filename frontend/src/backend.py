@@ -61,6 +61,11 @@ type ExitStatus = NotStarted | Exited | Signaled | ExecFailed
 type StateChangeFunction = Callable[[State], bool | None]
 
 
+class _WriterState(local):
+    # A class default is visible in every thread's local state.
+    value = False
+
+
 class ReadersWriterLock:
     """Lock allowing many readers or a single writer."""
 
@@ -68,8 +73,7 @@ class ReadersWriterLock:
         self._n_readers = 0
         self._vars = Lock()
         self._global = Lock()
-        self._is_writing = local()
-        self._is_writing.__dict__.setdefault("value", False)
+        self._is_writing = _WriterState()
 
     def aquire_read(self):
         """Acquire the lock for reading."""
@@ -217,8 +221,9 @@ class WebberBackend:
         "_lock", read_only=True
     )
 
-    def _build_arguments(self) -> list[str]:
-        ppid = os.getppid()
+    def build_arguments(self) -> list[str]:
+        """Build backend launch arguments; subclasses may extend the returned list."""
+        ppid = os.getpid()
         out: list[str] = [
             sys.executable,
             "-m",
@@ -247,7 +252,7 @@ class WebberBackend:
         try:
             self._state = State.RUNNING
             self._proc = Popen(
-                self._build_arguments(),
+                self.build_arguments(),
                 shell=False,
                 creationflags=flags,
             )
@@ -291,6 +296,7 @@ class WebberBackend:
         assert self._proc is not None
         _, status = os.waitpid(self._proc.pid, 0)
         code = os.waitstatus_to_exitcode(status)
+        self._proc.returncode = code
 
         # needs to come before state is updated
         with self._lock.write():
@@ -316,7 +322,7 @@ class WebberBackend:
         timeout -- maximum number of seconds (possibly fractional) to wait
         """
         if self._thread:
-            self._thread.join()
+            self._thread.join(timeout)
 
     def stop(self):
         """Stop the backend.

@@ -17,7 +17,6 @@ import os
 import time
 
 
-
 class TestDataPath:
     def setup(self):
         self.scraper = PageScraper()
@@ -27,34 +26,21 @@ class TestDataPath:
 
     def test_preserves_url_path(self):
         self.setup()
-        path = self.scraper.data_path(
-            "https://example.com/blog/thingy.html"
-        )
+        path = self.scraper.data_path("https://example.com/blog/thingy.html")
 
-        assert path.endswith(
-            "https/example.com/blog/thingy.html"
-        )
+        assert path.endswith("https/example.com/blog/thingy.html")
 
     def test_dir_url_use_indx(self):
         self.setup()
-        path = self.scraper.data_path(
-            "https://example.com/blog/"
-        )
+        path = self.scraper.data_path("https://example.com/blog/")
 
-        assert path.endswith(
-            "https/example.com/blog/index.html"
-        )
+        assert path.endswith("https/example.com/blog/index.html")
 
     def test_http_path(self):
         self.setup()
-        path = self.scraper.data_path(
-            "http://example.com/thingy.html"
-        )
+        path = self.scraper.data_path("http://example.com/thingy.html")
 
-        assert path.endswith(
-            "http/example.com/thingy.html"
-        )
-
+        assert path.endswith("http/example.com/thingy.html")
 
     def test_root_use_indx(self):
         self.setup()
@@ -68,9 +54,7 @@ class TestDataPath:
             "https://example.com/card?q=dark_magician"
         )
 
-        kuriboh = self.scraper.data_path(
-            "https://example.com/card?q=kuriboh"
-        )
+        kuriboh = self.scraper.data_path("https://example.com/card?q=kuriboh")
         assert dark_magician != kuriboh
 
     def test_query_hash_preserve_ext(self):
@@ -83,9 +67,7 @@ class TestDataPath:
 
     def test_url_encoded_chars(self):
         self.setup()
-        path = self.scraper.data_path(
-            "https://example.com/my%20page.html"
-        )
+        path = self.scraper.data_path("https://example.com/my%20page.html")
         assert path.endswith("https/example.com/my%20page.html")
 
     def test_no_dup_ext(self):
@@ -99,7 +81,7 @@ class TestDataPath:
         self.setup()
         path = self.scraper.data_path(
             "https://example.com/styles/blue_eyes_white_dragon",
-            resource_type="css"
+            resource_type="css",
         )
         assert path.endswith("blue_eyes_white_dragon.css")
 
@@ -114,47 +96,42 @@ class TestDataPath:
 
     def test_reject_external_ext_js_keep_same_js(self):
         self.setup()
-        path = self.scraper.data_path(
-            "https://komoney.com/money.js"
-        )
+        path = self.scraper.data_path("https://komoney.com/money.js")
         assert path is None
 
-        path = self.scraper.data_path(
-            "https://komoney.com/money"
-        )
+        path = self.scraper.data_path("https://komoney.com/money")
         assert path is None
 
-        path = self.scraper.data_path(
-            "https://example.com/money.js"
-        )
+        path = self.scraper.data_path("https://example.com/money.js")
         assert path is not None
 
     def test_fragments_no_change_path(self):
         self.setup()
-        f = self.scraper.data_path(
-            "https://example.com/page.html#s1"
-        )
-        s = self.scraper.data_path(
-            "https://example.com/page.html#s2"
-        )
+        f = self.scraper.data_path("https://example.com/page.html#s1")
+        s = self.scraper.data_path("https://example.com/page.html#s2")
         assert f == s
-
 
 
 class FakeRequest:
     url = "https://example.com/search?q=kuriboh&q=mitsurugi&e="
     method = "POST"
     array = [
-            {"name": "Content-Type", "value": "application/json"},
-            {"name": "Cookie", "value": "kuriboh=3"},
-            {"name": "Cookie", "value": "dark_magician=5"},
-        ]
+        {"name": "Content-Type", "value": "application/json"},
+        {"name": "Cookie", "value": "kuriboh=3"},
+        {"name": "Cookie", "value": "dark_magician=5"},
+    ]
 
     async def headers_array(self):
         return self.array
 
+
 class FakeResponse:
-    def __init__(self, request, url=None, body=b"<html>The ultimate engine of destruction: Blue Eyes White Dragon</html>"):
+    def __init__(
+        self,
+        request,
+        url=None,
+        body=b"<html>The ultimate engine of destruction: Blue Eyes White Dragon</html>",
+    ):
         self.request = request
         self.url = url or request.url
         self.status = 200
@@ -164,9 +141,7 @@ class FakeResponse:
         return {"content-type": "text/html; charset=utf-8"}
 
     async def headers_array(self):
-        return [
-            {"name": "Content-Type", "value": "text/html; charset=utf-8"}
-        ]
+        return [{"name": "Content-Type", "value": "text/html; charset=utf-8"}]
 
     async def body(self):
         return self._body
@@ -182,8 +157,9 @@ class TestRequestMetadata:
         assert metadata["request_method"] == "POST"
         assert metadata["request_headers"] == {
             "content-type": ["application/json"],
-            "cookie": ["kuriboh=3", "dark_magician=5"]
+            "cookie": ["kuriboh=3", "dark_magician=5"],
         }
+
     @pytest.mark.asyncio
     async def test_parse_repeat_query_params(self):
         scraper = PageScraper()
@@ -213,13 +189,15 @@ class TestRequestMetadata:
 
     def test_resource_type(self):
         content = [
-            "text/html", "text/html; charset=utf-8", 
-            "text/css; charset=utf-8", "TEXT/CSS",
-            "application/javascript", "font/woff2", "some/junk"
+            "text/html",
+            "text/html; charset=utf-8",
+            "text/css; charset=utf-8",
+            "TEXT/CSS",
+            "application/javascript",
+            "font/woff2",
+            "some/junk",
         ]
-        expected = [
-            "html", "html", "css", "css", "js", "woff2", None
-        ]
+        expected = ["html", "html", "css", "css", "js", "woff2", None]
 
         scraper = PageScraper()
 
@@ -240,8 +218,9 @@ class TestHandleResponse:
 
     def create_test_db(self, tmp_path):
         db = sqlite3.connect(os.path.join(tmp_path, "test.db"))
-        schema = os.path.join(os.path.dirname(__file__), 
-            "./../db/001_init.sql")
+        schema = os.path.join(
+            os.path.dirname(__file__), "./../db/001_init.sql"
+        )
         with open(schema, "r") as sql_script:
             db.executescript(sql_script.read())
         self.scraper.db = db
@@ -254,10 +233,10 @@ class TestHandleResponse:
             VALUES (?, ?, ?, ?)
             """,
             (
-                 snapshot,
-                 "https://example.com",
-                 time.time(),
-                 time.time(),
+                snapshot,
+                "https://example.com",
+                time.time(),
+                time.time(),
             ),
         )
         db.commit()
@@ -266,7 +245,6 @@ class TestHandleResponse:
         req.url = "https://example.com/page.html"
         req.method = "GET"
         req.array = [{"name": "Accept", "value": "text/html"}]
-
 
     @pytest.mark.asyncio
     async def test_missing_req_meta_skip_resp(self):
@@ -279,7 +257,7 @@ class TestHandleResponse:
 
         assert resp.url not in self.scraper.saved_urls
 
-    @pytest.mark.asyncio    
+    @pytest.mark.asyncio
     async def test_dup_url_skipped(self):
         self.setup()
         req = FakeRequest()
@@ -302,16 +280,19 @@ class TestHandleResponse:
         resp = FakeResponse(req)
 
         self.scraper.req_metadata[id(req)] = asyncio.create_task(
-            asyncio.sleep(0, result={
-                "request_sent_time": 1.0,
-                "request_method": "GET",
-                "request_headers": {},
-                "request_parameters": {},
-            })
+            asyncio.sleep(
+                0,
+                result={
+                    "request_sent_time": 1.0,
+                    "request_method": "GET",
+                    "request_headers": {},
+                    "request_parameters": {},
+                },
+            )
         )
 
         with patch.object(
-                self.scraper, "write_resource_file", return_value=None
+            self.scraper, "write_resource_file", return_value=None
         ):
             await self.scraper.handle_response(resp)
         self.scraper.db.execute.assert_not_called()
@@ -340,12 +321,15 @@ class TestHandleResponse:
         self.set_req_vals(req)
         resp = FakeResponse(req)
         self.scraper.req_metadata[id(req)] = asyncio.create_task(
-            asyncio.sleep(0, result={
-                "request_sent_time": 1.0,
-                "request_method": "GET",
-                "request_headers": {},
-                "request_parameters": {},
-            })
+            asyncio.sleep(
+                0,
+                result={
+                    "request_sent_time": 1.0,
+                    "request_method": "GET",
+                    "request_headers": {},
+                    "request_parameters": {},
+                },
+            )
         )
 
         with patch.object(
@@ -354,7 +338,7 @@ class TestHandleResponse:
             return_value="/tmp/page.html",
         ), patch("os.path.getsize", return_value=100) as write_file:
             await self.scraper.handle_response(resp)
-        
+
         write_file.assert_called_once()
         assert resp.url in self.scraper.saved_urls
         self.scraper.db.execute.assert_called_once()
@@ -371,19 +355,22 @@ class TestHandleResponse:
         req.url = "https://example.com/missing.html"
         resp = FakeResponse(req, body=b"<html>Not Found</html>")
         resp.status = 404
-        
+
         self.scraper.req_metadata[id(req)] = asyncio.create_task(
-            asyncio.sleep(0, result={
-                "request_sent_time": 1.0,
-                "request_method": "GET",
-                "request_headers": {},
-                "request_parameters": {},
-            })
+            asyncio.sleep(
+                0,
+                result={
+                    "request_sent_time": 1.0,
+                    "request_method": "GET",
+                    "request_headers": {},
+                    "request_parameters": {},
+                },
+            )
         )
 
         with patch.object(
-            self.scraper, 
-            "write_resource_file", 
+            self.scraper,
+            "write_resource_file",
             return_value="/tmp/missing.html",
         ), patch("os.path.getsize", return_value=100):
             await self.scraper.handle_response(resp)
@@ -407,10 +394,7 @@ class TestHandleResponse:
         db = self.create_test_db(tmp_path)
         self.add_snapshot_record(db, self.scraper.snap_id)
         req = FakeRequest()
-        req.url = (
-            "https://example.com/search"
-            "?q=lo&q=skull_guardian&e="
-        )
+        req.url = "https://example.com/search" "?q=lo&q=skull_guardian&e="
         req.method = "POST"
         req.array = [
             {"name": "Content-Type", "value": "application/json"},
@@ -447,7 +431,8 @@ class TestHandleResponse:
         response_headers = json.loads(row[2])
 
         assert request_headers["cookie"] == [
-            "lo=3", "skull_guardian=4",
+            "lo=3",
+            "skull_guardian=4",
         ]
         assert request_headers["content-type"] == [
             "application/json",
@@ -498,13 +483,20 @@ def test_db(tmp_path, monkeypatch):
             db.executescript(sql_script.read())
     return str(db_file)
 
+
 @pytest.fixture
 def test_conn(test_db):
     return sqlite3.connect(test_db)
 
+
 @pytest.fixture
 def insert_snapshot(test_db):
-    def insert(snapshot_id="snap-1", url="https://example.com", start_time=100.5, end_time=105.25):
+    def insert(
+        snapshot_id="snap-1",
+        url="https://example.com",
+        start_time=100.5,
+        end_time=105.25,
+    ):
         with sqlite3.connect(test_db) as db:
             db.execute(
                 """
@@ -513,12 +505,14 @@ def insert_snapshot(test_db):
                 """,
                 (snapshot_id, url, start_time, end_time),
             )
+
     return insert
+
 
 @pytest.fixture
 def insert_file(test_db, insert_snapshot):
     def insert(file_id="file-1", snapshot_id="snap-1", **overrides):
-        #insert_snapshot(snapshot_id=snapshot_id)
+        # insert_snapshot(snapshot_id=snapshot_id)
 
         values = {
             "id": file_id,
@@ -533,16 +527,16 @@ def insert_file(test_db, insert_snapshot):
             "request_method": "GET",
             "request_headers": json.dumps({}),
             "request_parameters": json.dumps({}),
-            "response_recieved_time": 101.0,
+            "response_received_time": 101.0,
             "response_code": 200,
-            "response_headers": json.dumps({
-                "Content-Type": ["text/html"]
-            }),
+            "response_headers": json.dumps({"Content-Type": ["text/html"]}),
         }
         values.update(overrides)
         cols = ", ".join(values.keys())
         jsonbs = ["request_parameters", "request_headers", "response_headers"]
-        placeholders = ", ".join("jsonb(?)" if col in jsonbs else "?" for col in values)
+        placeholders = ", ".join(
+            "jsonb(?)" if col in jsonbs else "?" for col in values
+        )
 
         with sqlite3.connect(test_db) as db:
             db.execute(
@@ -572,20 +566,19 @@ class TestRelativizeResources:
             file_id=file_id,
             snapshot_id=self.snapshot_id,
             on_disk_path=str(path),
-            file_size=path.stat().st_size
+            file_size=path.stat().st_size,
         )
-        
+
         self.scraper.saved_resources[url] = {
-            "path": str(path), "content_type": content_type
+            "path": str(path),
+            "content_type": content_type,
         }
 
     def get_file_size(self, file_id):
         row = self.scraper.db.execute(
-            "SELECT file_size FROM files WHERE id = ?",
-            (file_id,)
+            "SELECT file_size FROM files WHERE id = ?", (file_id,)
         ).fetchone()
         return row[0]
-
 
     def test_relativize_html(self, insert_file, tmp_path):
         url = "https://example.com/index.html"
@@ -594,27 +587,30 @@ class TestRelativizeResources:
 
         self.add_file(insert_file, "file-1", url, path, "text/html")
 
-        with patch("src.scraping.scraper.relativize_html", 
-                return_value='<img src="../img.png">') as mock_relativize:
+        with patch(
+            "src.scraping.scraper.relativize_html",
+            return_value='<img src="../img.png">',
+        ) as mock_relativize:
             self.scraper.rewrite_resource_paths()
             mock_relativize.assert_called_once()
         assert path.read_text() == '<img src="../img.png">'
 
     def test_relativize_css(self, insert_file, tmp_path):
-        url ="https://example.com/css/style.css"
+        url = "https://example.com/css/style.css"
         path = tmp_path / "style.css"
         path.write_bytes(b'body { background: url("image.png"); }')
-        self.add_file(
-            insert_file, "file-1", url, path, "text/css"
-        )
+        self.add_file(insert_file, "file-1", url, path, "text/css")
 
-        with patch("src.scraping.scraper.relativize_stylesheet",
-                return_value='body { background: url("../image.png"); }') as mock_relativize:
+        with patch(
+            "src.scraping.scraper.relativize_stylesheet",
+            return_value='body { background: url("../image.png"); }',
+        ) as mock_relativize:
             self.scraper.rewrite_resource_paths()
             mock_relativize.assert_called_once()
 
         assert path.read_text() == 'body { background: url("../image.png"); }'
-    
+
+
 def mock_element(url):
     element = MagicMock()
     prop = MagicMock()
@@ -624,6 +620,7 @@ def mock_element(url):
 
     return element
 
+
 def mock_locator(elements):
     locator = MagicMock()
     locator.count = AsyncMock(return_value=len(elements))
@@ -631,8 +628,8 @@ def mock_locator(elements):
 
     return locator
 
+
 class TestHyperlinkCollection:
-    
 
     @pytest.mark.asyncio
     async def test_gather_hyperlinks(self):
@@ -644,14 +641,10 @@ class TestHyperlinkCollection:
             "a[href]": [
                 mock_element("https://example.com/about"),
                 # Note we also test top_domain_only enforcement with this
-                mock_element("https://google.com")
+                mock_element("https://google.com"),
             ],
-            "area[href]": [
-                mock_element("https://example.com/contact")
-            ],
-            "form": [
-                mock_element("https://example.com/search")
-            ]
+            "area[href]": [mock_element("https://example.com/contact")],
+            "form": [mock_element("https://example.com/search")],
         }
 
         page.locator.side_effect = lambda selector: (
@@ -663,31 +656,29 @@ class TestHyperlinkCollection:
         assert urls == {
             "https://example.com/about",
             "https://example.com/contact",
-            "https://example.com/search"
+            "https://example.com/search",
         }
 
     @pytest.mark.asyncio
     async def test_gathering_enforce_whitelist(self):
-        rules = HyperlinkRules(top_domain_only=True, whitelist_domains={"google"})
+        rules = HyperlinkRules(
+            top_domain_only=True, whitelist_domains={"google"}
+        )
         scraper = PageScraper(
-                hyperlink_rules=rules,
-                snapshot_url="https://www.example.com/something"
+            hyperlink_rules=rules,
+            snapshot_url="https://www.example.com/something",
         )
 
         page = MagicMock()
-        
+
         elements = {
             "a[href]": [
                 mock_element("https://example.com/about"),
                 # Note we also test top_domain_only enforcement with this
-                mock_element("https://google.com")
+                mock_element("https://google.com"),
             ],
-            "area[href]": [
-                mock_element("https://example.com/contact")
-            ],
-            "form": [
-                mock_element("https://example.com/search")
-            ]
+            "area[href]": [mock_element("https://example.com/contact")],
+            "form": [mock_element("https://example.com/search")],
         }
 
         page.locator.side_effect = lambda selector: (
@@ -700,15 +691,17 @@ class TestHyperlinkCollection:
             "https://example.com/about",
             "https://example.com/contact",
             "https://google.com",
-            "https://example.com/search"
-        } 
+            "https://example.com/search",
+        }
 
     @pytest.mark.asyncio
     async def test_gather_hyperlinks_enforce_blacklist(self):
-        rules = HyperlinkRules(top_domain_only=False, blacklist_domains="google")
+        rules = HyperlinkRules(
+            top_domain_only=False, blacklist_domains="google"
+        )
         scraper = PageScraper(
             hyperlink_rules=rules,
-            snapshot_url="https://www.example.com/something"
+            snapshot_url="https://www.example.com/something",
         )
 
         page = MagicMock()
@@ -716,14 +709,10 @@ class TestHyperlinkCollection:
             "a[href]": [
                 mock_element("https://example.com/about"),
                 # Note we also test top_domain_only enforcement with this
-                mock_element("https://google.com")
+                mock_element("https://google.com"),
             ],
-            "area[href]": [
-                mock_element("https://example.com/contact")
-            ],
-            "form": [
-                mock_element("https://example.com/search")
-            ]
+            "area[href]": [mock_element("https://example.com/contact")],
+            "form": [mock_element("https://example.com/search")],
         }
 
         page.locator.side_effect = lambda selector: (
@@ -735,10 +724,9 @@ class TestHyperlinkCollection:
         assert urls == {
             "https://example.com/about",
             "https://example.com/contact",
-            "https://example.com/search"
+            "https://example.com/search",
         }
 
-         
     @pytest.mark.asyncio
     async def test_gather_hyperlinks_empty(self):
         scraper = PageScraper()
@@ -756,16 +744,21 @@ class TestHyperlinkProcessing:
         scraper = PageScraper(db_conn=MagicMock())
         scraper.snap_id = "snap-1"
         scraper.snapshot_url = "https://example.com/something"
-        scraper.saved_urls={"https://test_url.com"}
+        scraper.saved_urls = {"https://test_url.com"}
 
-        urls = [
-            "https://example.com/about",
-            "https://example.com/contact"
-        ]
+        urls = ["https://example.com/about", "https://example.com/contact"]
 
         instances = []
+
         class MockScraper:
-            def __init__(self, db_conn=None, debug=False, hyperlink_rules=HyperlinkRules(), snapshot_url=None, depth=0):
+            def __init__(
+                self,
+                db_conn=None,
+                debug=False,
+                hyperlink_rules=HyperlinkRules(),
+                snapshot_url=None,
+                depth=0,
+            ):
                 self.db = db_conn
                 self.archive_page = AsyncMock(return_value="snap-1")
                 self.snapshot_url = snapshot_url
@@ -775,18 +768,21 @@ class TestHyperlinkProcessing:
 
         monkeypatch.setattr("src.scraping.scraper.PageScraper", MockScraper)
 
-        processed = await scraper.process_hyperlinks(urls, headers=None, method="GET")
+        processed = await scraper.process_hyperlinks(
+            urls, headers=None, method="GET"
+        )
         assert processed == set(urls)
         assert len(instances) == 2
 
         for instance, url in zip(instances, urls):
             instance.archive_page.assert_awaited_once_with(
-                    url, None, "GET", snap_id="snap-1", saved_urls={"https://test_url.com"} #empty set bcs no responses
+                url,
+                None,
+                "GET",
+                snap_id="snap-1",
+                saved_urls={
+                    "https://test_url.com"
+                },  # empty set bcs no responses
             )
             assert instance.depth == 1
             assert instance.snapshot_url == scraper.snapshot_url
-
-
-
-
-

@@ -2,8 +2,20 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineScript
+from PySide6.QtWebEngineCore import QWebEngineScript, QWebEnginePage
 from .viewing import DEFAULTS, normalize_preferences, reading_script
+
+
+class ArchivePage(QWebEnginePage):
+    """Navigation stays in the selected local copy instead of visiting live links."""
+    allowed_origin = None
+
+    def acceptNavigationRequest(self, url, kind, is_main_frame):
+        if url.scheme() in ("about", "data"):
+            return True
+        if url.isLocalFile():
+            return self.allowed_origin is None
+        return (url.scheme(), url.host(), url.port()) == self.allowed_origin
 
 
 class ArchiveViewer(QWebEngineView):
@@ -13,6 +25,7 @@ class ArchiveViewer(QWebEngineView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setPage(ArchivePage(self))
         self.viewing_preferences = dict(DEFAULTS)
 
     def apply_viewing_preferences(self, preferences):
@@ -48,3 +61,10 @@ class ArchiveViewer(QWebEngineView):
         url = QUrl.fromLocalFile(str(path))
 
         self.load(url)
+
+    def open_archive_url(self, url: str):
+        target = QUrl(url)
+        if target.scheme() not in ("http", "https") or not target.host():
+            raise ValueError("Invalid local archive address")
+        self.page().allowed_origin = (target.scheme(), target.host(), target.port())
+        self.load(target)
