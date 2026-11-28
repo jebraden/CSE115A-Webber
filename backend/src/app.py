@@ -170,10 +170,17 @@ def create_app(
             resp = manager.query_bookmarks(request)
         return jsonify(resp[0]), resp[1]
 
-    @app.route("/bookmarks/<string:bookmark_id>", methods=["DELETE"])
+    @app.route(
+        "/bookmarks/<string:bookmark_id>", methods=["GET", "POST", "DELETE"]
+    )
     def delete_bookmark(bookmark_id: str):
         with RequestManager(DB_PATH) as manager:
-            resp = manager.delete_bookmark(bookmark_id)
+            if request.method == "GET":
+                resp = manager.get_bookmark_info(bookmark_id)
+            elif request.method == "POST":
+                resp = manager.edit_bookmark(bookmark_id, request)
+            elif request.method == "DELETE":
+                resp = manager.delete_bookmark(bookmark_id)
         return jsonify(resp[0]), resp[1]
 
     return app

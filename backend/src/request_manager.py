@@ -8,6 +8,7 @@ import re
 import asyncio
 import threading
 import uuid
+import flask
 from typing import Any
 from types import UnionType
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
@@ -706,7 +707,7 @@ class RequestManager:
             return self.bad_request(str(e))
         if (file_id is None) == (snapshot_id is None):
             return self.bad_request(
-                'cannot have both "file_id" and "snapshot_id" set'
+                'must have exactly one of "file_id" or "snapshot_id" set'
             )
 
         bookmark_id = str(uuid.uuid4())
@@ -776,6 +777,73 @@ class RequestManager:
                 "unexpected error while querying bookmarks"
             )
         return [row["id"] for row in rows], 200
+
+    def get_bookmark_info(self, bookmark_id: str):
+        try:
+            row = self.db.execute(
+                """
+                SELECT id, name, snapshot_id, file_id
+                FROM bookmarks
+                WHERE id = ?
+                """,
+                (bookmark_id,),
+            ).fetchone()
+            if row is None:
+                return self.not_found("non-existent bookmark ID")
+            return {k: row[k] for k in row.keys() if row[k] is not None}, 200
+        except Exception:
+            return self.internal_server_error(
+                "unexpected error while getting bookmark information"
+            )
+
+    def edit_bookmark(self, bookmark_id: str, request: flask.Request):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return self.bad_request("expected JSON request body")
+        try:
+            name = _type_checked_get(body, "name", str, None)
+            snapshot_id = _type_checked_get(body, "snapshot_id", str, None)
+            file_id = _type_checked_get(body, "file_id", str, None)
+        except (KeyError, TypeError) as e:
+            return self.bad_request(str(e))
+        if file_id is not None and snapshot_id is not None:
+            return self.bad_request(
+                'cannot have both "file_id" and "snapshot_id" set'
+            )
+
+        try:
+            with self.db:
+                row = self.db.execute(
+                    """
+                    UPDATE bookmarks
+                    SET name = COALESCE(:name, cur.name),
+                        snapshot_id = COALESCE(:snapshot_id, cur.snapshot_id),
+                        file_id = COALESCE(:file_id, cur.file_id)
+                    FROM (
+                        SELECT name, snapshot_id, file_id
+                        FROM bookmarks
+                        WHERE id == :id
+                    ) cur
+                    WHERE id == :id
+                    RETURNING id, name, snapshot_id, file_id
+                    """,
+                    {
+                        "id": bookmark_id,
+                        "name": name,
+                        "snapshot_id": snapshot_id,
+                        "file_id": file_id,
+                    },
+                ).fetchone()
+                self.db.commit()
+            if row is None:
+                return self.not_found(f"no bookmark for ID {bookmark_id!r}")
+            return {k: row[k] for k in row.keys() if row[k] is not None}, 200
+        except sqlite3.IntegrityError:
+            return self.bad_request("new file or snapshot ID does not exist")
+        except Exception:
+            return self.internal_server_error(
+                "unexpected error while updating bookmark information"
+            )
 
     def delete_bookmark(self, bookmark_id: str):
         try:

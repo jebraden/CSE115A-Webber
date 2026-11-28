@@ -1522,7 +1522,7 @@ class TestInvalidRegexpPatterns:
         assert status == 400
 
 
-class TestConcurrentAccess:
+class TestBookmarkConcurrentAccess:
     def test_concurrent_create_bookmarks(
         self, test_db, manager, insert_snapshot
     ):
@@ -1601,8 +1601,43 @@ class TestConcurrentAccess:
         assert len(errors) == 0
         assert all(status in (200, 201) for status in results)
 
+    def test_concurrent_edit_and_read(self, test_db, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
 
-class TestErrorHandling:
+        # Create a bookmark first
+        req = MockRequest()
+        req.json_dat = {"name": "Original", "snapshot_id": "snap-1"}
+        resp, _ = manager.create_bookmark(req)
+        bookmark_id = resp["id"]
+
+        errors = []
+
+        def reader():
+            try:
+                with RequestManager(test_db) as manager:
+                    manager.get_bookmark_info(bookmark_id)
+            except Exception as e:
+                errors.append(e)
+
+        def writer():
+            try:
+                with RequestManager(test_db) as manager:
+                    req = MockRequest()
+                    req.json_dat = {"name": f"Updated {id(self)}"}
+                    manager.edit_bookmark(bookmark_id, req)
+            except Exception as e:
+                errors.append(e)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(reader) for _ in range(5)] + [
+                executor.submit(writer) for _ in range(5)
+            ]
+            concurrent.futures.wait(futures)
+
+        assert len(errors) == 0
+
+
+class TestBookmarkErrorHandling:
     def test_create_bookmark_db_error(self, manager, insert_snapshot):
         """Test that database errors during create are handled gracefully"""
         insert_snapshot(snapshot_id="snap-1")
@@ -1695,3 +1730,266 @@ class TestErrorHandling:
         result, status = manager.query_bookmarks(request)
 
         assert status == 400
+
+
+class TestGetBookmarkInfo:
+    def test_get_snapshot_bookmark_info(self, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "My Snapshot",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        result, status = manager.get_bookmark_info(bookmark_id)
+        assert status == 200
+        assert result["id"] == bookmark_id
+        assert result["name"] == "My Snapshot"
+        assert result["snapshot_id"] == "snap-1"
+        assert "file_id" not in result  # Filtered out because NULL
+
+    def test_get_file_bookmark_info(
+        self, manager, insert_snapshot, insert_file
+    ):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(file_id="file-1", snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "My File",
+            "file_id": "file-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        result, status = manager.get_bookmark_info(bookmark_id)
+        assert status == 200
+        assert result["id"] == bookmark_id
+        assert result["name"] == "My File"
+        assert result["file_id"] == "file-1"
+        assert "snapshot_id" not in result  # Filtered out because NULL
+
+    def test_get_nonexistent_bookmark(self, manager):
+        result, status = manager.get_bookmark_info("nonexistent")
+        assert status == 404
+
+
+class TestEditBookmark:
+    def test_rename_snapshot_bookmark(self, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Original Name",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        # Rename only
+        edit_request = MockRequest()
+        edit_request.json_dat = {"name": "New Name"}
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+        assert result["name"] == "New Name"
+        assert result["snapshot_id"] == "snap-1"
+
+    def test_rename_file_bookmark(self, manager, insert_snapshot, insert_file):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(file_id="file-1", snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Original Name",
+            "file_id": "file-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {"name": "Renamed"}
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+        assert result["name"] == "Renamed"
+        assert result["file_id"] == "file-1"
+
+    def test_change_snapshot_target(self, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_snapshot(snapshot_id="snap-2")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Bookmark",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        # Change to different snapshot
+        edit_request = MockRequest()
+        edit_request.json_dat = {
+            "name": "Bookmark",
+            "snapshot_id": "snap-2",
+        }
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+        assert result["snapshot_id"] == "snap-2"
+
+    def test_change_file_target(self, manager, insert_snapshot, insert_file):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(file_id="file-1", snapshot_id="snap-1")
+        insert_file(file_id="file-2", snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Bookmark",
+            "file_id": "file-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        # Change to different file
+        edit_request = MockRequest()
+        edit_request.json_dat = {
+            "name": "Bookmark",
+            "file_id": "file-2",
+        }
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+        assert result["file_id"] == "file-2"
+
+    def test_rename_only_updates_persisted(self, manager, insert_snapshot):
+        """Test that rename-only updates are actually saved to the DB"""
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Original",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {"name": "Updated Name"}
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+
+        # Verify in DB
+        row = manager.db.execute(
+            "SELECT name FROM bookmarks WHERE id = ?",
+            (bookmark_id,),
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "Updated Name"
+
+    def test_edit_nonexistent_bookmark(self, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {"name": "Test"}
+        result, status = manager.edit_bookmark("nonexistent", request)
+        assert status == 404
+
+    def test_edit_both_ids_rejected(
+        self, manager, insert_snapshot, insert_file
+    ):
+        insert_snapshot(snapshot_id="snap-1")
+        insert_file(file_id="file-1", snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+            "file_id": "file-1",
+        }
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 400
+
+    def test_edit_invalid_snapshot(self, manager, insert_snapshot):
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "nonexistent",
+        }
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 400
+
+    def test_edit_empty_name(self, manager, insert_snapshot):
+        """Test that empty string is accepted for rename"""
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Original",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {"name": ""}
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+
+    def test_edit_no_json_body(self, manager, insert_snapshot):
+        """Test edit with empty body"""
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {}
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 200
+
+
+class TestBookmarkEdgeCases:
+    def test_get_bookmark_info_filters_nulls(self, manager, insert_snapshot):
+        """Verify that NULL fields are filtered from the response"""
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        result, status = manager.get_bookmark_info(bookmark_id)
+        assert "file_id" not in result
+        assert result["snapshot_id"] == "snap-1"
+
+    def test_edit_bookmark_integrity_error(self, manager, insert_snapshot):
+        """Test FK violation returns 400"""
+        insert_snapshot(snapshot_id="snap-1")
+        request = MockRequest()
+        request.json_dat = {
+            "name": "Test",
+            "snapshot_id": "snap-1",
+        }
+        resp, status = manager.create_bookmark(request)
+        bookmark_id = resp["id"]
+
+        edit_request = MockRequest()
+        edit_request.json_dat = {
+            "snapshot_id": "fake-snapshot",
+        }
+        result, status = manager.edit_bookmark(bookmark_id, edit_request)
+        assert status == 400
+        assert "does not exist" in result["message"].lower()

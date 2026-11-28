@@ -509,6 +509,78 @@
 *** Error Response
     Only the global error responses defined above apply.
 
+** GET =/bookmarks/{BOOKMARK_ID}=
+   Get information about the bookmark named by BOOKMARK_ID.
+*** Request
+    Get requests have empty bodies.
+*** Success Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) echo back the bookmark's ID
+          "id": "...",
+          // (string) the bookmark's name
+          "name": "...",
+          // NOTE only one of the following two fields will be present
+          // (string, optional) the ID of the snapshot this bookmark points to
+          "snapshot_id": "...",
+          // (string, optional) the ID of the file this bookmark points to
+          "file_id": "..."
+      }
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =BOOKMARK_ID= refers to a non-existent bookmark.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
+** POST =/bookmarks/{BOOKMARK_ID}=
+   Modify the bookmark named by BOOKMARK_ID.
+*** Request
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string, optional) the new name of the bookmark
+          "name": "...",
+          // NOTE Only one of the following can be present. You can change the
+          // type of entity this bookmark points to using these fields.
+          // (string, optional) ID of the new snapshot this bookmark should point to
+          "snapshot_id": "...",
+          // (string, optional) ID of the new file this bookmark should point to
+          "file_id": "..."
+      }
+    #+end_src
+*** Response
+    Code: 200 (OK) \\
+    Content-Type: application/json
+    #+begin_src json-ts
+      {
+          // (string) echo back the bookmark's ID
+          "id": "...",
+          // (string) the bookmark's name
+          "name": "...",
+          // NOTE only one of the following two fields will be present
+          // (string, optional) the ID of the snapshot this bookmark points to
+          "snapshot_id": "...",
+          // (string, optional) the ID of the file this bookmark points to
+          "file_id": "..."
+      }
+    #+end_src
+*** Error Responses
+    - Code: 404 \\
+      Content-Type: application/json
+
+      Indicates that the passed =BOOKMARK_ID= refers to a non-existent bookmark.
+
+      #+begin_src json-ts
+        {}
+      #+end_src
+
 ** QUERY =/search/bookmarks=
    Make a general query for a list of bookmarks.
 *** Request
