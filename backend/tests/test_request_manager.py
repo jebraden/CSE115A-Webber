@@ -20,7 +20,7 @@ def test_db(tmp_path):
     db_file = str(tmp_path / "test_archive.db")
     with patch("src.request_manager.DB_PATH", db_file), patch(
         "src.app.DB_PATH", db_file
-    ):
+    ), patch("src.request_manager.base_dir", str(tmp_path)):
         schema = os.path.join(
             os.path.dirname(__file__), "./../db/001_init.sql"
         )
@@ -708,8 +708,6 @@ class TestDeleteSnapshot:
     def test_delete_exist_has_files(
         self, tmp_path, monkeypatch, insert_snapshot, insert_file, manager
     ):
-        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
-
         insert_snapshot(snapshot_id="snap-1")
 
         path = tmp_path / "snap-1" / "test.html"
@@ -733,8 +731,6 @@ class TestDeleteSnapshot:
     def test_delete_evil_path_no_remove(
         self, tmp_path, monkeypatch, insert_snapshot, insert_file, manager
     ):
-        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
-
         request = MockRequest()
         request.json_dat = {"ids": ["", ".", "/", "snap-1/../"]}
 
@@ -754,8 +750,6 @@ class TestDeleteSnapshot:
     def test_delete_batch_snapshots(
         self, tmp_path, monkeypatch, insert_snapshot, insert_file, manager
     ):
-        monkeypatch.setattr("src.request_manager.base_dir", str(tmp_path))
-
         request = MockRequest()
         request.json_dat = {"ids": ["snap-1", "snap-2", "snap-3"]}
 

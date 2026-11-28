@@ -25,3 +25,12 @@ test-frontend-offscreen: # :Test the frontend using a dummy display
 
 test-frontend: # :Test the frontend using your actual window system
 	scripts/run-tests.sh frontend
+
+install-browser: # :Install the browser used by the backend scraper
+	backend/venv/bin/python -m playwright install chromium
+
+run-demo: # :Run the central UI with sample archives
+	scripts/run-frontend.sh --demo
+
+test-integration: # :Test real capture and offline viewing against a temporary website
+	WEBBER_RUN_ARCHIVE_E2E=1 QT_QPA_PLATFORM=offscreen frontend/venv/bin/python -m pytest frontend/tests/test_archive_e2e.py

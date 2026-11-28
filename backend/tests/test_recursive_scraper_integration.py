@@ -117,6 +117,7 @@ class FakePlaywrightContext:
 @pytest.fixture 
 def test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_archive.db"
+    monkeypatch.setattr("src.scraping.scraper.base_dir", str(tmp_path / ".webber"))
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_file) as db:
@@ -135,9 +136,8 @@ def test_conn(test_db):
 class TestArchivePageIntegration:
     @pytest.mark.asyncio
     async def test_archive_page(
-        self, test_conn, tmp_path, monkeypatch
+        self, test_conn, monkeypatch
     ):
-        monkeypatch.setenv("HOME", str(tmp_path))
         root = "https://example.com/"
         about = "https://example.com/about"
         contact = "https://example.com/contact"
@@ -253,9 +253,8 @@ class TestArchivePageIntegration:
 
     @pytest.mark.asyncio
     async def test_enforce_max_depth(
-        self, test_conn, tmp_path, monkeypatch
+        self, test_conn, monkeypatch
     ):
-        monkeypatch.setenv("HOME", str(tmp_path))
         root = "https://example.com/"
         about = "https://example.com/about"
         contact = "https://example.com/contact"

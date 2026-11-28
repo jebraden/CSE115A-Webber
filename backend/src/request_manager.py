@@ -11,7 +11,8 @@ import uuid
 from typing import Any
 from types import UnionType
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
-from src.scraping.scraper import PageScraper, HyperlinkRules
+from .scraping.scraper import PageScraper, HyperlinkRules
+from playwright.async_api import TimeoutError as ScrapeTimeout
 
 base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
 logger = logging.getLogger(__name__)
@@ -96,8 +97,20 @@ class RequestManager:
             url = payload["url"]
         except KeyError:
             return self.bad_request("Payload missing 'url'")
-        options_dict = payload.get("request_options", None)
-        # Assume that options parameters are... optional
+        try:
+            parsed = urlsplit(url)
+            if (
+                not isinstance(url, str)
+                or parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+            ):
+                return self.bad_request(
+                    "Enter a complete http:// or https:// URL."
+                )
+            parsed.port
+        except TypeError, ValueError, AttributeError:
+            return self.bad_request("Enter a valid http:// or https:// URL.")
+        options_dict = payload.get("request_options")
         if options_dict:
             method = options_dict.get("method", None)
             headers = options_dict.get("headers", None)
@@ -118,7 +131,24 @@ class RequestManager:
         # Parameters validated
         # Currently on GET explicitly supported
         scraper = PageScraper(db_conn=self.db, hyperlink_rules=rules)
-        snap_id = asyncio.run(scraper.archive_page(url))
+        try:
+            snap_id = asyncio.run(scraper.archive_page(url))
+        except TimeoutError, ScrapeTimeout:
+            self.db.rollback()
+            return {
+                "message": "Archiving timed out. Check your archives before retrying."
+            }, 504
+        except Exception:
+            self.db.rollback()
+            logger.exception("Unable to archive URL")
+            return self.internal_server_error(
+                "Could not archive this page. Check the URL and connection, then retry."
+            )
+        if not isinstance(snap_id, str) or not snap_id:
+            self.db.rollback()
+            return self.internal_server_error(
+                "The scraper did not return a snapshot ID."
+            )
         response = {"id": str(snap_id)}
         logger.info(f"Created new snapshot with id: {snap_id}")
         return (response, 201)

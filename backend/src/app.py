@@ -1,4 +1,3 @@
-from flask import Flask, jsonify
 from typing import Optional, Any
 import logging
 import platform
@@ -117,11 +116,17 @@ def create_app(
         if resp[1] != 200:
             return jsonify(resp[0]), resp[1]
         data = resp[0]
-        return Response(
+        response = Response(
             data["body"],
             status=data["status"],
             content_type=data["content_type"],
         )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' data: blob:; script-src 'none'; "
+            "style-src 'self' 'unsafe-inline' data:; connect-src 'none'; "
+            "base-uri 'none'; form-action 'none'"
+        )
+        return response
 
     @app.route("/search/snapshots", methods=["QUERY"])
     def query_snapshots():
@@ -282,10 +287,13 @@ def main():
     """Main entrypoint."""
     opts = _handle_options()
     app = create_app(**opts["app"])
-    if opts["production"]:
-        _start_waitress(app, **opts["listen"])
-    else:
-        _start_flask(app, opts["debug"], **opts["listen"])
+    try:
+        if opts["production"]:
+            _start_waitress(app, **opts["listen"])
+        else:
+            _start_flask(app, opts["debug"], **opts["listen"])
+    finally:
+        close_archive_database(app)
 
 
 if __name__ == "__main__":

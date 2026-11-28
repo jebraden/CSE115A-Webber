@@ -67,7 +67,7 @@ def test_backend_script():
 @pytest.fixture
 def normal_backend(test_backend_script):
     b = WebberBackend()
-    b._build_arguments = lambda: [  # type: ignore[method-assign]
+    b.build_arguments = lambda: [  # type: ignore[method-assign]
         sys.executable,
         test_backend_script,
     ]
@@ -81,7 +81,7 @@ class TestRealProcessIntegration:
     def crashing_backend(self, test_backend_script):
         """Backend configured to crash."""
         b = WebberBackend()
-        b._build_arguments = lambda: [  # type: ignore[method-assign]
+        b.build_arguments = lambda: [  # type: ignore[method-assign]
             sys.executable,
             test_backend_script,
             "--crash",
@@ -92,7 +92,7 @@ class TestRealProcessIntegration:
     def hanging_backend(self, test_backend_script):
         """Backend configured to ignore SIGTERM."""
         b = WebberBackend()
-        b._build_arguments = lambda: [  # type: ignore[method-assign]
+        b.build_arguments = lambda: [  # type: ignore[method-assign]
             sys.executable,
             test_backend_script,
             "--hang",
@@ -103,7 +103,7 @@ class TestRealProcessIntegration:
     def exiting_backend(self, test_backend_script):
         """Backend that exits after 1 second."""
         b = WebberBackend()
-        b._build_arguments = lambda: [  # type: ignore[method-assign]
+        b.build_arguments = lambda: [  # type: ignore[method-assign]
             sys.executable,
             test_backend_script,
             "--exit-after",
@@ -202,7 +202,7 @@ class TestRealProcessIntegration:
 
     def test_bad_executable(self, normal_backend):
         """Ensure the state remains consistent with a bad process image."""
-        normal_backend._build_arguments = lambda: ["/"]
+        normal_backend.build_arguments = lambda: ["/"]
 
         normal_backend.start()
 
@@ -212,7 +212,7 @@ class TestRealProcessIntegration:
 
     def test_missing_executable(self, normal_backend):
         """Ensure the state remains consistent with a missing process image."""
-        normal_backend._build_arguments = lambda: ["/\nnot-a-real-file-123\n"]
+        normal_backend.build_arguments = lambda: ["/\nnot-a-real-file-123\n"]
 
         normal_backend.start()
 
