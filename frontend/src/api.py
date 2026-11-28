@@ -454,7 +454,10 @@ class WebberAPI:
         if crawl is not None:
             payload["crawl"] = crawl
         resp = await self._request(
-            "POST", "/snapshots/create", ContentType.JSON, payload,
+            "POST",
+            "/snapshots/create",
+            ContentType.JSON,
+            payload,
         )
         body = self._body_json(resp, 201)
         try:
@@ -701,3 +704,93 @@ class WebberAPI:
             return obj
         except Exception as e:
             raise BadResponseError(resp.text) from e
+
+    async def create_bookmark(
+        self,
+        name: str,
+        *,
+        file_id: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
+    ) -> str:
+        """Make a request to the `/bookmarks/create` endpoint.
+
+        Note that exactly one of file_id or snapshot_id must be provided (this
+        is enforced by the backend server).
+
+        Arguments:
+        name -- the name of the bookmark
+        file_id -- the ID of the file this bookmark points to
+        snapshot_id -- the ID of the snapshot this bookmark points to
+
+        Returns: the ID of the newly created bookmark
+        """
+        resp = await self._request(
+            "POST",
+            "/bookmarks/create",
+            ContentType.JSON,
+            self._remove_none_values(
+                {
+                    "name": name,
+                    "file_id": file_id,
+                    "snapshot_id": snapshot_id,
+                }
+            ),
+        )
+        body = self._body_json(resp, 201)
+        try:
+            id = body["id"]
+            if not isinstance(id, str):
+                raise TypeError('"id" must be a string')
+            return id
+        except Exception as e:
+            raise BadResponseError(body) from e
+
+    async def search_bookmarks(
+        self,
+        *,
+        bookmark_id: Optional[str] = None,
+        name: Optional[str] = None,
+        snapshot_id: Optional[str] = None,
+        file_id: Optional[str] = None,
+    ) -> list[str]:
+        """Make a request to the `/search/bookmarks` endpoint.
+
+        Arguments:
+        bookmark_id -- the ID of the bookmark
+        name -- regexp name to match for the bookmark
+        snapshot_id - snapshot ID the bookmark points to
+        file_id -- file ID the bookmark points to
+
+        Return: a list of matching bookmark IDs
+        """
+        resp = await self._request(
+            "QUERY",
+            "/search/bookmarks",
+            ContentType.JSON,
+            self._remove_none_values(
+                {
+                    "id": bookmark_id,
+                    "name": name,
+                    "snapshot_id": snapshot_id,
+                    "file_id": file_id,
+                }
+            ),
+        )
+        body = self._body_json(resp, 200)
+        if not parameterized_isinstance(body, list[str]):
+            raise BadResponseError(body) from TypeError(
+                "response must be a list of strings"
+            )
+        return body
+
+    async def delete_bookmark(self, bookmark_id: str):
+        """Delete the bookmark named by BOOKMARK_ID.
+
+        Arguments:
+        bookmark_id -- the ID of the bookmark to delete
+        """
+        safe_id = urllib.parse.quote(bookmark_id, safe="")
+        resp = await self._request(
+            "DELETE", "/bookmarks/" + safe_id, ContentType.EMPTY
+        )
+        self._check_status_code(resp, 202)

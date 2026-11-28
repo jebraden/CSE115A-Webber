@@ -130,12 +130,16 @@ class MainWindow(QMainWindow):
         self._create_snapshot = create_snapshot
         self._closed = False
         self._search_request = self._capture_request = None
+        self._bookmark_search_request = None
         self._document_requests = {}
         self._tasks = set()
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(debounce_ms)
         self._debounce.timeout.connect(self.search)
+        self._bookmark_debounce = QTimer(self)
+        self._bookmark_debounce.setSingleShot(True)
+        self._bookmark_debounce.timeout.connect(self.search_bookmarks)
         self._snapshot = None
         self._snapshots = []
         self._windows = {}
@@ -236,7 +240,7 @@ class MainWindow(QMainWindow):
         self.retry_search_button = QPushButton("Retry search", u.archivePanel)
         self.retry_search_button.clicked.connect(self.search)
         self.retry_search_button.hide()
-        u.archivePanel.layout().insertWidget(3, self.retry_search_button)
+        u.archivePanel.layout().insertWidget(2, self.retry_search_button)
         self.capture_progress = QProgressBar(u.capturePanel)
         self.capture_progress.setRange(0, 0)
         self.capture_progress.hide()
@@ -314,6 +318,16 @@ class MainWindow(QMainWindow):
             decrease.clicked.connect(spin.stepDown)
             increase.clicked.connect(spin.stepUp)
             spin.valueChanged.connect(self._update_stepper_buttons)
+
+        # Sidebar tabs
+        for button, page in (
+            (u.sidebarArchivesButton, u.sidebarArchivesPage),
+            (u.sidebarBookmarksButton, u.sidebarBookmarksPage),
+        ):
+            button.clicked.connect(
+                (lambda p: lambda: u.sidebarStack.setCurrentWidget(p))(page)
+            )
+
         self._update_stepper_buttons()
         u.resetSettingsButton.clicked.connect(self.reset_all_settings)
         self.update_viewing_preferences(persist=False)
@@ -341,14 +355,14 @@ class MainWindow(QMainWindow):
     def set_sidebar_visible(self, visible):
         u = self.ui
         if visible:
-            u.archivePanel.show()
+            u.sidebar.show()
             u.workspaceSplitter.setSizes(self._sidebar_sizes)
         else:
             sizes = u.workspaceSplitter.sizes()
             if sizes[0] > 0:
                 self._sidebar_sizes = sizes
             self.popout.hide()
-            u.archivePanel.hide()
+            u.sidebar.hide()
         u.sidebarToggle.setToolTip(
             "Hide sidebar" if visible else "Show sidebar"
         )
@@ -548,6 +562,23 @@ class MainWindow(QMainWindow):
         self._invalidate_search()
         self.ui.archiveCount.setText("Searching…")
         self._debounce.start()
+
+    def _invalidate_bookmark_search(self):
+        if self._bookmark_search_request is not None:
+            self._bookmark_search_request.cancel()
+            self._bookmark_search_request = None
+        self.ui.bookmarkList.setEnabled(False)
+
+    def search_bookmarks(self, *_):
+        if self._closed:
+            return
+        self._bookmark_debounce.stop()
+        self._invalidate_bookmark_search()
+        query = self.ui.bookmarkSearch.text().strip()
+        self._bookmark_search_request = self._start_task()
+
+    def _bookmark_search_error(self, request_id, failure):
+        pass
 
     def search(self, *_):
         if self._closed:
