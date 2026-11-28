@@ -710,15 +710,6 @@ class WebberAPI:
         except Exception as e:
             raise BadResponseError(resp.text) from e
 
-class ExportArchiveResponse(StrictNamedTuple):
-    # What the recieved file should be named
-    filename: str
-
-    # The bytes that make up the file. Should be a zip.
-    file_dat: bytes
-def _check_status_code(self, resp: httpx.Response, expected_status: int):
-
-
     async def export_archive(self, export_options="ALL") -> ExportArchiveResponse:
         """ Make a request to the /snapshots/export endpoint
         Arguments: 
@@ -738,7 +729,7 @@ def _check_status_code(self, resp: httpx.Response, expected_status: int):
         name = resp.headers.get("Content-Disposition", None)
         file_dat = resp.content
 
-        if name is None or file_dat is None:
+        if not isinstance(name, str) or not isinstance(file_dat, bytes):
             raise BadResponseError("Did not recieve filename and/or file data in response!")
 
         return ExportArchiveResponse(

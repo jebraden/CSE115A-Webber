@@ -196,6 +196,9 @@ class MainWindow(QMainWindow):
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
         u.openWindowButton.clicked.connect(lambda: self.open_in_window(self._snapshot))
+        u.exportButton.clicked.connect(lambda: self.open_file_browser_dialog("ALL"))
+        self.exportButton = u.exportButton
+
         self.popout = QToolButton(u.snapshotList.viewport())
         self.popout.setText("↗")
         self.popout.setToolTip("Open in new window")
@@ -705,12 +708,30 @@ class MainWindow(QMainWindow):
             window.close()
         super().closeEvent(event)
 
-    def open_file_broswer_dialog(self):
+    def open_file_broswer_dialog(self, option: str):
         directory = QFileDialog.getExistingDirectory(
                 self, 
                 "Select a Directory to export to", 
                 ""
         )
-
         if directory:
-            # TODO: The thing
+            self.exportButton.setEnabled(False)
+            self._perform_export_task(directory, option)
+            
+
+    def _perform_export_task(self, destination: str, option: str):
+        task = asyncio.create_task(self.service.export_archive(option))
+        task.add_done_callback(self._on_export_finish(task))
+
+    def _on_export_finish(self, task):
+        failure = False
+        name = None
+        try:
+            if task.cancelled():
+                return
+            if task.exception is not None:
+                QMessageBox.critical(self, "Export task failed!")
+            final_name = task.result()
+            QMessageBox.information(self, "Export Complete", f"Archive exported to {final_name}")
+        finally:
+            self.exportButton.setEnabled(True)

@@ -1,17 +1,23 @@
+<<<<<<< HEAD
 """Adapt the shared API to the UI contract without opening the database."""
+=======
+>>>>>>> 6c1cefc (pre-rebase changes)
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-import re
 from urllib.parse import urlsplit
-
-import httpx
 
 from .api import APIError, WebberAPI
 from .archive_document import ArchiveDocument
 from .archive_list.service import Snapshot
 from .integration_errors import InvalidArchiveResponse
+
+import httpx
+import re
+import os
+import re
+
 
 
 class ArchiveService:
@@ -116,3 +122,18 @@ class ArchiveService:
         if response.status_code != 200:
             raise APIError(response.status_code, response.text)
         return ArchiveDocument(response.text, url=self.base_url.rstrip("/") + page.url)
+
+    async def export_archive(self, options: str) -> str:
+        return await self._network("_export_archive", url)
+
+    async def _export_archive(self, api, options: str, destination: str) -> str:
+        # probably correct to allow errors to float up
+        res = await api.export_archive(options)
+        filename = res.filename
+        destination = os.path.join(destination, filename)
+        
+        with open(destination, "wb") as exported_archive:
+            exported_archive.write(res.file_dat)
+        return destination
+    
+            
