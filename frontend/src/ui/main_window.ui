@@ -10,12 +10,12 @@ QWidget { background: #f8f8f6; color: #292929; font-size: 13px; }
 QLabel { background: transparent; }
 QWidget#navigationBar, QWidget#capturePanel { background: #efefed; border-bottom: 1px solid #cececa; }
 QLabel#brandLabel { background: transparent; color: #566446; font-size: 22px; font-weight: 600; padding: 0 8px 0 0; }
-QPushButton { min-height: 18px; padding: 8px 12px; border: 1px solid #cececa; border-radius: 8px; background: #f1f1ee; }
+QPushButton, QToolButton#captureOptionsButton { min-height: 18px; padding: 8px 12px; border: 1px solid #cececa; border-radius: 8px; background: #f1f1ee; }
 QPushButton#sidebarToggle { padding: 5px; border: none; background: transparent; }
 QPushButton#sidebarToggle:hover { background: #e9ecdf; }
-QPushButton:hover { background: #e9ecdf; }
-QPushButton:checked { background: #e3e8d6; color: #435435; border-color: #b7c4a7; }
-QPushButton:focus { border-color: #879b76; }
+QPushButton:hover, QToolButton#captureOptionsButton:hover { background: #e9ecdf; }
+QPushButton:checked, QToolButton#captureOptionsButton:checked { background: #e3e8d6; color: #435435; border-color: #b7c4a7; }
+QPushButton:focus, QToolButton#captureOptionsButton:focus { border-color: #879b76; }
 QPushButton#savePageButton, QPushButton#captureButton { background: #566446; color: #ffffff; border-color: #566446; }
 QPushButton#savePageButton:hover, QPushButton#captureButton:hover { background: #4b5a3d; border-color: #4b5a3d; }
 QPushButton#savePageButton:pressed, QPushButton#captureButton:pressed { background: #414f35; border-color: #414f35; }
@@ -40,16 +40,18 @@ QLabel#settingsHeading { font-size: 22px; font-weight: 500; }
 QLabel#webpageHeading { font-size: 15px; margin-top: 20px; }
 QLabel#viewingDescription { color: #737370; font-size: 12px; }
 QSpinBox { min-height: 18px; background: #f1f1ee; color: #292929; padding: 8px 12px; border: 1px solid #cececa; border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
-QPushButton#zoomDecrease, QPushButton#textSizeDecrease { background: #f1f1ee; border-radius: 0; border-left: none; padding: 6px; font-size: 19px; }
-QPushButton#zoomIncrease, QPushButton#textSizeIncrease { background: #f1f1ee; border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-left: none; padding: 6px; font-size: 19px; }
-QPushButton#zoomDecrease:hover, QPushButton#zoomIncrease:hover, QPushButton#textSizeDecrease:hover, QPushButton#textSizeIncrease:hover { background: #e9ecdf; }
+QPushButton#zoomDecrease, QPushButton#textSizeDecrease, QPushButton#crawlDepthDecrease { background: #f1f1ee; border-radius: 0; border-left: none; padding: 6px; font-size: 19px; }
+QPushButton#zoomIncrease, QPushButton#textSizeIncrease, QPushButton#crawlDepthIncrease { background: #f1f1ee; border-top-left-radius: 0; border-bottom-left-radius: 0; border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-left: none; padding: 6px; font-size: 19px; }
+QPushButton#zoomDecrease:hover, QPushButton#zoomIncrease:hover, QPushButton#textSizeDecrease:hover, QPushButton#textSizeIncrease:hover, QPushButton#crawlDepthDecrease:hover, QPushButton#crawlDepthIncrease:hover { background: #e9ecdf; }
+QWidget#captureOptionsPanel, QWidget#crawlFields, QWidget#crawlDepthStepper { background: transparent; }
+QWidget#crawlFields QLabel:disabled, QSpinBox#crawlDepthInput:disabled QLineEdit { color: #92928e; }
 QSpinBox QLineEdit { padding: 0; border: none; background: transparent; color: #292929; border-radius: 0; }
 QSpinBox:focus, QLineEdit:focus, QComboBox:focus { border-color: #879b76; }
 QComboBox { min-height: 18px; background: #f1f1ee; color: #292929; padding: 8px 12px; border: 1px solid #cececa; border-radius: 8px; min-width: 150px; padding-right: 34px; }
 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: none; background: transparent; border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
 QComboBox::down-arrow { image: url(icons/chevron-light.svg); width: 14px; height: 14px; }
 QComboBox:hover { border-color: #566446; }
-QPushButton:pressed { background: #e3e8d6; }
+QPushButton:pressed, QToolButton#captureOptionsButton:pressed { background: #e3e8d6; }
 QComboBox QAbstractItemView { border: 1px solid #cececa; border-radius: 8px; padding: 4px; outline: none; background: #f8f8f6; color: #292929; selection-background-color: #e3e8d6; selection-color: #435435; }
 QLabel#appearanceLabel { font-size: 15px; margin-top: 20px; }
 QLabel#appearanceDescription, QLabel#themeStatus { color: #737370; }
@@ -98,6 +100,74 @@ QToolTip { background: #f8f8f6; color: #292929; border: 1px solid #cececa; borde
      <property name="leftMargin"><number>20</number></property><property name="rightMargin"><number>20</number></property>
      <property name="spacing"><number>8</number></property><property name="topMargin"><number>16</number></property><property name="bottomMargin"><number>16</number></property><item><widget class="QLabel" name="captureLabel"><property name="text"><string>Page URL</string></property><property name="buddy"><cstring>urlInput</cstring></property></widget></item>
      <item><layout class="QHBoxLayout" name="captureRow"><property name="spacing"><number>8</number></property><item><widget class="QLineEdit" name="urlInput"><property name="placeholderText"><string>https://example.com</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="captureButton"><property name="text"><string>Save page</string></property></widget></item><item><widget class="QPushButton" name="cancelCaptureButton"><property name="text"><string>Cancel</string></property></widget></item></layout></item>
+     <item><widget class="QToolButton" name="captureOptionsButton">
+      <property name="text"><string>Options</string></property>
+      <property name="checkable"><bool>true</bool></property>
+      <property name="toolButtonStyle"><enum>Qt::ToolButtonTextBesideIcon</enum></property>
+      <property name="arrowType"><enum>Qt::RightArrow</enum></property>
+     </widget></item>
+     <item><widget class="QWidget" name="captureOptionsPanel">
+      <property name="visible"><bool>false</bool></property>
+      <layout class="QVBoxLayout" name="captureOptionsLayout">
+       <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property>
+       <property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+       <property name="spacing"><number>8</number></property>
+       <item><layout class="QHBoxLayout" name="crawlToggleRow">
+        <item><widget class="QPushButton" name="crawlEnabledCheck">
+         <property name="text"><string>Follow linked pages</string></property>
+         <property name="checkable"><bool>true</bool></property>
+         <property name="toolTip"><string>Enable recursive crawling to edit the link depth and domain restriction.</string></property>
+        </widget></item>
+        <item><spacer name="crawlToggleSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+       </layout></item>
+       <item><widget class="QWidget" name="crawlFields">
+        <property name="enabled"><bool>false</bool></property>
+        <layout class="QHBoxLayout" name="crawlFieldsLayout">
+         <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+         <property name="spacing"><number>12</number></property>
+         <item><widget class="QLabel" name="crawlDepthLabel">
+          <property name="text"><string>Maximum link depth</string></property>
+          <property name="buddy"><cstring>crawlDepthInput</cstring></property>
+         </widget></item>
+         <item><widget class="QWidget" name="crawlDepthStepper">
+          <property name="minimumSize"><size><width>220</width><height>36</height></size></property>
+          <property name="maximumSize"><size><width>220</width><height>36</height></size></property>
+          <layout class="QHBoxLayout" name="crawlDepthStepperLayout">
+           <property name="spacing"><number>0</number></property>
+           <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property>
+           <property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+           <item><widget class="QSpinBox" name="crawlDepthInput">
+            <property name="accessibleName"><string>Maximum link depth</string></property>
+            <property name="minimumSize"><size><width>115</width><height>36</height></size></property>
+            <property name="buttonSymbols"><enum>QAbstractSpinBox::NoButtons</enum></property>
+            <property name="keyboardTracking"><bool>false</bool></property>
+            <property name="minimum"><number>1</number></property><property name="maximum"><number>2147483647</number></property>
+            <property name="value"><number>1</number></property>
+            <property name="toolTip"><string>Depth 1 includes pages linked directly from the entered URL.</string></property>
+           </widget></item>
+           <item><widget class="QPushButton" name="crawlDepthDecrease">
+            <property name="text"><string>−</string></property><property name="accessibleName"><string>Decrease link depth</string></property>
+            <property name="minimumSize"><size><width>42</width><height>36</height></size></property>
+            <property name="maximumSize"><size><width>42</width><height>42</height></size></property>
+           </widget></item>
+           <item><widget class="QPushButton" name="crawlDepthIncrease">
+            <property name="text"><string>+</string></property><property name="accessibleName"><string>Increase link depth</string></property>
+            <property name="minimumSize"><size><width>42</width><height>36</height></size></property>
+            <property name="maximumSize"><size><width>42</width><height>42</height></size></property>
+           </widget></item>
+          </layout>
+         </widget></item>
+         <item><widget class="QPushButton" name="crawlSameDomainCheck">
+          <property name="text"><string>Same domain only</string></property>
+          <property name="checkable"><bool>true</bool></property>
+          <property name="checked"><bool>true</bool></property>
+         </widget></item>
+         <item><spacer name="crawlFieldsSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+        </layout>
+       </widget></item>
+      </layout>
+     </widget></item>
      <item><widget class="QLabel" name="captureStatus"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
     </layout></widget></item>
     <item><widget class="QStackedWidget" name="mainStack"><property name="currentIndex"><number>0</number></property>
