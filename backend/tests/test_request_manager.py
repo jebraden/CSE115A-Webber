@@ -20,7 +20,7 @@ def test_db(tmp_path):
     db_file = str(tmp_path / "test_archive.db")
     with patch("src.request_manager.DB_PATH", db_file), patch(
         "src.app.DB_PATH", db_file
-    ), patch("src.request_manager.base_dir", str(tmp_path)):
+    ), patch("src.request_manager.BASE_DIR", str(tmp_path)):
         schema = os.path.join(
             os.path.dirname(__file__), "./../db/001_init.sql"
         )
@@ -78,7 +78,7 @@ def insert_file(test_db, insert_snapshot):
             "request_method": "GET",
             "request_headers": json.dumps({}),
             "request_parameters": json.dumps({}),
-            "response_recieved_time": 101.0,
+            "response_received_time": 101.0,
             "response_code": 200,
             "response_headers": json.dumps({"Content-Type": ["text/html"]}),
         }
@@ -616,7 +616,7 @@ class TestQueryFiles:
             remote_path="/index.html",
             response_code=200,
             request_sent_time=104,
-            response_recieved_time=105,
+            response_received_time=105,
         )
 
         insert_file(
@@ -931,7 +931,7 @@ class TestGetFileInfo:
             request_parameters=json.dumps(
                 {"param1": ["val"], "param2": ["val"]}
             ),
-            response_recieved_time=101.0,
+            response_received_time=101.0,
             response_code=200,
             response_headers=json.dumps(
                 {"Content-Type": ["text/html"], "X-Factor": ["1000"]}
@@ -959,7 +959,7 @@ class TestGetFileInfo:
             },
         }
         assert resp["response"] == {
-            "recieved_time": {"sec": 101, "nsec": 0},
+            "received_time": {"sec": 101, "nsec": 0},
             "code": 200,
             "headers": {"Content-Type": ["text/html"], "X-Factor": ["1000"]},
         }

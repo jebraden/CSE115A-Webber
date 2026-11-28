@@ -11,9 +11,8 @@ import re
 logger = logging.getLogger(__name__)
 
 from flask import Flask, jsonify, Response, request
-from src.request_manager import RequestManager, DB_PATH
-
-base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
+from .request_manager import RequestManager
+from .paths import BASE_DIR, DB_PATH
 
 
 def _setup_die_with_parent(ppid: int | None):
@@ -59,6 +58,7 @@ def create_app(
     app.logger.setLevel(log_level)
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
+    os.makedirs(BASE_DIR, exist_ok=True)
     with sqlite3.connect(DB_PATH) as db:
         with open(schema, "r") as sql_script:
             db.executescript(sql_script.read())
@@ -287,13 +287,10 @@ def main():
     """Main entrypoint."""
     opts = _handle_options()
     app = create_app(**opts["app"])
-    try:
-        if opts["production"]:
-            _start_waitress(app, **opts["listen"])
-        else:
-            _start_flask(app, opts["debug"], **opts["listen"])
-    finally:
-        close_archive_database(app)
+    if opts["production"]:
+        _start_waitress(app, **opts["listen"])
+    else:
+        _start_flask(app, opts["debug"], **opts["listen"])
 
 
 if __name__ == "__main__":

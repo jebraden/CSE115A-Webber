@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 from src.scraping.scraper import PageScraper, HyperlinkRules
 
+
 class FakeRequest:
     def __init__(self, url):
         self.url = url
@@ -64,11 +65,14 @@ class FakePage:
     def on(self, event, callback):
         self.handlers[event] = callback
 
-    async def goto(self, url, wait_until:str = None):
+    async def goto(self, url, wait_until: str = None):
         self.current_url = url
         request = FakeRequest(url)
         self.handlers["request"](request)
-        response = FakeResponse(request, self.pages[url]["body"],)
+        response = FakeResponse(
+            request,
+            self.pages[url]["body"],
+        )
 
         self.handlers["response"](response)
 
@@ -114,30 +118,31 @@ class FakePlaywrightContext:
     async def launch(self, **kwargs):
         return FakeBrowser(self.pages)
 
-@pytest.fixture 
+
+@pytest.fixture
 def test_db(tmp_path, monkeypatch):
     db_file = tmp_path / "test_archive.db"
-    monkeypatch.setattr("src.scraping.scraper.base_dir", str(tmp_path / ".webber"))
+    monkeypatch.setattr(
+        "src.scraping.scraper.BASE_DIR", str(tmp_path / ".webber")
+    )
 
     schema = os.path.join(os.path.dirname(__file__), "./../db/001_init.sql")
     with sqlite3.connect(db_file) as db:
         with open(schema, "r") as sql_script:
             db.executescript(sql_script.read())
     return str(db_file)
-            
+
+
 @pytest.fixture
-def test_conn(test_db): 
+def test_conn(test_db):
     conn = sqlite3.connect(test_db)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-
 class TestArchivePageIntegration:
     @pytest.mark.asyncio
-    async def test_archive_page(
-        self, test_conn, monkeypatch
-    ):
+    async def test_archive_page(self, test_conn, monkeypatch):
         root = "https://example.com/"
         about = "https://example.com/about"
         contact = "https://example.com/contact"
@@ -164,8 +169,10 @@ class TestArchivePageIntegration:
             },
         }
 
-        monkeypatch.setattr("src.scraping.scraper.async_playwright",
-                lambda: FakePlaywrightContext(pages),)
+        monkeypatch.setattr(
+            "src.scraping.scraper.async_playwright",
+            lambda: FakePlaywrightContext(pages),
+        )
         scraper = PageScraper(db_conn=test_conn)
 
         snap_id = await scraper.archive_page(root)
@@ -189,7 +196,9 @@ class TestArchivePageIntegration:
         assert count == 1
 
     @pytest.mark.asyncio
-    async def test_no_double_counting_recusion(self, test_conn, tmp_path, monkeypatch):
+    async def test_no_double_counting_recusion(
+        self, test_conn, tmp_path, monkeypatch
+    ):
         monkeypatch.setenv("HOME", str(tmp_path))
         root = "https://example.com/"
         a = "https://example.com/a"
@@ -204,9 +213,7 @@ class TestArchivePageIntegration:
                         <a href='/b'>B</a>
                     </html>
                 """,
-                "links": {
-                    "a[href]": [a, b]
-                },
+                "links": {"a[href]": [a, b]},
             },
             a: {
                 "body": b"""
@@ -214,9 +221,7 @@ class TestArchivePageIntegration:
                         <a href='\c'>C</a>
                     </html>
                 """,
-                "links": {
-                    "a[href]": [c]
-                },
+                "links": {"a[href]": [c]},
             },
             b: {
                 "body": b"""
@@ -224,9 +229,7 @@ class TestArchivePageIntegration:
                         <a href='\c'>C</a>
                     </html>
                 """,
-                "links": {
-                    "a[href]": [c]
-                },
+                "links": {"a[href]": [c]},
             },
             c: {
                 "body": b"<html><body>C</body></html>",
@@ -234,8 +237,10 @@ class TestArchivePageIntegration:
             },
         }
 
-        monkeypatch.setattr("src.scraping.scraper.async_playwright",
-                lambda: FakePlaywrightContext(pages),)
+        monkeypatch.setattr(
+            "src.scraping.scraper.async_playwright",
+            lambda: FakePlaywrightContext(pages),
+        )
         rules = HyperlinkRules(max_depth=3)
 
         scraper = PageScraper(db_conn=test_conn, hyperlink_rules=rules)
@@ -249,12 +254,10 @@ class TestArchivePageIntegration:
             """,
             (snap_id,),
         ).fetchall()
-        assert len(rows) == 4 
+        assert len(rows) == 4
 
     @pytest.mark.asyncio
-    async def test_enforce_max_depth(
-        self, test_conn, monkeypatch
-    ):
+    async def test_enforce_max_depth(self, test_conn, monkeypatch):
         root = "https://example.com/"
         about = "https://example.com/about"
         contact = "https://example.com/contact"
@@ -289,11 +292,13 @@ class TestArchivePageIntegration:
             layer2: {
                 "body": b"<html><body>Somethin Else</body></html>",
                 "links": {},
-            }
+            },
         }
 
-        monkeypatch.setattr("src.scraping.scraper.async_playwright",
-                lambda: FakePlaywrightContext(pages),)
+        monkeypatch.setattr(
+            "src.scraping.scraper.async_playwright",
+            lambda: FakePlaywrightContext(pages),
+        )
         scraper = PageScraper(db_conn=test_conn)
 
         snap_id = await scraper.archive_page(root)
@@ -315,5 +320,3 @@ class TestArchivePageIntegration:
         ).fetchone()[0]
 
         assert count == 1
-
-

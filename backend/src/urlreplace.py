@@ -668,7 +668,7 @@ def relativize_html(text: str, url: str) -> str:
 
     Arguments:
     text -- the HTML document to process
-    url -- the orignal URL the document was recieved from
+    url -- the orignal URL the document was received from
 
     Return: the relativized text
     """
@@ -719,9 +719,9 @@ def _find_all_css_urls(
             to_scan.extend(cur.value or [])
         elif isinstance(cur, tinycss2.ast.CurlyBracketsBlock):
             to_scan.extend(cur.content or [])
-#        elif isinstance(cur, tinycss2.ast.AtKeywordToken):
-#            to_scan.extend(cur.prelude or [])
-#            to_scan.extend(cur.content or [])
+        #        elif isinstance(cur, tinycss2.ast.AtKeywordToken):
+        #            to_scan.extend(cur.prelude or [])
+        #            to_scan.extend(cur.content or [])
         elif isinstance(cur, tinycss2.ast.AtRule):
             to_scan.extend(cur.prelude or [])
             to_scan.extend(cur.content or [])

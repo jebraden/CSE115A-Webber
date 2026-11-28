@@ -5,9 +5,8 @@ import uuid
 import time
 import json
 import os.path
-import asyncio 
+import asyncio
 import hashlib
-import tinycss2
 import sqlite3
 import logging
 import httpx
@@ -19,9 +18,8 @@ from playwright.async_api import async_playwright, Error as PlaywrightError
 from urllib.parse import urlparse, urljoin, parse_qs
 
 from ..urlreplace import relativize_html, relativize_stylesheet
+from ..paths import DB_PATH, BASE_DIR
 
-base_dir = os.path.join(os.getenv("HOME"), ".webber")
-db_path = os.path.join(base_dir, "archive.db")
 logger = logging.getLogger(__name__)
 
 
@@ -31,43 +29,51 @@ VIDEO_RECOVERY_TIMEOUT = 10
 VIDEO_RECOVERY_MAX_BYTES = 64 * 1024 * 1024
 # Only forward headers relevant to fetching the same resource. Range and
 # conditional request headers would prevent us from getting the complete body.
-VIDEO_RECOVERY_REQUEST_HEADERS = {"accept", "authorization", "cookie", "origin", "referer", "user-agent"}
-VIDEO_RANGE = re.compile(r"bytes (\d{1,19})-(\d{1,19})/(\d{1,19})", re.IGNORECASE)
+VIDEO_RECOVERY_REQUEST_HEADERS = {
+    "accept",
+    "authorization",
+    "cookie",
+    "origin",
+    "referer",
+    "user-agent",
+}
+VIDEO_RANGE = re.compile(
+    r"bytes (\d{1,19})-(\d{1,19})/(\d{1,19})", re.IGNORECASE
+)
 EXTENSION_MAP = {
     **VIDEO_EXTENSIONS,
-    "text/html":                     "html",
-    "text/css":                      "css",
-    "application/javascript":        "js",
-    "text/javascript":               "js",
-    "image/png":                     "png",
-    "image/jpg":                     "jpg",
-    "image/gif":                     "gif",
-    "image/svg+xml":                 "svg",
-    "image/webp":                    "webp",
-    "image/avif":                    "avif",
-    "image/x-icon":                  "ico",
-    "image/vnd.microsoft.icon":      "ico",
-    "font/woff":                     "woff",
-    "font/woff2":                    "woff2",
-    "font/ttf":                      "ttf",
-    "font/otf":                      "otf",
-    "application/font-woff":         "woff",
+    "text/html": "html",
+    "text/css": "css",
+    "application/javascript": "js",
+    "text/javascript": "js",
+    "image/png": "png",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/svg+xml": "svg",
+    "image/webp": "webp",
+    "image/avif": "avif",
+    "image/x-icon": "ico",
+    "image/vnd.microsoft.icon": "ico",
+    "font/woff": "woff",
+    "font/woff2": "woff2",
+    "font/ttf": "ttf",
+    "font/otf": "otf",
+    "application/font-woff": "woff",
     "application/vnd.ms-fontobject": "eot",
-    "application/json":              "json",
-    "application/xml":               "xml",
-
+    "application/json": "json",
+    "application/xml": "xml",
 }
 
 
-class PageScraper():
-    saved_urls: set[str] 
+class PageScraper:
+    saved_urls: set[str]
     time: str
     url: str
     origin_host: str
     origin: str
     base_dir: str
     style_sheets: set[str]
-    req_metadata: dict 
+    req_metadata: dict
     working: bool
     debug: bool
     saved_resources: dict
@@ -75,13 +81,15 @@ class PageScraper():
     snapshot_url: str
     depth: int
 
-    def __init__(self, *, 
-            db_conn=None, 
-            debug=False, 
-            hyperlink_rules=None,
-            snapshot_url=None,
-            depth=0
-        ):
+    def __init__(
+        self,
+        *,
+        db_conn=None,
+        debug=False,
+        hyperlink_rules=None,
+        snapshot_url=None,
+        depth=0,
+    ):
 
         self.saved_urls = set()
         self.video_recovery_attempts: set[str] = set()
@@ -95,32 +103,40 @@ class PageScraper():
         self.snapshot_url = snapshot_url
         self.depth = depth
 
-    async def archive_page(self, url: str, headers: dict=None, method: str="GET", *,
-            snap_id: str=None, saved_urls: list=None):
+    async def archive_page(
+        self,
+        url: str,
+        headers: dict = None,
+        method: str = "GET",
+        *,
+        snap_id: str = None,
+        saved_urls: list = None,
+    ):
         """
-            The function to call to start an archival job
-            If snap_id is not null, it is assumed that it is already in the DB.
+        The function to call to start an archival job
+        If snap_id is not null, it is assumed that it is already in the DB.
 
-            A non-null snap_id also means the snapshots table will not be modified
-            by this function.
+        A non-null snap_id also means the snapshots table will not be modified
+        by this function.
 
-            Please only supply a non-null saved_urls value if snap_id was also not null
+        Please only supply a non-null saved_urls value if snap_id was also not null
         """
-        if self.working: return None
+        if self.working:
+            return None
 
         if self.db is None:
             self.db = sqlite3.connect(db_path)
             self.db.execute("PRAGMA foreign_keys = ON")
             self.req_metadata = dict()
-        
-       
+
         try:
             logger.info(f"Starting job for {url} with origin {snap_id}")
-            snap_id = await self._download_page(url, headers, method, snap_id, saved_urls)
+            snap_id = await self._download_page(
+                url, headers, method, snap_id, saved_urls
+            )
         finally:
             self.working = False
         return snap_id
-
 
     async def collect_req_metadata(self, request):
         parsed = urlparse(request.url)
@@ -134,31 +150,27 @@ class PageScraper():
             "request_sent_time": time.time(),
             "request_method": request.method,
             "request_headers": headers,
-            "request_parameters": 
-                parse_qs(parsed.query, keep_blank_values=True),
+            "request_parameters": parse_qs(
+                parsed.query, keep_blank_values=True
+            ),
         }
-
-
 
     def handle_requests(self, request):
         parsed = urlparse(request.url)
 
         self.req_metadata[id(request)] = asyncio.create_task(
-                self.collect_req_metadata(request)
+            self.collect_req_metadata(request)
         )
 
     def on_response(self, response):
         task = asyncio.create_task(
             asyncio.wait_for(
-                self.handle_response(response), 
-                timeout=RESPONSE_TIMEOUT
+                self.handle_response(response), timeout=RESPONSE_TIMEOUT
             ),
-            name=response.url
+            name=response.url,
         )
 
-        task.add_done_callback(
-            lambda t: self.on_resp_complete
-        )
+        task.add_done_callback(lambda t: self.on_resp_complete)
         self.tasks.append(task)
 
     def on_resp_complete(self, task):
@@ -177,11 +189,18 @@ class PageScraper():
         try:
             return await response.body()
         finally:
-            logger.debug("Response body read for %s took %.3f s", response.url, time.perf_counter() - started)
+            logger.debug(
+                "Response body read for %s took %.3f s",
+                response.url,
+                time.perf_counter() - started,
+            )
 
     async def _recover_video(self, url, mime, request_headers, expected_size):
         """Try to obtain a complete video without buffering an unbounded response."""
-        if expected_size is not None and not 0 < expected_size <= VIDEO_RECOVERY_MAX_BYTES:
+        if (
+            expected_size is not None
+            and not 0 < expected_size <= VIDEO_RECOVERY_MAX_BYTES
+        ):
             return None
         headers = [
             (name, value)
@@ -193,9 +212,19 @@ class PageScraper():
         try:
             async with asyncio.timeout(VIDEO_RECOVERY_TIMEOUT):
                 async with httpx.AsyncClient() as client:
-                    async with client.stream("GET", url, headers=headers, follow_redirects=False) as download:
-                        received_type, _, _ = download.headers.get("content-type", "").partition(";")
-                        encoding = download.headers.get("content-encoding", "identity").strip().lower()
+                    async with client.stream(
+                        "GET", url, headers=headers, follow_redirects=False
+                    ) as download:
+                        received_type, _, _ = download.headers.get(
+                            "content-type", ""
+                        ).partition(";")
+                        encoding = (
+                            download.headers.get(
+                                "content-encoding", "identity"
+                            )
+                            .strip()
+                            .lower()
+                        )
                         if (
                             download.status_code != 200
                             or "content-range" in download.headers
@@ -207,30 +236,43 @@ class PageScraper():
                         if declared is not None:
                             size = int(declared)
                             if not 0 < size <= VIDEO_RECOVERY_MAX_BYTES or (
-                                expected_size is not None and size != expected_size
+                                expected_size is not None
+                                and size != expected_size
                             ):
                                 return None
                         body = bytearray()
-                        async for chunk in download.aiter_raw(chunk_size=64 * 1024):
-                            if len(body) + len(chunk) > VIDEO_RECOVERY_MAX_BYTES:
+                        async for chunk in download.aiter_raw(
+                            chunk_size=64 * 1024
+                        ):
+                            if (
+                                len(body) + len(chunk)
+                                > VIDEO_RECOVERY_MAX_BYTES
+                            ):
                                 return None
                             body.extend(chunk)
-                        if not body or (expected_size is not None and len(body) != expected_size):
+                        if not body or (
+                            expected_size is not None
+                            and len(body) != expected_size
+                        ):
                             return None
                         return body, download
         except (TimeoutError, httpx.HTTPError, ValueError) as error:
             logger.debug("Full video request failed for %s: %s", url, error)
             return None
         finally:
-            logger.debug("Full video recovery for %s took %.3f s", url, time.perf_counter() - started)
+            logger.debug(
+                "Full video recovery for %s took %.3f s",
+                url,
+                time.perf_counter() - started,
+            )
 
     async def handle_response(self, response):
         """
-            Handles the response we get for a page
-            Here a entry in the files table is created,
-            and we download the resource from the response
+        Handles the response we get for a page
+        Here a entry in the files table is created,
+        and we download the resource from the response
 
-            Must be linked to a request we also captured
+        Must be linked to a request we also captured
         """
 
         request = response.request
@@ -240,7 +282,8 @@ class PageScraper():
         task = self.req_metadata.pop(id(request), None)
         logger.info(f"Starting task for {url}")
 
-        if url in self.saved_urls: return
+        if url in self.saved_urls:
+            return
 
         if task is None:
             return
@@ -251,7 +294,6 @@ class PageScraper():
                 logger.warning(f"Failed to get request metadata {e}")
             return
 
-
         local_path = None
         headers = await response.all_headers()
         content_type = headers.get("content-type", "")
@@ -261,26 +303,34 @@ class PageScraper():
 
         path = self.data_path(url, resource_type=res_type)
         if path is None:
-            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
-                    " due to bad extension or non matching domain for js"
-                    " files")
+            logger.warning(
+                f"Failed to generate a path for url: {url} - Most likely"
+                " due to bad extension or non matching domain for js"
+                " files"
+            )
             return
-
 
         try:
             body = None
             recovered = None
             if mime in VIDEO_EXTENSIONS and response_status == 206:
-                match = VIDEO_RANGE.fullmatch(headers.get("content-range", "").strip())
+                match = VIDEO_RANGE.fullmatch(
+                    headers.get("content-range", "").strip()
+                )
                 expected_size = None
                 if match:
                     start, end, expected_size = map(int, match.groups())
                     if start == 0 and end + 1 == expected_size:
-                        complete_range = await self._read_response_body(response)
+                        complete_range = await self._read_response_body(
+                            response
+                        )
                         if len(complete_range) == expected_size:
                             body = complete_range
                 if body is None:
-                    if url in self.saved_urls or url in self.video_recovery_attempts:
+                    if (
+                        url in self.saved_urls
+                        or url in self.video_recovery_attempts
+                    ):
                         return
                     self.video_recovery_attempts.add(url)
                     sent_time = time.time()
@@ -289,7 +339,9 @@ class PageScraper():
                     )
                     if recovered is None:
                         if url not in self.saved_urls:
-                            logger.warning("Could not save the complete video: %s", url)
+                            logger.warning(
+                                "Could not save the complete video: %s", url
+                            )
                         return
                     body, download = recovered
                     retry_headers = {}
@@ -311,53 +363,61 @@ class PageScraper():
             logger.info(f"Failed to save url {url}: {e}")
 
         # Should be logged by the above
-        if local_path is None: return
+        if local_path is None:
+            return
 
         self.saved_urls.add(url)
 
         # keep track of this so that we dont need to dig into the DB later when we need to relativize everything
-        self.saved_resources[url] = {"path": local_path, "content_type": content_type}
+        self.saved_resources[url] = {
+            "path": local_path,
+            "content_type": content_type,
+        }
 
         headers = {}
         response_headers = (
-            download.headers.multi_items() if recovered is not None else
-            [(header["name"].lower(), header["value"]) for header in await response.headers_array()]
+            download.headers.multi_items()
+            if recovered is not None
+            else [
+                (header["name"].lower(), header["value"])
+                for header in await response.headers_array()
+            ]
         )
         for name, value in response_headers:
             headers.setdefault(name, []).append(value)
 
         resp_data = {
-            "response_recieved_time": time.time(),
+            "response_received_time": time.time(),
             "response_code": response_status,
             "response_headers": headers,
         }
         default_port = 443 if parsed.scheme == "https" else 80
 
-        file_size:int = 0
+        file_size: int = 0
         try:
             file_size = os.path.getsize(local_path)
         except Exception as e:
-            logger.warning(f"Failed to save url {url}: {e} at file byte size gathering")
-            return 
-    
+            logger.warning(
+                f"Failed to save url {url}: {e} at file byte size gathering"
+            )
+            return
 
         values = (
-                str(uuid.uuid4()),
-                self.snap_id,
-                local_path,
-                file_size,
-                parsed.scheme,
-                parsed.port or default_port,
-                parsed.hostname or "",
-                parsed.path or "/",
-                req_data["request_sent_time"],
-                req_data["request_method"],
-                json.dumps(req_data["request_headers"]),
-                json.dumps(req_data["request_parameters"]),
-                resp_data["response_recieved_time"],
-                resp_data["response_code"],
-                json.dumps(resp_data["response_headers"]),
-
+            str(uuid.uuid4()),
+            self.snap_id,
+            local_path,
+            file_size,
+            parsed.scheme,
+            parsed.port or default_port,
+            parsed.hostname or "",
+            parsed.path or "/",
+            req_data["request_sent_time"],
+            req_data["request_method"],
+            json.dumps(req_data["request_headers"]),
+            json.dumps(req_data["request_parameters"]),
+            resp_data["response_received_time"],
+            resp_data["response_code"],
+            json.dumps(resp_data["response_headers"]),
         )
         self.db.execute(
             """
@@ -366,7 +426,7 @@ class PageScraper():
                 protocol, port, host, remote_path,
                 request_sent_time, request_method,
                 request_headers, request_parameters,
-                response_recieved_time, response_code,
+                response_received_time, response_code,
                 response_headers
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, jsonb(?), jsonb(?), ?, ?, jsonb(?))
@@ -374,8 +434,16 @@ class PageScraper():
             values,
         )
 
-    async def _download_page(self, url: str, headers: dict=None, method:str="GET", snap_id: str=None, saved_urls: set=None):
-        if self.working: return None
+    async def _download_page(
+        self,
+        url: str,
+        headers: dict = None,
+        method: str = "GET",
+        snap_id: str = None,
+        saved_urls: set = None,
+    ):
+        if self.working:
+            return None
         self.working = True
         self.tasks = []
         self.saved_urls = set()
@@ -395,19 +463,20 @@ class PageScraper():
                 INSERT INTO snapshots (id, url, start_time, end_time)
                 VALUES (?, ?, ?, ?)
                 """,
-                (self.snap_id, url, self.time, self.time)
+                (self.snap_id, url, self.time, self.time),
             )
-        else: self.snap_id = snap_id
+        else:
+            self.snap_id = snap_id
 
         self.set_origin_url(url)
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
-                    headless=True,
+                headless=True,
             )
             browser = await browser.new_context(accept_downloads=False)
             page = await browser.new_page()
-            
+
             if headers is not None:
                 await page.setExtraHTTPHeaders(headers)
 
@@ -416,12 +485,14 @@ class PageScraper():
 
             # Maybe we want to handle this in the future?
             # For now it seems a security risk, so skipping
-            #page.on("download", lambda download: asyncio.create_task(download.cancel()))
+            # page.on("download", lambda download: asyncio.create_task(download.cancel()))
             try:
                 await page.goto(url, wait_until="load")
             except PlaywrightError as e:
                 if "Download is starting" in str(e):
-                    logger.info(f"Request on {url} triggered a download: Skipping")
+                    logger.info(
+                        f"Request on {url} triggered a download: Skipping"
+                    )
                     await browser.close()
                     return
                 raise
@@ -434,18 +505,21 @@ class PageScraper():
 
             await self.scroll_page(page)
             scroll_end = time.time()
-            logger.info(f"Ended scroll for {url} after {scroll_end - scroll_start}")
+            logger.info(
+                f"Ended scroll for {url} after {scroll_end - scroll_start}"
+            )
 
-           # We've scrolled as much to bottom of the page as possible
-       
+            # We've scrolled as much to bottom of the page as possible
 
-            # Added because we started skipping urls 
+            # Added because we started skipping urls
             # since browser closed early
             drain_start = time.time()
             logger.info(f"Started drain for {url}")
             await self._drain_tasks()
             drain_end = time.time()
-            logger.info(f"Finished drain for {url} after {drain_end - drain_start}")
+            logger.info(
+                f"Finished drain for {url} after {drain_end - drain_start}"
+            )
 
             # Rewrite files where needed
             self.rewrite_resource_paths()
@@ -453,14 +527,18 @@ class PageScraper():
             if self.depth < self.hyperlink_rules.max_depth:
                 hyperlinks = await self.gather_hyperlinks(page)
 
-                processed = await self.process_hyperlinks(hyperlinks, headers, method)
+                processed = await self.process_hyperlinks(
+                    hyperlinks, headers, method
+                )
 
             end_time = time.time()
             await browser.close()
-            logger.info(f"finished at {end_time} after {end_time - self.time} for {url}")
-        
+            logger.info(
+                f"finished at {end_time} after {end_time - self.time} for {url}"
+            )
+
         if update_db:
-            # conditional update because if snapshot exists, we probably have a parent process running that 
+            # conditional update because if snapshot exists, we probably have a parent process running that
             # returns the true end time. Avoid over-updating.
             self.db.execute(
                 """
@@ -474,14 +552,13 @@ class PageScraper():
         self.working = False
         return self.snap_id
 
-
-
     async def _drain_tasks(self):
         """
-            Drains the outstanding response tasks. By proxy, this should
-            also handle the outstanding request tasks.
+        Drains the outstanding response tasks. By proxy, this should
+        also handle the outstanding request tasks.
         """
-        if not self.tasks: return
+        if not self.tasks:
+            return
         completed = 0
         while completed < len(self.tasks):
             undone = self.tasks[completed:]
@@ -493,7 +570,7 @@ class PageScraper():
             logger.debug("Finished waiting")
 
             completed += len(undone)
-            
+
             for res in results:
                 if isinstance(res, BaseException):
                     logger.warning(f"Task Failed: {res!r}")
@@ -502,12 +579,10 @@ class PageScraper():
         last_height = 0
         for _ in range(max_scrolls):
             try:
-                await page.evaluate(
-                    "window.scrollBy(0, window.innerHeight)"
-                )
+                await page.evaluate("window.scrollBy(0, window.innerHeight)")
 
                 new_height = await page.evaluate(
-                        "document.documentElement.scrollHeight"
+                    "document.documentElement.scrollHeight"
                 )
             except PlaywrightError as e:
                 if "Execution context was destroyed" in str(e):
@@ -518,9 +593,11 @@ class PageScraper():
                 break
             last_height = new_height
 
-    async def process_hyperlinks(self, urls: list, headers: dict=None, method: str="GET") -> set[str]:
+    async def process_hyperlinks(
+        self, urls: list, headers: dict = None, method: str = "GET"
+    ) -> set[str]:
         """
-        Takes a list of urls (presumably from PageScraper#gather_hyperlinks) and downloads the pages, 
+        Takes a list of urls (presumably from PageScraper#gather_hyperlinks) and downloads the pages,
         Recursively PageScraping)
 
         urls    - the list of urls to start scraping processes for
@@ -534,31 +611,41 @@ class PageScraper():
         processed = set()
         for url in urls:
             scraper = PageScraper(
-                    db_conn=self.db, 
-                    debug=self.debug, 
-                    hyperlink_rules=self.hyperlink_rules,
-                    snapshot_url=self.snapshot_url,
-                    depth=self.depth+1
+                db_conn=self.db,
+                debug=self.debug,
+                hyperlink_rules=self.hyperlink_rules,
+                snapshot_url=self.snapshot_url,
+                depth=self.depth + 1,
             )
 
-
             scraper.video_recovery_attempts = self.video_recovery_attempts
-            res = await scraper.archive_page(url, headers, method, snap_id=self.snap_id, saved_urls=self.saved_urls)
+            res = await scraper.archive_page(
+                url,
+                headers,
+                method,
+                snap_id=self.snap_id,
+                saved_urls=self.saved_urls,
+            )
 
             new_urls = scraper.saved_urls
             # Needed so that if there is a recursive reference to another hyperbranch in another, we don't double count it later down the line.
-            # With a max depth limit, it may be prudent to consider processing these in a breadth first manner rather than depth first. 
+            # With a max depth limit, it may be prudent to consider processing these in a breadth first manner rather than depth first.
             self.saved_urls.update(new_urls)
 
-            if res is None: 
-                logger.warning(f"Skipping url: {url}. Failed to download page content") 
+            if res is None:
+                logger.warning(
+                    f"Skipping url: {url}. Failed to download page content"
+                )
                 continue
             processed.add(url)
         return processed
 
-
     async def gather_hyperlinks(self, page) -> set[str]:
-        search_targets = [("a[href]", "href"), ("area[href]", "href"), ("form", "action")]
+        search_targets = [
+            ("a[href]", "href"),
+            ("area[href]", "href"),
+            ("form", "action"),
+        ]
         urls = set()
 
         logger.debug("Processing hyperlinks")
@@ -588,35 +675,39 @@ class PageScraper():
         top_domain = get_tld(self.snapshot_url, as_object=True).domain
         curr_domain = get_tld(url, as_object=True).domain
         if rules.top_domain_only:
-            logger.debug(f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}")
-            return top_domain == curr_domain or curr_domain in rules.whitelist_domains
+            logger.debug(
+                f"{url} : {top_domain} : {curr_domain} : {top_domain == curr_domain}"
+            )
+            return (
+                top_domain == curr_domain
+                or curr_domain in rules.whitelist_domains
+            )
         else:
             return curr_domain not in rules.blacklist_domains
 
-
-        
-
-
     def get_base_dir(self, url: str):
         """
-            Gets the base directory where we need to store files in
-            
-            url str - The domain defines the sub directory grouping we'll
-            put the files in. 
-            ie. domain is lego.com ->.webber/<snapshot>/<lego.com>/
+        Gets the base directory where we need to store files in
+
+        url str - The domain defines the sub directory grouping we'll
+        put the files in.
+        ie. domain is lego.com ->.webber/<snapshot>/<lego.com>/
         """
         stripped = re.sub(r"^https?://", "", url)
         parsed = urlparse(url)
         host = parsed.hostname
         if self.snap_id is None:
-            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            logger.warning(
+                f"Encountered anomoly on get_base_dir: snap_id is None! {url}"
+            )
             return None
         elif host is None:
-            logger.warning(f"Encountered anomoly on get_base_dir: snap_id is None! {url}")
+            logger.warning(
+                f"Encountered anomoly on get_base_dir: snap_id is None! {url}"
+            )
             return None
-        path = os.path.join(base_dir, self.snap_id, host)
+        path = os.path.join(BASE_DIR, self.snap_id, host)
         return path
-
 
     def resource_type(self, content_type: str) -> str | None:
         """
@@ -628,20 +719,27 @@ class PageScraper():
     def rewrite_resource_paths(self):
         for url, resource in self.saved_resources.items():
             path = resource["path"]
-            content_type = resource.get("content_type", "").split(";", 1)[0].strip().lower()
+            content_type = (
+                resource.get("content_type", "")
+                .split(";", 1)[0]
+                .strip()
+                .lower()
+            )
             html_flag = None
             if content_type == "text/html":
                 html_flag = True
             if content_type == "text/css":
                 html_flag = False
-            if html_flag is None: 
+            if html_flag is None:
                 continue
             with open(path, "rb") as file:
                 contents = file.read()
             try:
                 if html_flag:
                     # Should I account for not utf-8?
-                    contents = relativize_html(contents.decode("utf-8", errors="replace"), url)
+                    contents = relativize_html(
+                        contents.decode("utf-8", errors="replace"), url
+                    )
                 else:
                     contents = relativize_stylesheet(contents, url)
             except Exception as e:
@@ -655,34 +753,35 @@ class PageScraper():
                 SET file_size = ?
                 WHERE snapshot_id = ? AND on_disk_path = ?
                 """,
-                (os.path.getsize(path), self.snap_id, path)
+                (os.path.getsize(path), self.snap_id, path),
             )
-        
 
-    def write_resource_file(self, url, data, resource_type: str =None):
+    def write_resource_file(self, url, data, resource_type: str = None):
         """
-            Writes the resource from  specified url to the disc with the
-            provided data
+        Writes the resource from  specified url to the disc with the
+        provided data
 
-            Will not write resource if it is a file with no extension from
-            outside of the primary domain (usually junk data) or if it is a
-            js file from such a place. 
+        Will not write resource if it is a file with no extension from
+        outside of the primary domain (usually junk data) or if it is a
+        js file from such a place.
 
-            .webber/<snapshot-id>/<og-domain-for-archival>/<url path>
+        .webber/<snapshot-id>/<og-domain-for-archival>/<url path>
 
-            url str - The url the file path will be based on
-            data    - What we're writing
+        url str - The url the file path will be based on
+        data    - What we're writing
 
         """
         path = self.data_path(url, resource_type=resource_type)
         if path is None:
-            logger.warning(f"Failed to generate a path for url: {url} - Most likely"
-                    " due to bad extension or non matching domain for js"
-                    " files")
+            logger.warning(
+                f"Failed to generate a path for url: {url} - Most likely"
+                " due to bad extension or non matching domain for js"
+                " files"
+            )
             return None
         directory = os.path.dirname(path)
         os.makedirs(directory, exist_ok=True)
-        with open (path, "wb") as file:
+        with open(path, "wb") as file:
             file.write(data)
 
         return path
@@ -711,11 +810,11 @@ class PageScraper():
             ).hexdigest()[:10]
             path = f"{name}_{query_hash}{extension}"
 
-        host = parsed.hostname 
-        if host != self.origin_host and (
-            not extension or extension == ".js"
-        ):
-            logger.debug(f"url: {url} host: {host} og-host: {self.origin_host}")
+        host = parsed.hostname
+        if host != self.origin_host and (not extension or extension == ".js"):
+            logger.debug(
+                f"url: {url} host: {host} og-host: {self.origin_host}"
+            )
             return None
         return os.path.join(self.base_dir, parsed.scheme.lower(), host, path)
 
@@ -727,12 +826,12 @@ class PageScraper():
         self.base_dir = self.get_base_dir(url)
 
 
-
 class HyperlinkRules:
     """
     Please note in all contexts, domains refer to the TLD
     That is: bbc.co.uk, we mean bbc as the domain
     """
+
     max_depth: int
     # Used to work around top_domain_only
     # Only does something if top_domain_only is True
@@ -743,14 +842,21 @@ class HyperlinkRules:
 
     top_domain_only: bool
 
-    def __init__(self, *, max_depth: int=1, whitelist_domains=set(), blacklist_domains=set(), top_domain_only=True):
+    def __init__(
+        self,
+        *,
+        max_depth: int = 1,
+        whitelist_domains=set(),
+        blacklist_domains=set(),
+        top_domain_only=True,
+    ):
         self._max_depth = max_depth
         self._whitelist_domains = whitelist_domains
         self._blacklist_domains = blacklist_domains
         self._top_domain_only = top_domain_only
-    
+
     @property
-    def max_depth(self) -> int: 
+    def max_depth(self) -> int:
         return self._max_depth
 
     @property
@@ -766,14 +872,10 @@ class HyperlinkRules:
         return self._top_domain_only
 
 
-
-
-
-    
 if __name__ == "__main__":
     with open("./db/001_init.sql") as f:
         sql_script = f.read()
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.executescript(sql_script)
     conn.commit()
@@ -782,4 +884,3 @@ if __name__ == "__main__":
     s = PageScraper(db_conn=conn, debug=True)
     asyncio.run(s.archive_page(url))
     print("Finished all jobs!")
-

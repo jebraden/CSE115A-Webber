@@ -33,7 +33,7 @@ request_headers BLOB NOT NULL,
 -- jsonb object mapping request parameters to their values
 -- (see `/files/{FILE_ID}` for format)
 request_parameters BLOB NOT NULL,
-response_recieved_time REAL NOT NULL,
+response_received_time REAL NOT NULL,
 response_code INTEGER NOT NULL,
 -- jsonb object mapping request parameters to their values
 -- (see `/files/{FILE_ID}` for format)
@@ -72,7 +72,7 @@ CHECK (
 -- Speed up searches in the form of
 -- `SELECT * FROM files WHERE snapshot_id = '...';`
 CREATE INDEX IF NOT EXISTS idx_files_snapshot ON files(snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_files_rec_time ON files(response_recieved_time);
+CREATE INDEX IF NOT EXISTS idx_files_rec_time ON files(response_received_time);
 CREATE INDEX IF NOT EXISTS idx_snapshots_start_time ON snapshots(start_time);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_name ON bookmarks(name);
 CREATE INDEX IF NOT EXISTS idx_bookmarks_file_id ON bookmarks(file_id);

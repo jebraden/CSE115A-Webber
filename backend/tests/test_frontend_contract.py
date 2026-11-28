@@ -18,7 +18,7 @@ def live_backend(tmp_path, monkeypatch):
     database = tmp_path / "archive.db"
     with patch("src.request_manager.DB_PATH", database), patch(
         "src.app.DB_PATH", database
-    ), patch("src.request_manager.base_dir", str(tmp_path)):
+    ), patch("src.request_manager.BASE_DIR", str(tmp_path)):
         app = create_app()
         with sqlite3.connect(database) as db:
             db.execute(

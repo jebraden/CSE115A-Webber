@@ -12,12 +12,11 @@ from typing import Any
 from types import UnionType
 from urllib.parse import urlencode, unquote, urlsplit, parse_qs
 from .scraping.scraper import PageScraper, HyperlinkRules
+from .paths import BASE_DIR, DB_PATH
 from playwright.async_api import TimeoutError as ScrapeTimeout
 
-base_dir = os.path.join(os.getenv("HOME"), ".webber")  # type: ignore[arg-type]
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(base_dir, "archive.db")
 CONNECTION_INIT_CODE = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
@@ -191,7 +190,7 @@ class RequestManager:
                     return self.not_found(
                         f"{snapshot_id} is not a valid snapshot id"
                     )
-                path = os.path.join(base_dir, snapshot_id)
+                path = os.path.join(BASE_DIR, snapshot_id)
                 # Delete file rows
                 self.db.execute(
                     """
@@ -290,10 +289,10 @@ class RequestManager:
         # they get skipped
         if not snapshot_id or "." in snapshot_id or "/" in snapshot_id:
             logger.warning(
-                f"delete_snapshots: Recieved potentially malicious snapshot_id: {str(snapshot_id)}"
+                f"delete_snapshots: Received potentially malicious snapshot_id: {str(snapshot_id)}"
             )
             return
-        path = os.path.join(base_dir, snapshot_id)
+        path = os.path.join(BASE_DIR, snapshot_id)
         try:
             shutil.rmtree(path)
             logger.info(
@@ -358,7 +357,7 @@ class RequestManager:
                         host, remote_path, request_sent_time, request_method,
                         json(request_headers) AS request_headers,
                         json(request_parameters) AS request_parameters,
-                        response_recieved_time, response_code,
+                        response_received_time, response_code,
                         json(response_headers) AS response_headers
                     FROM files
                     WHERE id = ?
@@ -397,8 +396,8 @@ class RequestManager:
                     "parameters": params,
                 },
                 "response": {
-                    "recieved_time": self._time_spec(
-                        row["response_recieved_time"]
+                    "received_time": self._time_spec(
+                        row["response_received_time"]
                     ),
                     "code": row["response_code"],
                     "headers": response_headers,
@@ -578,7 +577,7 @@ class RequestManager:
             end_spec = payload.get("end_time", {})
             if end_spec:
                 end = self._time(end_spec)
-                other_conds.append("response_recieved_time <= ?")
+                other_conds.append("response_received_time <= ?")
                 other_vals.append(end)
         except KeyError:
             return self.bad_request(
@@ -628,7 +627,7 @@ class RequestManager:
             codes = payload.get("status_codes", [])
             if not isinstance(codes, list):
                 return self.bad_request(
-                    f"Expected a list for field 'status_codes', instead recieved {type(codes)}"
+                    f"Expected a list for field 'status_codes', instead received {type(codes)}"
                 )
             list_params = ", ".join(["?"] * len(codes))
             if list_params:
