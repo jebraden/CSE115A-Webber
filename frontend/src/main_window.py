@@ -185,6 +185,13 @@ class MainWindow(QMainWindow):
         u.capturePanel.layout().addWidget(self.capture_progress)
         u.captureStatus.setTextFormat(Qt.TextFormat.PlainText)
         u.urlInput.textChanged.connect(self._capture_input_changed)
+        u.captureOptionsButton.toggled.connect(u.captureOptionsPanel.setVisible)
+        u.captureOptionsButton.toggled.connect(lambda expanded: u.captureOptionsButton.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow))
+        u.crawlEnabledCheck.toggled.connect(u.crawlFields.setEnabled)
+        u.crawlEnabledCheck.toggled.connect(self._capture_input_changed)
+        u.crawlDepthInput.valueChanged.connect(self._capture_input_changed)
+        u.crawlSameDomainCheck.toggled.connect(self._capture_input_changed)
         u.snapshotList.currentItemChanged.connect(self._select_item)
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
@@ -215,7 +222,8 @@ class MainWindow(QMainWindow):
             signal = combo.valueChanged if isinstance(combo, QSpinBox) else combo.currentTextChanged
             signal.connect(self.update_viewing_preferences)
         for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
             decrease.clicked.connect(spin.stepDown)
             increase.clicked.connect(spin.stepUp)
             spin.valueChanged.connect(self._update_stepper_buttons)
@@ -268,7 +276,8 @@ class MainWindow(QMainWindow):
     def _update_stepper_buttons(self, *_args):
         u = self.ui
         for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease)):
+                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
             decrease.setEnabled(spin.value() > spin.minimum())
             increase.setEnabled(spin.value() < spin.maximum())
 
@@ -350,12 +359,24 @@ class MainWindow(QMainWindow):
             self.capture_requested.emit(url)
             self.ui.captureStatus.setText("Saving is unavailable.")
             return
+        options = {}
+        if self.ui.crawlEnabledCheck.isChecked():
+            self.ui.crawlDepthInput.interpretText()
+            options["crawl"] = {
+                "enable": True,
+                "depth": self.ui.crawlDepthInput.value(),
+                "top_level_only": self.ui.crawlSameDomainCheck.isChecked(),
+            }
         self.capture_requested.emit(url)
         create = self._create_snapshot
         async def operation():
-            result = await create(url) if inspect.iscoroutinefunction(create) else await asyncio.to_thread(create, url)
+            if inspect.iscoroutinefunction(create):
+                result = await create(url, **options)
+            else:
+                result = await asyncio.to_thread(create, url, **options)
             return snapshot_id(result)
         self.ui.urlInput.setEnabled(False)
+        self.ui.captureOptionsPanel.setEnabled(False)
         self.ui.captureButton.setEnabled(False)
         self.capture_progress.show()
         self.ui.captureStatus.setText("Saving page…")
@@ -367,6 +388,7 @@ class MainWindow(QMainWindow):
         self._capture_request = None
         self.capture_progress.hide()
         self.ui.urlInput.setEnabled(True)
+        self.ui.captureOptionsPanel.setEnabled(True)
         self.ui.captureButton.setText("Saved")
         self.ui.captureButton.setEnabled(False)
         self.ui.captureStatus.setText("Page saved. Snapshot: " + value)
@@ -378,6 +400,7 @@ class MainWindow(QMainWindow):
         self._capture_request = None
         self.capture_progress.hide()
         self.ui.urlInput.setEnabled(True)
+        self.ui.captureOptionsPanel.setEnabled(True)
         self.ui.captureButton.setEnabled(True)
         self.ui.captureButton.setText("Retry")
         self.ui.captureStatus.setText(error_text(failure) + " URL kept.")

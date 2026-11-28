@@ -61,3 +61,29 @@ async def test_flask_default_error_gets_a_plain_generic_message():
         )
     finally:
         service.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("crawl", [None, {"enable": True, "depth": 3, "top_level_only": False}])
+async def test_4_6_1_crawl_options_reach_shared_api_request(crawl):
+    import json
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(201, json={"id": "saved"})
+
+    service = ArchiveService(
+        "http://example.org",
+        api_factory=lambda *args, **kwargs: WebberAPI(
+            *args, **kwargs, transport=httpx.MockTransport(respond),
+        ),
+    )
+    try:
+        assert await service.create_snapshot("https://example.org/", crawl=crawl) == "saved"
+        expected = {"url": "https://example.org/", "request_options": {"method": "GET", "headers": {}}}
+        if crawl is not None:
+            expected["crawl"] = crawl
+        assert requests == [expected]
+    finally:
+        service.close()

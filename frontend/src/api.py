@@ -435,6 +435,7 @@ class WebberAPI:
         method: str,
         *,
         headers: dict[str, list[str]] = {},
+        crawl: dict[str, bool | int] | None = None,
     ) -> str:
         """Make a request to the `/snapshots/create` endpoint.
 
@@ -442,20 +443,18 @@ class WebberAPI:
         url -- the URL to archive
         method -- HTTP request method
         headers -- HTTP request headers
+        crawl -- optional backend crawl configuration; omitted by default
 
         Returns: the ID of the new snapshot
         """
+        payload: dict[str, Any] = {
+            "url": url,
+            "request_options": {"method": method, "headers": headers},
+        }
+        if crawl is not None:
+            payload["crawl"] = crawl
         resp = await self._request(
-            "POST",
-            "/snapshots/create",
-            ContentType.JSON,
-            {
-                "url": url,
-                "request_options": {
-                    "method": method,
-                    "headers": headers,
-                },
-            },
+            "POST", "/snapshots/create", ContentType.JSON, payload,
         )
         body = self._body_json(resp, 201)
         try:
