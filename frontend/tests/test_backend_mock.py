@@ -3,6 +3,7 @@ import sys
 import signal
 import pytest
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 from src.backend import (
@@ -313,31 +314,31 @@ class TestStateChangeHooks:
 
 
 class TestArgumentBuilding:
-    """Test _build_arguments method."""
+    """Test build_arguments method."""
 
     def test_production_flag(self, backend):
         """Test production flag is included when True."""
         backend.production = True
-        args = backend._build_arguments()
+        args = backend.build_arguments()
         assert "--production" in args
 
     def test_no_production_flag(self, backend):
         """Test production flag is excluded when False."""
         backend.production = False
-        args = backend._build_arguments()
+        args = backend.build_arguments()
         assert "--production" not in args
 
     def test_unix_socket(self, backend):
         """Test Unix socket address parsing."""
         backend.address = "unix:///tmp/test.sock"
-        args = backend._build_arguments()
+        args = backend.build_arguments()
         assert "--unix-socket" in args
         assert "/tmp/test.sock" in args
 
     def test_tcp_address(self, backend):
         """Test TCP address parsing."""
         backend.address = "127.0.0.1:3000"
-        args = backend._build_arguments()
+        args = backend.build_arguments()
         assert "--host" in args
         assert "--port" in args
         assert "127.0.0.1" in args
@@ -374,3 +375,13 @@ class TestJoinMethod:
         """Test join when no thread exists."""
         # Should not raise
         backend.join()
+
+
+def test_backend_state_is_readable_in_new_threads():
+    backend = WebberBackend()
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        states = list(workers.map(lambda _: backend.state, range(4)))
+    assert states == [State.STOPPED] * 4
+    # Taking and releasing the writer must still allow reads from its owner.
+    with backend._lock.write():
+        assert backend.state == State.STOPPED

@@ -133,11 +133,21 @@ class APIError(Exception):
             def wrap_init(self: BaseException, *args, **kwargs):
                 match args:
                     case () if "body" in kwargs:
-                        real_init(self, json.loads(kwargs["body"]))
+                        body = kwargs["body"]
                     case (body,):
-                        real_init(self, json.loads(body))
+                        pass
                     case (_, body):
-                        real_init(self, json.loads(body))
+                        pass
+                    case _:
+                        raise TypeError("Expected an HTTP error body")
+                self.body = body
+                try:
+                    real_init(self, json.loads(body))
+                    if not isinstance(self.message, str):
+                        raise ValueError("Expected a string error message")
+                except (ValueError, TypeError, KeyError):
+                    # Flask and proxies may return HTML or malformed JSON.
+                    self.message = "Could not complete the request. Check your archives before retrying."
 
             cls.__init__ = wrap_init  # type: ignore[method-assign, assignment]
 
@@ -368,14 +378,14 @@ class StatisticsLimitsResponse(StrictNamedTuple):
 # The API #
 ###########
 class WebberAPI:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, **client_options):
         """Construct the API object.
 
         Arguments:
         base_url -- the base URL of the backend
         """
         self.base_url = base_url.removesuffix("/")
-        self.client = httpx.AsyncClient()
+        self.client = httpx.AsyncClient(**client_options)
 
     async def aclose(self):
         """Close the client associated with this instance."""
