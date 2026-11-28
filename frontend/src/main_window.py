@@ -1,4 +1,5 @@
 """Central UI with injected archive services and QtAsyncio-owned UI tasks."""
+
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -6,13 +7,33 @@ import inspect
 import asyncio
 import logging
 
-from PySide6.QtCore import QFile, QDir, QEvent, QIODevice, QSize, Qt, Signal, QSettings, QTimer
+from PySide6.QtCore import (
+    QFile,
+    QDir,
+    QEvent,
+    QIODevice,
+    QSize,
+    Qt,
+    Signal,
+    QSettings,
+    QTimer,
+)
 from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QColor, QPixmap
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QLabel, QListWidgetItem,
-    QMainWindow, QToolButton, QWidget, QSpinBox, QTabBar, QStackedWidget, QGraphicsDropShadowEffect,
-    QPushButton, QProgressBar,
+    QAbstractItemView,
+    QButtonGroup,
+    QLabel,
+    QListWidgetItem,
+    QMainWindow,
+    QToolButton,
+    QWidget,
+    QSpinBox,
+    QTabBar,
+    QStackedWidget,
+    QGraphicsDropShadowEffect,
+    QPushButton,
+    QProgressBar,
 )
 
 from .archive_list.service import SnapshotService
@@ -38,7 +59,12 @@ class _NumericInput(QSpinBox):
 
     def event(self, event):
         result = super().event(event)
-        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.Show, QEvent.Type.PolishRequest, QEvent.Type.LayoutRequest):
+        if event.type() in (
+            QEvent.Type.StyleChange,
+            QEvent.Type.Show,
+            QEvent.Type.PolishRequest,
+            QEvent.Type.LayoutRequest,
+        ):
             QTimer.singleShot(0, self._fit_editor)
             QTimer.singleShot(50, self._fit_editor)
         return result
@@ -87,10 +113,19 @@ class MainWindow(QMainWindow):
     snapshot_requested = Signal(object)
     capture_requested = Signal(str)
 
-    def __init__(self, service: SnapshotService, *, demo=False, settings=None,
-                 create_snapshot=None, debounce_ms=200):
+    def __init__(
+        self,
+        service: SnapshotService,
+        *,
+        demo=False,
+        settings=None,
+        create_snapshot=None,
+        debounce_ms=200,
+    ):
         super().__init__()
-        self.settings = settings if settings is not None else QSettings("Webber", "Webber")
+        self.settings = (
+            settings if settings is not None else QSettings("Webber", "Webber")
+        )
         self._service = service
         self._create_snapshot = create_snapshot
         self._closed = False
@@ -115,11 +150,18 @@ class MainWindow(QMainWindow):
                 raise RuntimeError(loader.errorString())
         finally:
             source.close()
-        self.ui = SimpleNamespace(**{
-            obj.objectName(): obj for obj in self.findChildren(QWidget)
-            if obj.objectName()
-        })
+        self.ui = SimpleNamespace(
+            **{
+                obj.objectName(): obj
+                for obj in self.findChildren(QWidget)
+                if obj.objectName()
+            }
+        )
         u = self.ui
+        # Hide initial components
+        u.capturePanel.hide()
+        u.captureOptionsPanel.hide()
+
         self._light_stylesheet = self.styleSheet()
         self.setStyleSheet(stylesheet_for(self._light_stylesheet, "light"))
         self.viewer = ArchiveViewer(u.webViewHost)
@@ -140,17 +182,25 @@ class MainWindow(QMainWindow):
         self.tab_bar.setUsesScrollButtons(True)
         self.tab_bar.setMinimumWidth(0)
         u.archiveTabsHost.layout().addWidget(self.tab_bar)
-        u.archiveTabsHost.layout().setAlignment(self.tab_bar, Qt.AlignmentFlag.AlignLeft)
+        u.archiveTabsHost.layout().setAlignment(
+            self.tab_bar, Qt.AlignmentFlag.AlignLeft
+        )
         self.tab_bar.currentChanged.connect(self._activate_tab)
         self.tab_bar.tabCloseRequested.connect(self.close_tab)
-        self._close_tab_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Close), self)
-        self._close_tab_shortcut.activated.connect(lambda: self.close_tab(self.tab_bar.currentIndex()))
+        self._close_tab_shortcut = QShortcut(
+            QKeySequence(QKeySequence.StandardKey.Close), self
+        )
+        self._close_tab_shortcut.activated.connect(
+            lambda: self.close_tab(self.tab_bar.currentIndex())
+        )
         self._sidebar_sizes = [285, 835]
         u.workspaceSplitter.setSizes(self._sidebar_sizes)
         u.sidebarToggle.toggled.connect(self.set_sidebar_visible)
         u.workspaceSplitter.setStretchFactor(0, 0)
         u.workspaceSplitter.setStretchFactor(1, 1)
-        u.snapshotList.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        u.snapshotList.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
         self._navigation = QButtonGroup(self)
         self._navigation.setExclusive(True)
         self._navigation.addButton(u.archivesButton)
@@ -162,15 +212,23 @@ class MainWindow(QMainWindow):
         self._themes.addButton(u.darkModeButton)
         u.lightModeButton.clicked.connect(lambda: self.set_theme("light"))
         u.darkModeButton.clicked.connect(lambda: self.set_theme("dark"))
-        u.settingsButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.settingsPage))
+        u.settingsButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.settingsPage)
+        )
         self._content_modes = QButtonGroup(self)
         self._content_modes.setExclusive(True)
         self._content_modes.addButton(u.pageButton)
         self._content_modes.addButton(u.rawButton)
-        u.archivesButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.archivesPage))
-        u.statisticsButton.clicked.connect(lambda: u.mainStack.setCurrentWidget(u.statisticsPage))
+        u.archivesButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.archivesPage)
+        )
+        u.statisticsButton.clicked.connect(
+            lambda: u.mainStack.setCurrentWidget(u.statisticsPage)
+        )
         u.savePageButton.toggled.connect(self._focus_capture)
-        u.cancelCaptureButton.clicked.connect(lambda: u.savePageButton.setChecked(False))
+        u.cancelCaptureButton.clicked.connect(
+            lambda: u.savePageButton.setChecked(False)
+        )
         u.captureButton.clicked.connect(self.request_capture)
         u.urlInput.returnPressed.connect(self.request_capture)
         u.searchInput.textChanged.connect(self._schedule_search)
@@ -185,9 +243,14 @@ class MainWindow(QMainWindow):
         u.capturePanel.layout().addWidget(self.capture_progress)
         u.captureStatus.setTextFormat(Qt.TextFormat.PlainText)
         u.urlInput.textChanged.connect(self._capture_input_changed)
-        u.captureOptionsButton.toggled.connect(u.captureOptionsPanel.setVisible)
-        u.captureOptionsButton.toggled.connect(lambda expanded: u.captureOptionsButton.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow))
+        u.captureOptionsButton.toggled.connect(
+            u.captureOptionsPanel.setVisible
+        )
+        u.captureOptionsButton.toggled.connect(
+            lambda expanded: u.captureOptionsButton.setArrowType(
+                Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+            )
+        )
         u.crawlEnabledCheck.toggled.connect(u.crawlFields.setEnabled)
         u.crawlEnabledCheck.toggled.connect(self._capture_input_changed)
         u.crawlDepthInput.valueChanged.connect(self._capture_input_changed)
@@ -195,7 +258,9 @@ class MainWindow(QMainWindow):
         u.snapshotList.currentItemChanged.connect(self._select_item)
         u.pageButton.clicked.connect(self._show_content)
         u.rawButton.clicked.connect(self._show_content)
-        u.openWindowButton.clicked.connect(lambda: self.open_in_window(self._snapshot))
+        u.openWindowButton.clicked.connect(
+            lambda: self.open_in_window(self._snapshot)
+        )
         self.popout = QToolButton(u.snapshotList.viewport())
         self.popout.setText("↗")
         self.popout.setToolTip("Open in new window")
@@ -206,24 +271,46 @@ class MainWindow(QMainWindow):
         u.snapshotList.itemEntered.connect(self._position_popout)
         u.snapshotList.viewport().installEventFilter(self)
         u.snapshotList.installEventFilter(self)
-        u.snapshotList.verticalScrollBar().valueChanged.connect(lambda: self.popout.hide())
+        u.snapshotList.verticalScrollBar().valueChanged.connect(
+            lambda: self.popout.hide()
+        )
         self._popout_shortcut = QShortcut(QKeySequence("Ctrl+Shift+O"), self)
-        self._popout_shortcut.activated.connect(lambda: self.open_in_window(self._snapshot))
-        u.previewLabel = QLabel("Sample archives" if demo else "Local archives")
+        self._popout_shortcut.activated.connect(
+            lambda: self.open_in_window(self._snapshot)
+        )
+        u.previewLabel = QLabel(
+            "Sample archives" if demo else "Local archives"
+        )
         u.previewLabel.setObjectName("previewLabel")
         self.statusBar().addPermanentWidget(u.previewLabel)
-        self.set_theme(self.settings.value("appearance/theme", "light"), persist=False)
-        self._viewing_controls = {"zoom": u.pageZoomInput, "text_size": u.textSizeInput,
-                                  "font": u.fontCombo, "spacing": u.lineSpacingCombo}
-        saved = normalize_preferences({key: self.settings.value("viewing/" + key, default)
-                                       for key, default in DEFAULTS.items()})
+        self.set_theme(
+            self.settings.value("appearance/theme", "light"), persist=False
+        )
+        self._viewing_controls = {
+            "zoom": u.pageZoomInput,
+            "text_size": u.textSizeInput,
+            "font": u.fontCombo,
+            "spacing": u.lineSpacingCombo,
+        }
+        saved = normalize_preferences(
+            {
+                key: self.settings.value("viewing/" + key, default)
+                for key, default in DEFAULTS.items()
+            }
+        )
         for key, combo in self._viewing_controls.items():
             self._set_control_value(combo, saved[key])
-            signal = combo.valueChanged if isinstance(combo, QSpinBox) else combo.currentTextChanged
+            signal = (
+                combo.valueChanged
+                if isinstance(combo, QSpinBox)
+                else combo.currentTextChanged
+            )
             signal.connect(self.update_viewing_preferences)
-        for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
-                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
+        for spin, decrease, increase in (
+            (u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
+            (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+            (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease),
+        ):
             decrease.clicked.connect(spin.stepDown)
             increase.clicked.connect(spin.stepUp)
             spin.valueChanged.connect(self._update_stepper_buttons)
@@ -235,6 +322,7 @@ class MainWindow(QMainWindow):
     def _start_task(self, coroutine, on_result, on_error):
         task = asyncio.get_event_loop().create_task(coroutine)
         self._tasks.add(task)
+
         def completed(task):
             self._tasks.discard(task)
             if task.cancelled():
@@ -246,6 +334,7 @@ class MainWindow(QMainWindow):
                 on_error(task, error)
             else:
                 on_result(task, task.result())
+
         task.add_done_callback(completed)
         return task
 
@@ -260,11 +349,17 @@ class MainWindow(QMainWindow):
                 self._sidebar_sizes = sizes
             self.popout.hide()
             u.archivePanel.hide()
-        u.sidebarToggle.setToolTip("Hide sidebar" if visible else "Show sidebar")
+        u.sidebarToggle.setToolTip(
+            "Hide sidebar" if visible else "Show sidebar"
+        )
 
     @staticmethod
     def _control_value(control):
-        return f"{control.value()}{control.suffix()}" if isinstance(control, QSpinBox) else control.currentText()
+        return (
+            f"{control.value()}{control.suffix()}"
+            if isinstance(control, QSpinBox)
+            else control.currentText()
+        )
 
     @staticmethod
     def _set_control_value(control, value):
@@ -275,20 +370,28 @@ class MainWindow(QMainWindow):
 
     def _update_stepper_buttons(self, *_args):
         u = self.ui
-        for spin, decrease, increase in ((u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
-                                         (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
-                                         (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease)):
+        for spin, decrease, increase in (
+            (u.pageZoomInput, u.zoomDecrease, u.zoomIncrease),
+            (u.textSizeInput, u.textSizeDecrease, u.textSizeIncrease),
+            (u.crawlDepthInput, u.crawlDepthDecrease, u.crawlDepthIncrease),
+        ):
             decrease.setEnabled(spin.value() > spin.minimum())
             increase.setEnabled(spin.value() < spin.maximum())
 
     def update_viewing_preferences(self, *_args, persist=True):
-        self.viewing_preferences = normalize_preferences({key: self._control_value(combo)
-                                  for key, combo in self._viewing_controls.items()})
+        self.viewing_preferences = normalize_preferences(
+            {
+                key: self._control_value(combo)
+                for key, combo in self._viewing_controls.items()
+            }
+        )
         self._idle_viewer.apply_viewing_preferences(self.viewing_preferences)
         for tab in self._tabs.values():
             tab["viewer"].apply_viewing_preferences(self.viewing_preferences)
         for window in self._windows.values():
-            window.centralWidget().apply_viewing_preferences(self.viewing_preferences)
+            window.centralWidget().apply_viewing_preferences(
+                self.viewing_preferences
+            )
         if persist:
             for key, value in self.viewing_preferences.items():
                 self.settings.setValue("viewing/" + key, value)
@@ -311,13 +414,31 @@ class MainWindow(QMainWindow):
         """Apply shell colors without touching the archived HTML or selection."""
         mode = mode if mode in ("light", "dark") else "light"
         self.theme = mode
-        self.ui.sidebarToggle.setIcon(QIcon(str(Path(__file__).with_name("ui") / "icons" / f"sidebar-{mode}.svg")))
+        self.ui.sidebarToggle.setIcon(
+            QIcon(
+                str(
+                    Path(__file__).with_name("ui")
+                    / "icons"
+                    / f"sidebar-{mode}.svg"
+                )
+            )
+        )
         self.setStyleSheet(stylesheet_for(self._light_stylesheet, mode))
-        close_icon = QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg"))
+        close_icon = QIcon(
+            str(Path(__file__).with_name("ui") / "icons" / f"close-{mode}.svg")
+        )
         for button in self.findChildren(_TabCloseButton):
             button.setIcon(close_icon)
-        foreground, background, border = ("#b6d1aa", "#1c1c1c", "#3b3b3b") if mode == "dark" else ("#566446", "#f8f8f6", "#cececa")
-        hover, focus = ("#293629", "#8ca37b") if mode == "dark" else ("#e9ecdf", "#879b76")
+        foreground, background, border = (
+            ("#b6d1aa", "#1c1c1c", "#3b3b3b")
+            if mode == "dark"
+            else ("#566446", "#f8f8f6", "#cececa")
+        )
+        hover, focus = (
+            ("#293629", "#8ca37b")
+            if mode == "dark"
+            else ("#e9ecdf", "#879b76")
+        )
         self.popout.setStyleSheet(
             f"QToolButton {{ color: {foreground}; background: {background}; border: 1px solid {border}; border-radius: 8px; }}"
             f"QToolButton:hover, QToolButton:focus {{ background: {hover}; border-color: {focus}; }}"
@@ -339,7 +460,11 @@ class MainWindow(QMainWindow):
             self.ui.captureButton.setEnabled(True)
 
     def request_capture(self):
-        if self._closed or self._capture_request is not None or not self.ui.captureButton.isEnabled():
+        if (
+            self._closed
+            or self._capture_request is not None
+            or not self.ui.captureButton.isEnabled()
+        ):
             return
         url = self.ui.urlInput.text().strip()
         if not url:
@@ -349,7 +474,9 @@ class MainWindow(QMainWindow):
             # to persist a webpage.
             try:
                 parts = urlsplit(url)
-                valid = parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
+                valid = parts.scheme.lower() in ("http", "https") and bool(
+                    parts.hostname
+                )
                 parts.port
             except ValueError:
                 valid = False
@@ -369,18 +496,22 @@ class MainWindow(QMainWindow):
             }
         self.capture_requested.emit(url)
         create = self._create_snapshot
+
         async def operation():
             if inspect.iscoroutinefunction(create):
                 result = await create(url, **options)
             else:
                 result = await asyncio.to_thread(create, url, **options)
             return snapshot_id(result)
+
         self.ui.urlInput.setEnabled(False)
         self.ui.captureOptionsPanel.setEnabled(False)
         self.ui.captureButton.setEnabled(False)
         self.capture_progress.show()
         self.ui.captureStatus.setText("Saving page…")
-        self._capture_request = self._start_task(operation(), self._capture_result, self._capture_error)
+        self._capture_request = self._start_task(
+            operation(), self._capture_result, self._capture_error
+        )
 
     def _capture_result(self, request_id, value):
         if self._closed or request_id != self._capture_request:
@@ -427,7 +558,9 @@ class MainWindow(QMainWindow):
         self.ui.archiveCount.setText("Searching…")
         query = self.ui.searchInput.text().strip()
         self._search_request = self._start_task(
-            load_snapshots(self._service, query), self._search_result, self._search_error,
+            load_snapshots(self._service, query),
+            self._search_result,
+            self._search_error,
         )
 
     def _search_error(self, request_id, failure):
@@ -452,12 +585,27 @@ class MainWindow(QMainWindow):
         u.snapshotList.blockSignals(True)
         u.snapshotList.clear()
         self._snapshots = list(result.snapshots)
-        fallback = QIcon(str(Path(__file__).parent / "archive_list" / "assets" / "webpage.svg"))
+        fallback = QIcon(
+            str(
+                Path(__file__).parent
+                / "archive_list"
+                / "assets"
+                / "webpage.svg"
+            )
+        )
         for snapshot, image in zip(self._snapshots, result.icons):
-            date = snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p")
-            item = QListWidgetItem(f"{snapshot.url}\n{date}\nID: {snapshot.id}")
+            date = snapshot.archived_at.astimezone().strftime(
+                "%b %d, %Y · %I:%M %p"
+            )
+            item = QListWidgetItem(
+                f"{snapshot.url}\n{date}\nID: {snapshot.id}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, snapshot)
-            item.setIcon(QIcon(QPixmap.fromImage(image)) if not image.isNull() else fallback)
+            item.setIcon(
+                QIcon(QPixmap.fromImage(image))
+                if not image.isNull()
+                else fallback
+            )
             item.setToolTip(f"{snapshot.url}\n{date}\nID: {snapshot.id}")
             item.setSizeHint(QSize(230, 96))
             u.snapshotList.addItem(item)
@@ -469,7 +617,15 @@ class MainWindow(QMainWindow):
             self._sync_list_selection()
         else:
             self._clear_reader()
-            u.emptyMessage.setText("No archive open." if count else "No matching archives." if u.searchInput.text() else "No archived webpages yet.")
+            u.emptyMessage.setText(
+                "No archive open."
+                if count
+                else (
+                    "No matching archives."
+                    if u.searchInput.text()
+                    else "No archived webpages yet."
+                )
+            )
         self.statusBar().clearMessage()
 
     def _select_item(self, item, _previous):
@@ -487,15 +643,28 @@ class MainWindow(QMainWindow):
         viewer.apply_viewing_preferences(self.viewing_preferences)
         viewer.setHtml("")
         self._browser_pages.addWidget(viewer)
-        self._tabs[snapshot.id] = {"snapshot": snapshot, "viewer": viewer,
-                                   "source": "", "available": False, "loading": True,
-                                   "document": None, "raw": False, "raw_scroll": 0}
+        self._tabs[snapshot.id] = {
+            "snapshot": snapshot,
+            "viewer": viewer,
+            "source": "",
+            "available": False,
+            "loading": True,
+            "document": None,
+            "raw": False,
+            "raw_scroll": 0,
+        }
         request_id = self._start_task(
-            load_archive(self._service, snapshot), self._document_result, self._document_error,
+            load_archive(self._service, snapshot),
+            self._document_result,
+            self._document_error,
         )
         self._document_requests[request_id] = snapshot.id
         parts = urlsplit(snapshot.url)
-        title = (parts.path.rstrip("/").rsplit("/", 1)[-1] or parts.hostname or snapshot.url)
+        title = (
+            parts.path.rstrip("/").rsplit("/", 1)[-1]
+            or parts.hostname
+            or snapshot.url
+        )
         self.tab_bar.blockSignals(True)
         index = self.tab_bar.addTab(title)
         self.tab_bar.setTabData(index, snapshot.id)
@@ -505,10 +674,29 @@ class MainWindow(QMainWindow):
         close_button = _TabCloseButton(close_host)
         close_button.move(4, 0)
         close_button.setAccessibleName(f"Close {snapshot.url}")
-        close_button.setIcon(QIcon(str(Path(__file__).with_name("ui") / "icons" / f"close-{self.theme}.svg")))
-        close_button.clicked.connect(lambda _checked=False, key=snapshot.id: self._close_tab_id(key))
-        self.tab_bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, close_host)
-        self.tab_bar.setTabToolTip(index, snapshot.url + "\n" + snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p"))
+        close_button.setIcon(
+            QIcon(
+                str(
+                    Path(__file__).with_name("ui")
+                    / "icons"
+                    / f"close-{self.theme}.svg"
+                )
+            )
+        )
+        close_button.clicked.connect(
+            lambda _checked=False, key=snapshot.id: self._close_tab_id(key)
+        )
+        self.tab_bar.setTabButton(
+            index, QTabBar.ButtonPosition.LeftSide, close_host
+        )
+        self.tab_bar.setTabToolTip(
+            index,
+            snapshot.url
+            + "\n"
+            + snapshot.archived_at.astimezone().strftime(
+                "%b %d, %Y · %I:%M %p"
+            ),
+        )
         self.tab_bar.blockSignals(False)
         self.tab_bar.setCurrentIndex(index)
         self._activate_tab(index)
@@ -519,7 +707,12 @@ class MainWindow(QMainWindow):
         if self._closed or key not in self._tabs:
             return
         state = self._tabs[key]
-        state.update(source=document.source, document=document, available=True, loading=False)
+        state.update(
+            source=document.source,
+            document=document,
+            available=True,
+            loading=False,
+        )
         display_archive(state["viewer"], document)
         if key == self._active_tab_id:
             self._active_tab_id = None
@@ -560,7 +753,12 @@ class MainWindow(QMainWindow):
         self._browser_pages.setCurrentWidget(self.viewer)
         self.ui.pageTitle.setText(self.tab_bar.tabText(index))
         self.ui.currentUrl.setText(self._snapshot.url)
-        self.ui.snapshotDate.setText("Saved " + self._snapshot.archived_at.astimezone().strftime("%b %d, %Y · %I:%M %p"))
+        self.ui.snapshotDate.setText(
+            "Saved "
+            + self._snapshot.archived_at.astimezone().strftime(
+                "%b %d, %Y · %I:%M %p"
+            )
+        )
         self.ui.rawHtml.setPlainText(state["source"])
         self.ui.rawHtml.verticalScrollBar().setValue(state["raw_scroll"])
         self.ui.rawButton.setChecked(state["raw"])
@@ -569,7 +767,11 @@ class MainWindow(QMainWindow):
         if state["available"]:
             self._show_content()
         else:
-            self.ui.emptyMessage.setText("Loading archive…" if state.get("loading") else "Archived file is unavailable.")
+            self.ui.emptyMessage.setText(
+                "Loading archive…"
+                if state.get("loading")
+                else "Archived file is unavailable."
+            )
             self.ui.viewerStack.setCurrentWidget(self.ui.emptyPage)
         self._sync_list_selection()
         self.statusBar().clearMessage()
@@ -633,24 +835,37 @@ class MainWindow(QMainWindow):
 
     def _show_content(self):
         if self._active_tab_id in self._tabs:
-            self._tabs[self._active_tab_id]["raw"] = self.ui.rawButton.isChecked()
+            self._tabs[self._active_tab_id][
+                "raw"
+            ] = self.ui.rawButton.isChecked()
         if self.ui.openWindowButton.isEnabled():
-            self.ui.viewerStack.setCurrentWidget(self.ui.rawPage if self.ui.rawButton.isChecked() else self.ui.webPage)
+            self.ui.viewerStack.setCurrentWidget(
+                self.ui.rawPage
+                if self.ui.rawButton.isChecked()
+                else self.ui.webPage
+            )
 
     def _position_popout(self, item):
         self._hover_item = item
         rect = self.ui.snapshotList.visualItemRect(item)
         if rect.isValid():
-            self.popout.move(self.ui.snapshotList.viewport().width() - 36, rect.top() + 12)
+            self.popout.move(
+                self.ui.snapshotList.viewport().width() - 36, rect.top() + 12
+            )
             self.popout.show()
             self.popout.raise_()
 
     def _popout_hovered(self):
         if self._hover_item is not None:
-            self.open_in_window(self._hover_item.data(Qt.ItemDataRole.UserRole))
+            self.open_in_window(
+                self._hover_item.data(Qt.ItemDataRole.UserRole)
+            )
 
     def eventFilter(self, obj, event):
-        if obj is self.ui.snapshotList.viewport() and event.type() == QEvent.Type.Leave:
+        if (
+            obj is self.ui.snapshotList.viewport()
+            and event.type() == QEvent.Type.Leave
+        ):
             if not self.popout.underMouse() and not self.popout.hasFocus():
                 self.popout.hide()
         if obj is self.ui.snapshotList and event.type() == QEvent.Type.FocusIn:
@@ -689,7 +904,9 @@ class MainWindow(QMainWindow):
         display_archive(viewer, document)
         window.setCentralWidget(viewer)
         self._windows[snapshot.id] = window
-        window.destroyed.connect(lambda _obj=None, key=snapshot.id: self._windows.pop(key, None))
+        window.destroyed.connect(
+            lambda _obj=None, key=snapshot.id: self._windows.pop(key, None)
+        )
         window.show()
 
     def closeEvent(self, event):
